@@ -6,18 +6,14 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib] # lib
-name = "hello_lib"
 path = "src/lib.rs"
 
-# can be removed if only lib crate. Integration testing is done in test directory not in main
-[[bin]] # bin to run HelloWorld
-name = "cicd-rust"
+[[bin]]
+name = "data-collector"
 path = "src/main.rs"
 
 
 [dependencies]
 
 
-[features]
-default = ["feature"]
-feature = []
+[dev-dependencies]
