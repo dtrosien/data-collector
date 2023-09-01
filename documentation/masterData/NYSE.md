@@ -9,10 +9,10 @@ having the fields:</br>
 
 | Field       |          Result           | Data type       |
 |-------------|:-------------------------:|-----------------|
-|action_date|         2023-09-01                  | date yyyy-MM-dd |
+|action_date|2023-09-01| date yyyy-MM-dd |
 | action_status    | Effective before the Open | VARCHAR(100)    |
-| action_type   |         Suspend          | VARCHAR(100)    |
-| issue_symbol    |       NEX      | VARCHAR(100)    |
+| action_type   |Suspend| VARCHAR(100)    |
+| issue_symbol    |NEX| VARCHAR(100)    |
 | issuer_name | NexTier Oilfield Solutions Inc. | VARCHAR(200)    |
 | action_status| Effective before the Open| VARCHAR(100)    |
 | updated_at|2023-09-01T09:23:44.135423-04:00| VARCHAR(100)    |
