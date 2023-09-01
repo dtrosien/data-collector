@@ -15,4 +15,4 @@ The rules are changing over time.(2023.08.29)
 ## Soft criteria
 
 Since a committee is deciding the decision dates could vary.</br>
-Since the list is limited to 500 members, it is not clear what will happen in the case of more eligible companies.
+Since the list is targeted to be 500 members, it is not clear what will happen in the case of more eligible companies.
