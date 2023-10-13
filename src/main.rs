@@ -37,7 +37,8 @@ pub struct Comments<'a> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    collect_conf::load_file("configs/config.yaml");
+    let tasks = collect_conf::load_file("configs/config.yaml").unwrap();
+
     // println!("{}", say_hello());
     // let settings = Config::builder()
     //     .add_source(config::File::with_name("configs/config.yaml"))
