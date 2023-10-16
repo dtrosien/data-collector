@@ -16,72 +16,57 @@ There are several ways to design the config file, focusing on the called APIs or
 Both options consist of a general part for database information and a special part for data gathering. The data gathering part can be customized in order to prioritize certain S&P 500 fields or exclude APIs.</br>
 - The tasks will be executed in order of their priority. Meaning that lower is earlier. Tasks with the same priority will be executed in parallel.
 - The <i>all</i> include argument will grab all possible values implemented for the API/field.
+- The <i>exclude</i> allows to exclude fields/api's stated in the <i>include</i> config and will exclude it, if previously included.
 - Tasks should be able to overwrite general parameters.
 
 ### Prioritize S&P 500 constraints
 
 ```
-{
-    "database_connection_string": "myDB",
-    "database_user": "root123",
-    "database_pw": "secret",
-    "tasks": [
-        {
-            "comment": "Helpful comment",
-            "s&p500_fields": ["NYSE"],
-            "priority": "1.0",
-            "include_sources": "all",
-            "exclude_sources": ""
-        },
-        {
-            "comment": "Helpful comment1",
-            "s&p500_fields": ["MARKET_CAP", "MONTH_TRADING_VOLUME"],
-            "priority": "2.0",
-            "include_sources": "all",
-            "exclude_sources": "just_a_bit_brocken_API_1.com"
-        },
-        {
-            "comment": "Helpful comment1",
-            "s&p500_fields": ["LOCATION"],
-            "priority": "2.0",
-            "include_sources": "just_a_bit_brocken_API_1.com",
-            "exclude_sources": ""
-        }
-    ]
-}
+---
+database_connection_string: myDB
+database_user: root123
+database_pw: secret
+tasks:
+- sp500_fields:
+  - NYSE
+  database_connection_string: overWrite DB
+  priority: 1
+  include_sources:
+  - all
+  exclude_sources: 
+  - ''
+- sp500_fields:
+  - MARKET_CAP
+  - MONTH_TRADING_VOLUME
+  database_pw: another pw
+  priority: 2
+  include_sources:
+  - all
+  exclude_sources:
+  - just_a_bit_brocken_API_1.com
+...
 ```
 
 ### Prioritize APIs
 
 ```
-{
-    "database_connection_string": "myDB",
-    "database_user": "root123",
-    "database_pw": "secret",
-    "tasks": [
-        {
-            "comment": "Helpful comment",
-            "api": "mySource.com"
-            "priority": "1.0",
-            "include_s&p500_fields": "all",
-            "exclude_s&p500_fields": ""
-        },
-        {
-            "comment": "Helpful comment",
-            "api": "mySource.com"
-            "priority": "2.0",
-            "include_s&p500_fields": "all",
-            "exclude_s&p500_fields": "MONTH_TRADING_VOLUME_due_to_brocken_json_interface"
-        },
-        {
-            "comment": "Helpful comment",
-            "api": "location.com"
-            "priority": "2.0",
-            "include_s&p500_fields": "all",
-            "exclude_s&p500_fields": ""
-        }
-    ]
-}
+---
+database_connection_string: myDB
+database_user: root123
+database_pw: secret
+tasks:
+- api: mySource.com
+  priority: 1.0
+  include_s&p500_fields:
+  - all
+  exclude_s&p500_fields:
+- api: location.com
+  priority: 2.0
+  include_s&p500_fields:
+  - all
+  exclude_s&p500_fields:
+  - MONTH_TRADING_VOLUME_due_to_broken_json_interface
+...
 ```
 
 
@@ -99,4 +84,6 @@ Prioritizing the APIs and setting them all to the same priority will maximize th
 
 ## Consequences
 
-What becomes easier or more difficult to do because of this change?
+Tasks which do not gather data are not yet considered.</br>
+How credentials will be stored needs to be considered.</br>
+Break up of proposed config schema is possible.
