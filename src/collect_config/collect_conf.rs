@@ -1,9 +1,7 @@
 pub mod collect_conf {
     use config::Config;
-    use config::Value;
-    use config::ValueKind;
-    use serde::{Deserialize, Serialize};
-    use std::io::{self};
+    use serde::Deserialize;
+    use std::io;
 
     #[derive(Deserialize)]
     struct MyConfig {
@@ -16,7 +14,7 @@ pub mod collect_conf {
     #[derive(Default, Deserialize)]
     struct LoadTask {
         comment: String,
-        database_connection_string: String,
+        database_connection_string: Option<String>,
         database_user: Option<String>,
         database_pw: Option<String>,
         sp500_fields: Vec<String>,
@@ -42,77 +40,26 @@ pub mod collect_conf {
         let settings = Config::builder()
             .add_source(config::File::with_name(path))
             .build()
+            .unwrap()
+            .try_deserialize::<MyConfig>()
             .unwrap();
 
-        let mut loaded_tasks = match settings.get_array("tasks") {
-            Ok(tasks) => tasks,
-            Err(_) => return Ok(result),
-        };
+        let tasks = settings.tasks;
 
-        for raw_task in loaded_tasks {
-            let mut config_as_table: std::collections::HashMap<String, config::Value> =
-                raw_task.into_table().unwrap();
-
-            // config::Value::new(None, ValueKind::String(String::from("value")));
-            // println!(
-            //     "read comment: {}",
-            //     config_as_table
-            //         .remove("comment")
-            //         .unwrap_or(Value::from(""))
-            //         .into_string()
-            //         .expect("Default already added")
-            // );
-
+        for raw_task in tasks {
             let task = Task {
-                comment: config_as_table
-                    .remove("comment")
-                    .unwrap_or(Value::from(""))
-                    .into_string()
-                    .expect("Default already added"),
-                database_connection_string: config_as_table
-                    .remove("database_connection_string")
-                    .unwrap_or(Value::from(""))
-                    .into_string()
-                    .expect("Default already added"),
-                database_user: config_as_table
-                    .remove("database_user")
-                    .unwrap_or(Value::from(""))
-                    .into_string()
-                    .expect("Default already added"),
-                database_pw: config_as_table
-                    .remove("database_pw")
-                    .unwrap_or(Value::from(""))
-                    .into_string()
-                    .expect("Default already added"),
-                sp500_fields: config_as_table
-                    .remove("sp500_fields")
-                    .unwrap_or(Value::from(Vec::<String>::new()))
-                    .into_array()
-                    .expect("Default already added")
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>(),
-                priority: config_as_table
-                    .remove("priority")
-                    .unwrap_or(Value::from(f64::MAX))
-                    .into_float()
-                    .expect("Default already added"),
-                include_sources: config_as_table
-                    .remove("include_sources")
-                    .unwrap_or(Value::from(Vec::<String>::new()))
-                    .into_array()
-                    .expect("Default already added")
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>(),
-                exclude_sources: config_as_table
-                    .remove("exclude_sources")
-                    .unwrap_or(Value::from(Vec::<String>::new()))
-                    .into_array()
-                    .expect("Default already added")
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>(),
+                comment: raw_task.comment,
+                sp500_fields: raw_task.sp500_fields,
+                priority: raw_task.priority,
+                include_sources: raw_task.include_sources,
+                exclude_sources: raw_task.exclude_sources,
+                database_connection_string: raw_task
+                    .database_connection_string
+                    .unwrap_or(settings.database_connection_string.clone()),
+                database_user: raw_task
+                    .database_user
+                    .unwrap_or(settings.database_user.clone()),
+                database_pw: raw_task.database_pw.unwrap_or(settings.database_pw.clone()),
             };
             result.push(task);
         }
