@@ -5,9 +5,6 @@ mod collect_config;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let tasks = collect_conf::load_file("configs/config.yaml").unwrap();
-    println!("Connection string: {}", tasks[0].database_pw);
-    println!("Connection string: {}", tasks[1].database_pw);
-    println!("Connection string: {}", tasks[2].database_pw);
 
     Ok(())
 }
