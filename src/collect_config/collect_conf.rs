@@ -36,7 +36,6 @@ pub mod collect_conf {
 
     pub fn load_file(path: &str) -> Result<Vec<Task>, io::Error> {
         println!("Loading file {}....", path);
-        let mut result: Vec<Task> = Vec::new();
         let settings = Config::builder()
             .add_source(config::File::with_name(path))
             .build()
@@ -46,23 +45,21 @@ pub mod collect_conf {
 
         let tasks = settings.tasks;
 
-        for raw_task in tasks {
-            let task = Task {
-                comment: raw_task.comment,
-                sp500_fields: raw_task.sp500_fields,
-                priority: raw_task.priority,
-                include_sources: raw_task.include_sources,
-                exclude_sources: raw_task.exclude_sources,
-                database_connection_string: raw_task
+        let result: Vec<Task> = tasks
+            .into_iter()
+            .map(|task| Task {
+                comment: task.comment,
+                sp500_fields: task.sp500_fields,
+                priority: task.priority,
+                include_sources: task.include_sources,
+                exclude_sources: task.exclude_sources,
+                database_connection_string: task
                     .database_connection_string
                     .unwrap_or(settings.database_connection_string.clone()),
-                database_user: raw_task
-                    .database_user
-                    .unwrap_or(settings.database_user.clone()),
-                database_pw: raw_task.database_pw.unwrap_or(settings.database_pw.clone()),
-            };
-            result.push(task);
-        }
+                database_user: task.database_user.unwrap_or(settings.database_user.clone()),
+                database_pw: task.database_pw.unwrap_or(settings.database_pw.clone()),
+            })
+            .collect();
 
         Ok(result)
     }
