@@ -14,7 +14,7 @@ Current weights: https://www.slickcharts.com/sp500
 
 # Master data
 
-- https://www.nyse.com/corporate-actions - get .json with: https://listingmanager.nyse.com/api/corpax/?action_date__gte=2023-09-01&action_date__lte=2023-10-01&page=1&page_size=20. It is possible to get the trading name (symbol) and the company name from here.
+- https://www.nyse.com/corporate-actions - get .json with: https://listingmanager.nyse.com/api/corpax/?action_date__gte=2023-09-01&action_date__lte=2023-10-01&page=1&page_size=20. It is possible to get the trading name (symbol) and the company name from here. (Earliest record: 2015-12-07)
 
 ## List of stock data providers
 
