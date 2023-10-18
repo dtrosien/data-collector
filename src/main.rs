@@ -1,17 +1,21 @@
-fn main() {
-    println!("{}", say_hello());
+use std::collections::HashMap;
+
+use serde::Serialize;
+
+mod NYSE;
+
+#[derive(Serialize)]
+struct NYSE_request {
+    action_date__gte: String,
+    action_date__lte: String,
+    page: u32,
+    page_size: u32,
 }
 
-fn say_hello() -> String {
-    "Hello, world!".to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::say_hello;
-
-    #[test]
-    fn say_hello_test() {
-        assert_eq!(say_hello(), format!("Hello, world!"))
-    }
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let p = NYSE::nyse::load_and_store_missing_data().await;
+    dbg!(&p);
+    print!("done{}", "");
+    Ok(())
 }
