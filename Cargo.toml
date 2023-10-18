@@ -9,7 +9,7 @@ edition = "2021"
 path = "src/lib.rs"
 
 [[bin]]
-name = "data-collector"
+name = "data_collector"
 path = "src/main.rs"
 
 

@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use collect_config::collect_conf::collect_conf;
+use data_collector::collect_config::collect_conf;
 use std::error::Error;
 use data_collector::db;
 
