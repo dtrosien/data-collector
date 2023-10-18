@@ -1,6 +1,12 @@
+#![allow(dead_code)]
+use data_collector::collect_config::collect_conf;
+use std::error::Error;
 use data_collector::db;
-fn main() {
-    println!("{}", say_hello());
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let tasks = collect_conf::load_file("configs/config.yaml").unwrap();
+
+    Ok(())
 }
 
 fn say_hello() -> String {
