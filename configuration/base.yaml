@@ -1,0 +1,6 @@
+database:
+  host: "localhost"
+  port: 6543
+  username: "postgres"
+  password: "password"
+  database_name: "newsletter"

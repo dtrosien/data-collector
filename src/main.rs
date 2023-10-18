@@ -1,3 +1,4 @@
+use data_collector::db;
 fn main() {
     println!("{}", say_hello());
 }
