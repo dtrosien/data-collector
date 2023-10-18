@@ -1,0 +1,2 @@
+database:
+  require_ssl: false

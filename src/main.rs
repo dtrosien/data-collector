@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use collect_config::collect_conf::collect_conf;
 use std::error::Error;
-mod collect_config;
+use data_collector::db;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let tasks = collect_conf::load_file("configs/config.yaml").unwrap();
