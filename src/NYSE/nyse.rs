@@ -11,11 +11,12 @@ use reqwest::Error;
 use reqwest::RequestBuilder;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::ops::Range;
 use std::time::Instant;
 
 #[derive(Default, Deserialize, Debug)]
 pub struct NYSE_response {
-    pub count: i32,
+    pub count: u32,
     pub next: Option<String>,
     pub previous: Option<String>,
     pub results: Vec<NYSE_data>,
@@ -47,8 +48,9 @@ pub async fn load_and_store_missing_data() -> Vec<NYSE_data> {
     dbg!(&now);
     dbg!(&latest_date);
     while latest_date < now {
-        println!("While was entered.");
-        data.append(&mut load_missing_week(latest_date).await.unwrap());
+        println!("Outer date while was entered.");
+        dbg!(&latest_date);
+        data.append(&mut load_missing_week(&latest_date).await.unwrap());
         println!("Data size: {}", &data.len());
         latest_date = latest_date.checked_add_days(Days::new(7)).unwrap();
     }
@@ -56,20 +58,42 @@ pub async fn load_and_store_missing_data() -> Vec<NYSE_data> {
     // }
 }
 
-async fn load_missing_week(date: DateTime<Utc>) -> Result<Vec<NYSE_data>, Error> {
+async fn load_missing_week(date: &DateTime<Utc>) -> Result<Vec<NYSE_data>, Error> {
     let client = Client::new();
-    let mut result = client
+    let max_page_size = 100;
+    let mut result: Vec<NYSE_data> = vec![];
+    let peak_request = client
         .get("https://listingmanager.nyse.com/api/corpax/")
-        .query(&build_request(date, 7))
+        .query(&build_request(date, 7, 1, 1))
         .send()
         .await?
         .json::<NYSE_response>()
         .await?;
 
-    Ok(result.results)
+    let pages_available: u32 = (peak_request.count as f32 / max_page_size as f32).ceil() as u32;
+    let list_of_pages: Vec<u32> = (1..=pages_available).collect();
+    for page in list_of_pages {
+        let mut r = client
+            .get("https://listingmanager.nyse.com/api/corpax/")
+            .query(&build_request(date, 7, 100, page))
+            .send()
+            .await?
+            .json::<NYSE_response>()
+            .await?;
+        if r.count > 0 {
+            result.append(&mut r.results);
+        }
+    }
+    println!("Returning result of size: {}.", result.len());
+    Ok(result)
 }
 
-fn build_request(start_date: DateTime<Utc>, days: u64) -> HashMap<String, String> {
+fn build_request(
+    start_date: &DateTime<Utc>,
+    days: u64,
+    page_size: u32,
+    page: u32,
+) -> HashMap<String, String> {
     let end_date = start_date
         .date_naive()
         .checked_add_days(Days::new(days - 1))
@@ -81,7 +105,7 @@ fn build_request(start_date: DateTime<Utc>, days: u64) -> HashMap<String, String
         start_date.date_naive().to_string(),
     );
     header_map.insert(String::from("action_date__lte"), end_date.to_string());
-    header_map.insert(String::from("page"), String::from("1"));
-    header_map.insert(String::from("page_size"), String::from("100"));
+    header_map.insert(String::from("page"), page.to_string());
+    header_map.insert(String::from("page_size"), page_size.to_string());
     header_map
 }
