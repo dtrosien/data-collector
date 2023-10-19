@@ -71,11 +71,12 @@ async fn load_missing_week(date: &DateTime<Utc>) -> Result<Vec<NYSE_data>, Error
         .await?;
 
     let pages_available: u32 = (peak_request.count as f32 / max_page_size as f32).ceil() as u32;
+    println!("pages available: {}", &pages_available);
     let list_of_pages: Vec<u32> = (1..=pages_available).collect();
     for page in list_of_pages {
         let mut r = client
             .get("https://listingmanager.nyse.com/api/corpax/")
-            .query(&build_request(date, 7, 100, page))
+            .query(&build_request(date, 7, max_page_size, page))
             .send()
             .await?
             .json::<NYSE_response>()
