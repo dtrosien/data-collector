@@ -1,3 +1,4 @@
 /target
 /.idea
 configs/config.yaml
+/.vscode/

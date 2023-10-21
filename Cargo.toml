@@ -27,7 +27,7 @@ tracing-bunyan-formatter = "0.3" # uses layer trait from tracing subscriber to b
 tracing-log = "0.1" # redirect logs to tracing
 tracing-actix-web = "0.7" # replacement for acti-web-logger
 secrecy = { version = "0.8", features = ["serde"] }
-
+reqwest = "0.11"
 
 [dependencies.sqlx]
 version = "0.7.2"
