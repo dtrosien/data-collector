@@ -2,3 +2,4 @@
 /.idea
 configs/config.yaml
 /.vscode/
+Cargo.lock
