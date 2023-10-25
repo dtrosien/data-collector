@@ -3,8 +3,6 @@ use std::error;
 use chrono::prelude::*;
 use chrono::{DateTime, Days, NaiveDate};
 
-use httpmock::Method::GET;
-use httpmock::MockServer;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +14,7 @@ struct NyseRequest {
     page_size: u32,
 }
 
-#[derive(Default, Deserialize, Debug)]
+#[derive(Default, Deserialize, Debug, PartialEq)]
 struct NysePeekResponse {
     pub count: Option<u32>,
 }
@@ -160,88 +158,126 @@ fn latest_date_available() -> DateTime<Utc> {
     p
 }
 
-#[test]
-fn start_within_data_date_range() {
-    let earliest_data_date = Utc.with_ymd_and_hms(2015, 12, 7, 0, 0, 0).unwrap();
-    assert!(earliest_data_date <= latest_date_available());
-}
+#[cfg(test)]
+mod test {
+    use chrono::{TimeZone, Utc};
+    use httpmock::{Method::GET, MockServer};
+    use reqwest::Client;
 
-#[test]
-fn parse_nyse_peek_response_with_one_result() {
-    let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":null,"action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
-    let nyse_peek_response = parse_nyse_peek_response(input_json).unwrap();
-    assert_eq!(1, nyse_peek_response.count.unwrap());
-}
+    use crate::nyse::nyse::*;
 
-#[test]
-fn parse_nyse_response_with_one_result_and_missing_date() {
-    let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":null,"action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
-    let nyse_response = parse_nyse_response(input_json).unwrap();
-    let data = NyseData {
-        action_date: Option::None,
-        action_status: "Pending before the Open".to_string(),
-        action_type: "Suspend".to_string(),
-        issue_symbol: "SQNS".to_string(),
-        issuer_name: "Sequans Communications S.A.".to_string(),
-        updated_at: "2023-10-20T09:24:47.134141-04:00".to_string(),
-        market_event: "54a838d5-b1ae-427a-b7a3-629eb1a0de2c".to_string(),
-    };
-    let response = NyseResponse {
-        count: 1,
-        next: Option::None,
-        previous: Option::None,
-        results: vec![data],
-    };
-    assert_eq!(1, nyse_response.results.len());
-    assert_eq!(response, nyse_response);
-}
+    #[test]
+    fn start_within_data_date_range() {
+        let earliest_data_date = Utc.with_ymd_and_hms(2015, 12, 7, 0, 0, 0).unwrap();
+        assert!(earliest_data_date <= latest_date_available());
+    }
 
-#[test]
-fn parse_nyse_response_with_one_result_and_given_date() {
-    let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":"2016-12-05","action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
-    let nyse_response = parse_nyse_response(input_json).unwrap();
-    let data = NyseData {
-        action_date: Some("2016-12-05".to_string()),
-        action_status: "Pending before the Open".to_string(),
-        action_type: "Suspend".to_string(),
-        issue_symbol: "SQNS".to_string(),
-        issuer_name: "Sequans Communications S.A.".to_string(),
-        updated_at: "2023-10-20T09:24:47.134141-04:00".to_string(),
-        market_event: "54a838d5-b1ae-427a-b7a3-629eb1a0de2c".to_string(),
-    };
-    let response = NyseResponse {
-        count: 1,
-        next: Option::None,
-        previous: Option::None,
-        results: vec![data],
-    };
-    assert_eq!(1, nyse_response.results.len());
-    assert_eq!(response, nyse_response);
-}
+    #[test]
+    fn parse_nyse_peek_response_with_one_result() {
+        let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":null,"action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
+        let nyse_peek_response = parse_nyse_peek_response(input_json).unwrap();
+        assert_eq!(1, nyse_peek_response.count.unwrap());
+    }
 
-#[tokio::test]
-async fn request_basic_nyse_response() {
-    // Start a lightweight mock server.
-    let server = MockServer::start();
-    let url = server.base_url();
-    let client = Client::new();
+    #[test]
+    fn parse_nyse_response_with_one_result_and_missing_date() {
+        let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":null,"action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
+        let nyse_response = parse_nyse_response(input_json).unwrap();
+        let data = NyseData {
+            action_date: Option::None,
+            action_status: "Pending before the Open".to_string(),
+            action_type: "Suspend".to_string(),
+            issue_symbol: "SQNS".to_string(),
+            issuer_name: "Sequans Communications S.A.".to_string(),
+            updated_at: "2023-10-20T09:24:47.134141-04:00".to_string(),
+            market_event: "54a838d5-b1ae-427a-b7a3-629eb1a0de2c".to_string(),
+        };
+        let response = NyseResponse {
+            count: 1,
+            next: Option::None,
+            previous: Option::None,
+            results: vec![data],
+        };
+        assert_eq!(1, nyse_response.results.len());
+        assert_eq!(response, nyse_response);
+    }
 
-    let date = Utc.with_ymd_and_hms(2023, 10, 24, 0, 0, 0).unwrap();
-    let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":"2016-12-05","action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
-    // Create a mock on the server.
-    let hello_mock = server.mock(|when, then| {
-        when.method(GET)
-            .query_param("action_date__gte", "2023-10-24")
-            .query_param("action_date__lte", "2023-10-30")
-            .query_param("page", "1")
-            .query_param("page_size", "100");
-        then.status(200)
-            .header("content-type", "text/html")
-            .body(&input_json);
-    });
+    #[test]
+    fn parse_nyse_response_with_one_result_and_given_date() {
+        let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":"2016-12-05","action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
+        let nyse_response = parse_nyse_response(input_json).unwrap();
+        let data = NyseData {
+            action_date: Some("2016-12-05".to_string()),
+            action_status: "Pending before the Open".to_string(),
+            action_type: "Suspend".to_string(),
+            issue_symbol: "SQNS".to_string(),
+            issuer_name: "Sequans Communications S.A.".to_string(),
+            updated_at: "2023-10-20T09:24:47.134141-04:00".to_string(),
+            market_event: "54a838d5-b1ae-427a-b7a3-629eb1a0de2c".to_string(),
+        };
+        let response = NyseResponse {
+            count: 1,
+            next: Option::None,
+            previous: Option::None,
+            results: vec![data],
+        };
+        assert_eq!(1, nyse_response.results.len());
+        assert_eq!(response, nyse_response);
+    }
 
-    let result = request_nyse(&client, &url, &date, 1, 100).await.unwrap();
+    #[tokio::test]
+    async fn request_basic_nyse_response() {
+        // Start a lightweight mock server.
+        let server = MockServer::start();
+        let url = server.base_url();
+        let client = Client::new();
 
-    hello_mock.assert();
-    assert_eq!(result, input_json);
+        let date = Utc.with_ymd_and_hms(2023, 10, 24, 0, 0, 0).unwrap();
+        let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":"2016-12-05","action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
+        // Create a mock on the server.
+        let hello_mock = server.mock(|when, then| {
+            when.method(GET)
+                .query_param("action_date__gte", "2023-10-24")
+                .query_param("action_date__lte", "2023-10-30")
+                .query_param("page", "1")
+                .query_param("page_size", "100");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(&input_json);
+        });
+
+        let result = request_nyse(&client, &url, &date, 1, 100).await.unwrap();
+
+        hello_mock.assert();
+        assert_eq!(result, input_json);
+    }
+
+    #[tokio::test]
+    async fn request_basic_nyse_peek_response() {
+        // Start a lightweight mock server.
+        let server = MockServer::start();
+        let url = server.base_url();
+        let client = Client::new();
+
+        let date = Utc.with_ymd_and_hms(2023, 10, 24, 0, 0, 0).unwrap();
+        let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":"2016-12-05","action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
+        // Create a mock on the server.
+        let hello_mock = server.mock(|when, then| {
+            when.method(GET)
+                .query_param("action_date__gte", "2023-10-24")
+                .query_param("action_date__lte", "2023-10-30")
+                .query_param("page", "1")
+                .query_param("page_size", "100");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(&input_json);
+        });
+
+        let expected = NysePeekResponse { count: Some(1) };
+
+        let result = request_nyse(&client, &url, &date, 1, 100).await.unwrap();
+        let result = parse_nyse_peek_response(&result).unwrap();
+        hello_mock.assert();
+        assert_eq!(expected, result);
+    }
 }
