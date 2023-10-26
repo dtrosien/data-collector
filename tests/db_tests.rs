@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 
 mod common;
 
-// Ensure that the `tracing` stack is only initialised once using `once_cell`
+// Ensure that the `tracing` stack is only initialized once using `once_cell`
 fn init_tracing() {
     static TRACING: OnceLock<()> = OnceLock::new();
     TRACING.get_or_init(|| {
@@ -93,4 +93,14 @@ async fn write_to_db() {
 
     assert_eq!(saved.email, email);
     assert_eq!(saved.name, name);
+}
+
+#[tokio::test]
+async fn partition_pruning_enabled() {
+    let app = spawn_app().await;
+    let saved = sqlx::query!("SHOW enable_partition_pruning")
+        .fetch_one(&app.db_pool)
+        .await
+        .expect("Failed to fetch config of database.");
+    assert_eq!("on", saved.enable_partition_pruning.unwrap());
 }
