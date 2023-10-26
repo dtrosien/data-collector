@@ -151,10 +151,10 @@ fn parse_nyse_response(peak_response: &str) -> Result<NyseResponse, Box<serde_js
     Ok(peak_response)
 }
 
-fn latest_date_available() -> DateTime<Utc> {
+pub fn latest_date_available() -> DateTime<Utc> {
     //TODO: Get latest date from database
-    // let p = Utc.with_ymd_and_hms(2015, 12, 7, 0, 0, 0).unwrap();
     let p = Utc.with_ymd_and_hms(2015, 12, 7, 0, 0, 0).unwrap();
+    // let p = Utc.with_ymd_and_hms(2023, 10, 25, 0, 0, 0).unwrap();
     p
 }
 
