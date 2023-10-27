@@ -45,13 +45,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             b.push_bind(test.id).push_bind(test.text);
         });
     let query = queryBuidler.build();
+
     query.execute(&connection_pool).await.expect("msg2");
     load_and_store_missing_data(url, &connection_pool).await?;
-    // PgPool::connect_with(configuration.database.with_db())
-    //     .await
-    //     .expect("Failed to connect to Postgres.");
-
-    // let connection_pool = configure_database(&configuration.database).await;
     let p: Query<'_, Postgres, PgArguments> = sqlx::query("select * from test");
 
     // p.execute(executor)
@@ -68,8 +64,7 @@ pub async fn load_and_store_missing_data<'a, 'b>(
     let mut data: Vec<NyseData> = Vec::new();
     let client = Client::new();
     let mut queryBuidler: QueryBuilder<Postgres> =
-        sqlx::QueryBuilder::new("insert into nyse_events(action_date, action_status, action_type, issue_symbol, issuer_name, updated_at, market_event) ");
-
+    sqlx::QueryBuilder::new("insert into nyse_events(action_date, action_status, action_type, issue_symbol, issuer_name, updated_at, market_event) ");
     while latest_date < now {
         let week_data = load_missing_week(&client, &latest_date, url).await?;
         println!("Week data found: {}", week_data.len());
@@ -91,16 +86,7 @@ pub async fn load_and_store_missing_data<'a, 'b>(
         println!("Query: {}", queryBuidler.sql());
         let query = queryBuidler.build();
         query.execute(connection_pool).await?;
-        // let p = match query.execute(connection_pool).await {
-        //     Ok(ok) => ok,
-        //     Err(error) => {
-        //         if !error.into_database_error().unwrap().is_unique_violation() {
-        //             return Err(Box::new(error));
-        //         } else {
-        //             PgQueryResult::default();
-        //         }
-        //     }
-        // };
+        queryBuidler.reset();
         latest_date = latest_date
             .checked_add_days(Days::new(7))
             .expect("Date should never leave the allowed range.");
