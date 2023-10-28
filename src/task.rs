@@ -5,6 +5,7 @@ use std::error::Error;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
+#[derive(Debug)]
 pub struct Task {
     id: Uuid,
     pool: PgPool,
@@ -20,8 +21,15 @@ impl Task {
         }
     }
 
+    #[tracing::instrument(
+    name = "Running task",
+    fields(
+    task_id = %self.id,
+    url = %self.url
+    )
+    )]
     pub async fn run(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let response = client::query_api(&self.url).await;
+        let _response = client::query_api(&self.url).await;
 
         db::insert_into(&self.pool)
             .await
