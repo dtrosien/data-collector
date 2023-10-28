@@ -1,6 +1,7 @@
 pub mod client;
 pub mod configuration;
 pub mod db;
+pub mod source_apis;
 pub mod task;
 pub mod telemetry;
 
