@@ -6,8 +6,10 @@ use std::error;
 
 #[derive(Default, Deserialize, Serialize, Debug)]
 struct NyseRequest {
-    action_date__gte: NaiveDate,
-    action_date__lte: NaiveDate,
+    #[serde(rename = "action_date__gte")]
+    action_date_gte: NaiveDate,
+    #[serde(rename = "action_date__lte")]
+    action_date_lte: NaiveDate,
     page: u32,
     page_size: u32,
 }
@@ -37,10 +39,10 @@ pub struct NyseData {
 }
 
 impl NyseRequest {
-    pub fn new(action_date__gte: NaiveDate, days: u64, page: u32, page_size: u32) -> Self {
+    pub fn new(action_date_gte: NaiveDate, days: u64, page: u32, page_size: u32) -> Self {
         Self {
-            action_date__gte,
-            action_date__lte: action_date__gte
+            action_date_gte,
+            action_date_lte: action_date_gte
                 .checked_add_days(Days::new(days - 1))
                 .expect("Date should never leave the allowed range."),
             page,
@@ -73,13 +75,13 @@ pub async fn load_missing_week(
     let max_page_size = 100; //API does not allow more entries.
     let mut output: Vec<NyseData> = vec![];
 
-    let peak_count = peek_number_results(&client, date, url).await?;
+    let peak_count = peek_number_results(client, date, url).await?;
 
     let pages_available: u32 = (peak_count as f32 / max_page_size as f32).ceil() as u32;
     let list_of_pages: Vec<u32> = (1..=pages_available).collect();
 
     for page in list_of_pages {
-        let response = request_nyse(&client, url, date, page, max_page_size).await?;
+        let response = request_nyse(client, url, date, page, max_page_size).await?;
         let mut response: NyseResponse = parse_nyse_response(&response)?;
 
         output.append(&mut response.results);
