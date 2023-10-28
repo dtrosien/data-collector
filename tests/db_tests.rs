@@ -1,5 +1,5 @@
 use chrono::Utc;
-use data_collector::configuration::{get_configuration, DatabaseSettings};
+use data_collector::configuration::{get_configuration, DatabaseSettings, TaskSetting};
 use data_collector::telemetry::{get_subscriber, init_subscriber};
 use sqlx::types::Uuid;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
@@ -8,6 +8,7 @@ use std::sync::OnceLock;
 mod common;
 
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
+// to enable logs in tests start test with "TEST_LOG=true cargo test"
 fn init_tracing() {
     static TRACING: OnceLock<()> = OnceLock::new();
     TRACING.get_or_init(|| {
@@ -84,8 +85,8 @@ async fn write_to_db() {
     .execute(&app.db_pool)
     .await
     .expect("Failed to write to DB.");
-    // Assert
 
+    // Assert
     let saved = sqlx::query!("SELECT email, name FROM example",)
         .fetch_one(&app.db_pool)
         .await
@@ -93,4 +94,24 @@ async fn write_to_db() {
 
     assert_eq!(saved.email, email);
     assert_eq!(saved.name, name);
+}
+
+#[tokio::test]
+async fn start_task() {
+    // Arrange
+    let app = spawn_app().await;
+
+    let task_setting = TaskSetting {
+        comment: None,
+        sp500_fields: vec![],
+        priority: None,
+        include_sources: vec!["testurl".to_string()],
+        exclude_sources: None,
+    };
+
+    // Act
+    let runner = data_collector::runner::run(app.db_pool, vec![task_setting]);
+
+    // Assert
+    assert!(runner.await.is_ok())
 }

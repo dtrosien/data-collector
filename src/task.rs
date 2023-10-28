@@ -17,23 +17,24 @@ impl Task {
         Task {
             id: Uuid::new_v4(),
             pool: db.clone(),
-            url: setting.exclude_sources.clone().unwrap().pop().unwrap(), // todo dummy
+            url: setting.include_sources.clone().pop().unwrap(), // todo dummy
         }
     }
 
     #[tracing::instrument(
     name = "Running task",
+    skip(self),
     fields(
     task_id = %self.id,
     url = %self.url
     )
     )]
     pub async fn run(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let _response = client::query_api(&self.url).await;
-
-        db::insert_into(&self.pool)
-            .await
-            .expect("TODO: panic message");
+        // let _response = client::query_api(&self.url).await;
+        //
+        // db::insert_into(&self.pool)
+        //     .await
+        //     .expect("TODO: panic message");
         Ok(())
     }
 }
