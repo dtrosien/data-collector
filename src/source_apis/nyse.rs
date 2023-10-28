@@ -1,10 +1,8 @@
-use std::error;
-
 use chrono::prelude::*;
 use chrono::{DateTime, Days, NaiveDate};
-
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::error;
 
 #[derive(Default, Deserialize, Serialize, Debug)]
 struct NyseRequest {
@@ -164,7 +162,7 @@ mod test {
     use httpmock::{Method::GET, MockServer};
     use reqwest::Client;
 
-    use crate::nyse::nyse::*;
+    use crate::source_apis::nyse::*;
 
     #[test]
     fn start_within_data_date_range() {
