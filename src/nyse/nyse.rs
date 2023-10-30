@@ -5,6 +5,7 @@ use chrono::{DateTime, Days, NaiveDate};
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use sqlx::Postgres;
 
 #[derive(Default, Deserialize, Serialize, Debug)]
 struct NyseRequest {
@@ -53,18 +54,113 @@ impl NyseRequest {
 
 pub async fn load_and_store_missing_data(
     url: &str,
-) -> Result<Vec<NyseData>, Box<dyn error::Error>> {
+    connection_pool: &sqlx::Pool<Postgres>,
+) -> Result<(), Box<dyn error::Error>> {
     let now = Utc::now();
     let mut latest_date = latest_date_available();
-    let mut data: Vec<NyseData> = Vec::new();
     let client = Client::new();
     while latest_date < now {
-        data.append(&mut load_missing_week(&client, &latest_date, url).await?);
+        let week_data = load_missing_week(&client, &latest_date, url).await?;
+        let (
+            action_date,
+            action_status,
+            action_type,
+            issue_symbol,
+            issuer_name,
+            updated_at,
+            market_event,
+        ): (
+            Vec<Option<String>>,
+            Vec<String>,
+            Vec<String>,
+            Vec<String>,
+            Vec<String>,
+            Vec<String>,
+            Vec<String>,
+        ) = week_data
+            .into_iter()
+            .map(|nyse_data| {
+                (
+                    nyse_data.action_date,
+                    nyse_data.action_status,
+                    nyse_data.action_type,
+                    nyse_data.issue_symbol,
+                    nyse_data.issuer_name,
+                    nyse_data.updated_at,
+                    nyse_data.market_event,
+                )
+            })
+            .fold(
+                (
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                ),
+                |(
+                    mut action_dates,
+                    mut action_statuses,
+                    mut action_types,
+                    mut issue_symbols,
+                    mut issure_names,
+                    mut updated_ats,
+                    mut market_events,
+                ),
+                 (
+                    action_date,
+                    action_status,
+                    action_type,
+                    issue_symbol,
+                    issuer_name,
+                    updated_at,
+                    market_event,
+                )| {
+                    action_dates.push(action_date);
+                    action_statuses.push(action_status.unwrap());
+                    action_types.push(action_type);
+                    issue_symbols.push(issue_symbol.unwrap());
+                    issure_names.push(issuer_name.unwrap());
+                    updated_ats.push(updated_at);
+                    market_events.push(market_event);
+                    (
+                        action_dates,
+                        action_statuses,
+                        action_types,
+                        issue_symbols,
+                        issure_names,
+                        updated_ats,
+                        market_events,
+                    )
+                },
+            );
+
+        let action_date: Vec<NaiveDate> = action_date
+            .into_iter()
+            .map(|e| e.unwrap_or("2015-01-01".to_string()))
+            .map(|f| NaiveDate::parse_from_str(&f, "%Y-%m-%d").unwrap())
+            .collect();
+
+        sqlx::query!("INSERT INTO nyse_events
+            (action_date, action_status, action_type, issue_symbol, issuer_name, updated_at, market_event)
+            Select * from UNNEST ($1::date[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) on conflict do nothing",
+        &action_date[..],
+        &action_status[..],
+        &action_type[..],
+        &issue_symbol[..],
+        &issuer_name[..],
+        &updated_at[..],
+        &market_event[..],
+    ).execute(connection_pool)
+    .await.unwrap();
+
         latest_date = latest_date
             .checked_add_days(Days::new(7))
             .expect("Date should never leave the allowed range.");
     }
-    Ok(data)
+    Ok(())
 }
 
 pub async fn load_missing_week(

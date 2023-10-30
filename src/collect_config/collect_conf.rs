@@ -1,4 +1,3 @@
-
 use config::Config;
 use serde::Deserialize;
 use std::io;
