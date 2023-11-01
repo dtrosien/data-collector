@@ -1,10 +1,11 @@
 use std::error;
 
 use chrono::prelude::*;
-use chrono::{DateTime, Days, NaiveDate};
+use chrono::{Days, NaiveDate};
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+
 use sqlx::Postgres;
 
 #[derive(Default, Deserialize, Serialize, Debug)]
@@ -26,6 +27,11 @@ pub struct NyseResponse {
     pub next: Option<String>,
     pub previous: Option<String>,
     pub results: Vec<NyseData>,
+}
+
+#[derive(Default, Deserialize, PartialEq)]
+struct MaxDate {
+    max_date: Option<NaiveDate>,
 }
 
 #[derive(Default, Deserialize, Debug, PartialEq)]
@@ -57,102 +63,23 @@ pub async fn load_and_store_missing_data(
     connection_pool: &sqlx::Pool<Postgres>,
 ) -> Result<(), Box<dyn error::Error>> {
     let now = Utc::now();
-    let mut latest_date = latest_date_available();
+    let mut latest_date = latest_date_available(connection_pool).await;
     let client = Client::new();
-    while latest_date < now {
+    while latest_date < now.date_naive() {
+        println!("Using date: {}", latest_date);
         let week_data = load_missing_week(&client, &latest_date, url).await?;
-        let (
-            action_date,
-            action_status,
-            action_type,
-            issue_symbol,
-            issuer_name,
-            updated_at,
-            market_event,
-        ): (
-            Vec<Option<String>>,
-            Vec<String>,
-            Vec<String>,
-            Vec<String>,
-            Vec<String>,
-            Vec<String>,
-            Vec<String>,
-        ) = week_data
-            .into_iter()
-            .map(|nyse_data| {
-                (
-                    nyse_data.action_date,
-                    nyse_data.action_status,
-                    nyse_data.action_type,
-                    nyse_data.issue_symbol,
-                    nyse_data.issuer_name,
-                    nyse_data.updated_at,
-                    nyse_data.market_event,
-                )
-            })
-            .fold(
-                (
-                    Vec::new(),
-                    Vec::new(),
-                    Vec::new(),
-                    Vec::new(),
-                    Vec::new(),
-                    Vec::new(),
-                    Vec::new(),
-                ),
-                |(
-                    mut action_dates,
-                    mut action_statuses,
-                    mut action_types,
-                    mut issue_symbols,
-                    mut issure_names,
-                    mut updated_ats,
-                    mut market_events,
-                ),
-                 (
-                    action_date,
-                    action_status,
-                    action_type,
-                    issue_symbol,
-                    issuer_name,
-                    updated_at,
-                    market_event,
-                )| {
-                    action_dates.push(action_date);
-                    action_statuses.push(action_status.unwrap());
-                    action_types.push(action_type);
-                    issue_symbols.push(issue_symbol.unwrap());
-                    issure_names.push(issuer_name.unwrap());
-                    updated_ats.push(updated_at);
-                    market_events.push(market_event);
-                    (
-                        action_dates,
-                        action_statuses,
-                        action_types,
-                        issue_symbols,
-                        issure_names,
-                        updated_ats,
-                        market_events,
-                    )
-                },
-            );
-
-        let action_date: Vec<NaiveDate> = action_date
-            .into_iter()
-            .map(|e| e.unwrap_or("2015-01-01".to_string()))
-            .map(|f| NaiveDate::parse_from_str(&f, "%Y-%m-%d").unwrap())
-            .collect();
+        let week_date = transpose_nyse_data_and_filter(week_data);
 
         sqlx::query!("INSERT INTO nyse_events
             (action_date, action_status, action_type, issue_symbol, issuer_name, updated_at, market_event)
             Select * from UNNEST ($1::date[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) on conflict do nothing",
-        &action_date[..],
-        &action_status[..],
-        &action_type[..],
-        &issue_symbol[..],
-        &issuer_name[..],
-        &updated_at[..],
-        &market_event[..],
+        &week_date.0[..],
+        &week_date.1[..],
+        &week_date.2[..],
+        &week_date.3[..],
+        &week_date.4[..],
+        &week_date.5[..],
+        &week_date.6[..],
     ).execute(connection_pool)
     .await.unwrap();
 
@@ -163,9 +90,80 @@ pub async fn load_and_store_missing_data(
     Ok(())
 }
 
+///
+/// Transforms the given vector into its components as vectors. The filter will remove all NyseData which contain a None.
+/// The resulting tuple contains vectors in the order of:</br>
+/// (0:action_date, 1:action_status, 2:action_type, 3:issue_symbol, 4:issuer_name, 5:updated_at, 6:market_event)
+///
+fn transpose_nyse_data_and_filter(
+    input: Vec<NyseData>,
+) -> (
+    Vec<NaiveDate>,
+    Vec<String>,
+    Vec<String>,
+    Vec<String>,
+    Vec<String>,
+    Vec<String>,
+    Vec<String>,
+) {
+    let mut result: (
+        Vec<NaiveDate>,
+        Vec<String>,
+        Vec<String>,
+        Vec<String>,
+        Vec<String>,
+        Vec<String>,
+        Vec<String>,
+    ) = (vec![], vec![], vec![], vec![], vec![], vec![], vec![]);
+    let input = filter_for_valid_datasets(input);
+    for data in input {
+        result.0.push(convert_string_to_naive_date(
+            data.action_date
+                .expect("None got filtered out in previous code."),
+        ));
+        result.1.push(
+            data.action_status
+                .expect("None got filtered out in previous code."),
+        );
+        result.2.push(data.action_type);
+        result.3.push(
+            data.issue_symbol
+                .expect("None got filtered out in previous code."),
+        );
+        result.4.push(
+            data.issuer_name
+                .expect("None got filtered out in previous code."),
+        );
+        result.5.push(data.updated_at);
+        result.6.push(data.market_event);
+    }
+    result
+}
+
+fn convert_string_to_naive_date(data: String) -> NaiveDate {
+    NaiveDate::parse_from_str(&data, "%Y-%m-%d")
+        .expect("The NYSE API hopefully does only respond with valid dates.")
+}
+
+///A valid dataset consists out of entries with no NULL entries and the dates are either in the past or today.
+fn filter_for_valid_datasets(input: Vec<NyseData>) -> Vec<NyseData> {
+    let today = Utc::now().date_naive();
+    let input: Vec<NyseData> = input
+        .into_iter()
+        .filter(|nyse_data| {
+            nyse_data.action_date.is_some()
+                && nyse_data.issue_symbol.is_some()
+                && nyse_data.issuer_name.is_some()
+                && nyse_data.action_status.is_some()
+                && nyse_data.action_date.as_ref().unwrap() <= &today.to_string()
+        })
+        .collect();
+    input
+}
+
 pub async fn load_missing_week(
     client: &Client,
-    date: &DateTime<Utc>,
+    date: &NaiveDate,
     url: &str,
 ) -> Result<Vec<NyseData>, Box<dyn error::Error>> {
     let max_page_size = 100; //API does not allow more entries.
@@ -182,21 +180,13 @@ pub async fn load_missing_week(
 
         output.append(&mut response.results);
     }
-    let output = output
-        .into_iter()
-        .filter(|e| {
-            e.action_date.is_some()
-                && e.issue_symbol.is_some()
-                && e.issuer_name.is_some()
-                && e.action_status.is_some()
-        })
-        .collect();
+
     Ok(output)
 }
 
 async fn peek_number_results(
     client: &Client,
-    date: &DateTime<Utc>,
+    date: &NaiveDate,
     url: &str,
 ) -> Result<u32, Box<dyn error::Error>> {
     let peak_response = request_nyse(client, url, date, 1, 1).await?;
@@ -208,13 +198,13 @@ async fn peek_number_results(
 async fn request_nyse(
     client: &Client,
     url: &str,
-    date: &DateTime<Utc>,
+    date: &NaiveDate,
     page: u32,
     max_page_size: u32,
 ) -> Result<String, Box<dyn error::Error>> {
     let response = match client
         .get(url)
-        .query(&NyseRequest::new(date.date_naive(), 7, page, max_page_size))
+        .query(&NyseRequest::new(*date, 7, page, max_page_size))
         .send()
         .await
     {
@@ -256,11 +246,28 @@ fn parse_nyse_response(peak_response: &str) -> Result<NyseResponse, Box<serde_js
     Ok(peak_response)
 }
 
-pub fn latest_date_available() -> DateTime<Utc> {
-    //TODO: Get latest date from database
-    let p = Utc.with_ymd_and_hms(2015, 12, 7, 0, 0, 0).unwrap();
-    // let p = Utc.with_ymd_and_hms(2023, 10, 25, 0, 0, 0).unwrap();
-    p
+/// Function will query DB and check for the newest date available and return that. If the date is not available, the earliest possible date for the NYSE API is returned. If the date is in the future, the current date will be returned; since this indicates an error in data mangement.
+async fn latest_date_available(connection_pool: &sqlx::Pool<Postgres>) -> NaiveDate {
+    let earliest_date = NaiveDate::parse_from_str("2015-12-07", "%Y-%m-%d").unwrap();
+    let db_result = sqlx::query_as!(
+        MaxDate,
+        "select max(action_date) as max_date from nyse_events"
+    )
+    .fetch_one(connection_pool)
+    .await;
+    let db_result = match db_result {
+        Ok(mut a) => a.max_date.get_or_insert(earliest_date).to_owned(),
+        Err(_) => earliest_date,
+    };
+    //If db respondes with future date, return today
+    if db_result > Utc::now().date_naive() {
+        println!(
+            "WARNING: Database answered with future date, for latest available data: {}",
+            db_result
+        );
+        return Utc::now().date_naive();
+    }
+    db_result
 }
 
 #[cfg(test)]
