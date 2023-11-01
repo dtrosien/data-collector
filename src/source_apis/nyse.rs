@@ -5,13 +5,16 @@ use chrono::{Days, NaiveDate};
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::error;
 
 use sqlx::Postgres;
 
 #[derive(Default, Deserialize, Serialize, Debug)]
 struct NyseRequest {
-    action_date__gte: NaiveDate,
-    action_date__lte: NaiveDate,
+    #[serde(rename = "action_date__gte")]
+    action_date_gte: NaiveDate,
+    #[serde(rename = "action_date__lte")]
+    action_date_lte: NaiveDate,
     page: u32,
     page_size: u32,
 }
@@ -46,10 +49,10 @@ pub struct NyseData {
 }
 
 impl NyseRequest {
-    pub fn new(action_date__gte: NaiveDate, days: u64, page: u32, page_size: u32) -> Self {
+    pub fn new(action_date_gte: NaiveDate, days: u64, page: u32, page_size: u32) -> Self {
         Self {
-            action_date__gte,
-            action_date__lte: action_date__gte
+            action_date_gte,
+            action_date_lte: action_date_gte
                 .checked_add_days(Days::new(days - 1))
                 .expect("Date should never leave the allowed range."),
             page,
@@ -276,7 +279,7 @@ mod test {
     use httpmock::{Method::GET, MockServer};
     use reqwest::Client;
 
-    use crate::nyse::nyse::*;
+    use crate::source_apis::nyse::*;
 
     #[test]
     fn start_within_data_date_range() {

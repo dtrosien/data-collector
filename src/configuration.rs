@@ -1,10 +1,12 @@
 use secrecy::{ExposeSecret, Secret};
 use serde_aux::field_attributes::deserialize_number_from_string;
+use serde_aux::field_attributes::deserialize_option_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 
 #[derive(serde::Deserialize)]
 pub struct Settings {
     pub database: DatabaseSettings,
+    pub application: ApplicationSettings,
 }
 
 #[derive(serde::Deserialize)]
@@ -16,6 +18,21 @@ pub struct DatabaseSettings {
     pub host: String,
     pub database_name: String,
     pub require_ssl: bool,
+}
+
+#[derive(serde::Deserialize)]
+pub struct ApplicationSettings {
+    pub tasks: Vec<TaskSetting>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct TaskSetting {
+    pub comment: Option<String>,
+    pub sp500_fields: Vec<String>,
+    #[serde(deserialize_with = "deserialize_option_number_from_string")]
+    pub priority: Option<u16>,
+    pub include_sources: Vec<String>,
+    pub exclude_sources: Option<Vec<String>>,
 }
 
 impl DatabaseSettings {
