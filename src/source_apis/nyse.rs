@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use sqlx::Postgres;
 
+const NYSE_EVENT_URL: &str = "https://listingmanager.nyse.com/api/corpax/";
+
 #[derive(Default, Deserialize, Serialize, Debug)]
 struct NyseRequest {
     #[serde(rename = "action_date__gte")]
@@ -61,7 +63,6 @@ impl NyseRequest {
 }
 
 pub async fn load_and_store_missing_data(
-    url: &str,
     connection_pool: &sqlx::Pool<Postgres>,
 ) -> Result<(), Box<dyn error::Error>> {
     let now = Utc::now();
@@ -69,19 +70,19 @@ pub async fn load_and_store_missing_data(
     let client = Client::new();
     while latest_date < now.date_naive() {
         println!("Using date: {}", latest_date);
-        let week_data = load_missing_week(&client, &latest_date, url).await?;
-        let week_date = transpose_nyse_data_and_filter(week_data);
+        let week_data = load_missing_week(&client, &latest_date, NYSE_EVENT_URL).await?;
+        let week_data = transpose_nyse_data_and_filter(week_data);
 
         sqlx::query!("INSERT INTO nyse_events
             (action_date, action_status, action_type, issue_symbol, issuer_name, updated_at, market_event)
             Select * from UNNEST ($1::date[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) on conflict do nothing",
-        &week_date.0[..],
-        &week_date.1[..],
-        &week_date.2[..],
-        &week_date.3[..],
-        &week_date.4[..],
-        &week_date.5[..],
-        &week_date.6[..],
+        &week_data.0[..],
+        &week_data.1[..],
+        &week_data.2[..],
+        &week_data.3[..],
+        &week_data.4[..],
+        &week_data.5[..],
+        &week_data.6[..],
     ).execute(connection_pool)
     .await.unwrap();
 
@@ -415,7 +416,10 @@ mod test {
         let url = server.base_url();
         let client = Client::new();
 
-        let date = Utc.with_ymd_and_hms(2023, 10, 24, 0, 0, 0).unwrap();
+        let date = Utc
+            .with_ymd_and_hms(2023, 10, 24, 0, 0, 0)
+            .unwrap()
+            .date_naive();
         let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":"2016-12-05","action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
         // Create a mock on the server.
         let hello_mock = server.mock(|when, then| {
@@ -442,7 +446,10 @@ mod test {
         let url = server.base_url();
         let client = Client::new();
 
-        let date = Utc.with_ymd_and_hms(2023, 10, 24, 0, 0, 0).unwrap();
+        let date = Utc
+            .with_ymd_and_hms(2023, 10, 24, 0, 0, 0)
+            .unwrap()
+            .date_naive();
         let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":"2016-12-05","action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
         // Create a mock on the server.
         let hello_mock = server.mock(|when, then| {
