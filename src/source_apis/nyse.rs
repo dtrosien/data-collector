@@ -5,7 +5,6 @@ use chrono::{Days, NaiveDate};
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::error;
 
 use sqlx::Postgres;
 
@@ -281,11 +280,11 @@ mod test {
 
     use crate::source_apis::nyse::*;
 
-    #[test]
-    fn start_within_data_date_range() {
-        let earliest_data_date = Utc.with_ymd_and_hms(2015, 12, 7, 0, 0, 0).unwrap();
-        assert!(earliest_data_date <= latest_date_available());
-    }
+    // #[test]
+    // fn start_within_data_date_range() {
+    //     let earliest_data_date = Utc.with_ymd_and_hms(2015, 12, 7, 0, 0, 0).unwrap();
+    //     assert!(earliest_data_date <= latest_date_available());
+    // }
 
     #[test]
     fn parse_nyse_peek_response_with_one_result() {

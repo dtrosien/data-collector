@@ -72,7 +72,7 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
     let settings = config::Config::builder()
         // add config values from files
         .add_source(config::File::from(
-            configuration_directory.join("base.yaml"),
+            configuration_directory.join("base_copy.yaml"),
         ))
         .add_source(config::File::from(
             configuration_directory.join(environment_filename),

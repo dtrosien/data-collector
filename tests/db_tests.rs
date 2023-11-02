@@ -1,5 +1,5 @@
 use chrono::Utc;
-use data_collector::configuration::{get_configuration, DatabaseSettings};
+use data_collector::configuration::{get_configuration, DatabaseSettings, TaskSetting};
 use data_collector::telemetry::{get_subscriber, init_subscriber};
 use sqlx::types::Uuid;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
