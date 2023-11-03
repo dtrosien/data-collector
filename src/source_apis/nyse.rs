@@ -7,6 +7,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use sqlx::Postgres;
+use tracing::{debug, info, warn};
 
 const NYSE_EVENT_URL: &str = "https://listingmanager.nyse.com/api/corpax/";
 
@@ -65,11 +66,12 @@ impl NyseRequest {
 pub async fn load_and_store_missing_data(
     connection_pool: &sqlx::Pool<Postgres>,
 ) -> Result<(), Box<dyn error::Error>> {
+    info!("Starting to load NYSE events");
     let now = Utc::now();
     let mut latest_date = latest_date_available(connection_pool).await;
     let client = Client::new();
-    while latest_date < now.date_naive() {
-        println!("Using date: {}", latest_date);
+    while latest_date <= now.date_naive() {
+        debug!("Loading NYSE event data for week: {}", latest_date);
         let week_data = load_missing_week(&client, &latest_date, NYSE_EVENT_URL).await?;
         let week_data = transpose_nyse_data_and_filter(week_data);
 
@@ -211,11 +213,14 @@ async fn request_nyse(
         .send()
         .await
     {
-        Ok(ok) => ok,
+        Ok(ok) => {
+            debug!("Requested URL for NYSE events: {}", ok.url());
+            ok
+        }
         Err(error) => {
-            println!("Error while loading data from NYSE ({}).", url);
+            tracing::error!("Error while loading data from NYSE ({}).", url);
             if let Some(x) = error.url() {
-                println!("Error caused by query: {}", x);
+                tracing::error!("Error caused by query: {}", x);
             }
             return Err(Box::new(error));
         }
@@ -231,7 +236,7 @@ fn parse_nyse_peek_response(
     let peak_response = match serde_json::from_str(peak_response) {
         Ok(ok) => ok,
         Err(error) => {
-            println!("Failed to parse response: {}", peak_response);
+            tracing::error!("Failed to parse response: {}", peak_response);
             return Err(Box::new(error));
         }
     };
@@ -242,7 +247,7 @@ fn parse_nyse_response(peak_response: &str) -> Result<NyseResponse, Box<serde_js
     let peak_response = match serde_json::from_str(peak_response) {
         Ok(ok) => ok,
         Err(error) => {
-            println!("Failed to parse response: {}", peak_response);
+            tracing::error!("Failed to parse response: {}", peak_response);
             return Err(Box::new(error));
         }
     };
@@ -264,7 +269,7 @@ async fn latest_date_available(connection_pool: &sqlx::Pool<Postgres>) -> NaiveD
     };
     //If db respondes with future date, return today
     if db_result > Utc::now().date_naive() {
-        println!(
+        warn!(
             "WARNING: Database answered with future date, for latest available data: {}",
             db_result
         );

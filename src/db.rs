@@ -2,7 +2,7 @@ use crate::configuration::Settings;
 use chrono::Utc;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Pool, Postgres};
-use std::error::Error;
+
 use uuid::Uuid;
 
 pub fn create_connection_pool(configuration: &Settings) -> Pool<Postgres> {

@@ -1,10 +1,11 @@
+extern crate tracing;
+
 use data_collector::configuration::get_configuration;
 use data_collector::db;
 use data_collector::runner::run;
 use data_collector::source_apis::nyse;
 use data_collector::telemetry::{get_subscriber, init_subscriber};
 
-use sqlx::{ConnectOptions, Connection, PgPool};
 use std::error::Error;
 
 #[tokio::main]
