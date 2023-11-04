@@ -1,5 +1,5 @@
 use crate::configuration::TaskSetting;
-use crate::{client, db};
+
 use sqlx::PgPool;
 use std::error::Error;
 use tokio::task::JoinHandle;
@@ -8,7 +8,7 @@ use uuid::Uuid;
 #[derive(Debug)]
 pub struct Task {
     id: Uuid,
-    pool: PgPool,
+    _pool: PgPool,
     url: String,
 }
 
@@ -16,7 +16,7 @@ impl Task {
     pub fn new(setting: &TaskSetting, db: &PgPool) -> Self {
         Task {
             id: Uuid::new_v4(),
-            pool: db.clone(),
+            _pool: db.clone(),
             url: setting.include_sources.clone().pop().unwrap(), // todo dummy
         }
     }
