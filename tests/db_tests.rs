@@ -115,3 +115,13 @@ async fn start_task() {
     // Assert
     assert!(runner.await.is_ok())
 }
+
+#[tokio::test]
+async fn partition_pruning_enabled() {
+    let app = spawn_app().await;
+    let saved = sqlx::query!("SHOW enable_partition_pruning")
+        .fetch_one(&app.db_pool)
+        .await
+        .expect("Failed to fetch config of database.");
+    assert_eq!("on", saved.enable_partition_pruning.unwrap());
+}

@@ -20,6 +20,30 @@ having the fields:</br>
 
 The earliest date for which data is available is the 2015-12-07; checked on 2023-09-01.
 
+## Schema
+The create statement:</br>
+~~~~sql
+ CREATE TABLE NYSE_EVENTS (
+    action_date date NOT NULL,
+    action_status varchar(100) NOT NULL,
+    action_type varchar(100) NOT NULL,
+    issue_symbol varchar(100) NOT NULL,
+    issuer_name varchar(200) NOT NULL,
+    updated_at varchar(100) NOT NULL,
+    market_event varchar(36) NOT NULL,
+    is_staged boolean DEFAULT false,
+    PRIMARY KEY (action_date, issue_symbol, issuer_name, market_event, is_staged)
+)
+PARTITION BY LIST (is_staged);
+~~~~
+Postgres has no automatic partition creation, so they need to be created manually.
+~~~~sql
+CREATE TABLE NYSE_EVENTS_STAGED PARTITION OF NYSE_EVENTS
+  FOR VALUES in (true);
+CREATE TABLE NYSE_EVENTS_NOT_STAGED PARTITION OF NYSE_EVENTS
+  FOR VALUES in (false);
+~~~~
+
 ## Summary
 
 With this API it is possible to receive the offered stocks (symbol + company name) and also get the entry/exit dates. 

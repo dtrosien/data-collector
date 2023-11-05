@@ -27,3 +27,4 @@ application:
       priority: 2
       include_sources:
         - just_a_bit_brocken_API_1.com
+...
