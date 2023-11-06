@@ -6,7 +6,8 @@ In progress
 
 ## Context
 
-Currently the project is as early as it can get with just a few insights. Data will be collected from various sources and will be stored in a database. The sources can be split into two categories: limited and unlimited. One source is able to provide one or more key figures, which are needed for the S&P 500 fields.</br>
+Currently the project is as early as it can get with just a few insights. Data will be collected from various sources and will be stored in a database. The sources can be split into two categories: limited and unlimited.</br>
+One source is able to provide one or more key figures, which are needed for the S&P 500 fields.</br>
 There are several ways to design the config file, focusing on the called APIs or focusing on the S&P 500 constraints. Both should be able to prioritize certain S&P 500 fields.
 
 
@@ -22,50 +23,61 @@ Both options consist of a general part for database information and a special pa
 ### Prioritize S&P 500 constraints
 
 ```
----
-database_connection_string: myDB
-database_user: root123
-database_pw: secret
-tasks:
-- sp500_fields:
-  - NYSE
-  database_connection_string: overWrite DB
-  priority: 1
-  include_sources:
-  - all
-  exclude_sources: 
-  - ''
-- sp500_fields:
-  - MARKET_CAP
-  - MONTH_TRADING_VOLUME
-  database_pw: another pw
-  priority: 2
-  include_sources:
-  - all
-  exclude_sources:
-  - just_a_bit_brocken_API_1.com
-...
+database:
+  host: "localhost"
+  port: 6543
+  username: "postgres"
+  password: "password"
+  database_name: "data-collector"
+application:
+  tasks:
+    - comment: Helpful comment
+      sp500_fields:
+        - NYSE
+      priority: 1.1
+      include_sources:
+        - all
+    - comment: Helpful comment1
+      sp500_fields:
+        - MARKET_CAP
+        - MONTH_TRADING_VOLUME
+      priority: 2
+      include_sources:
+        - all
+      exclude_sources:
+        - just_a_bit_brocken_API_1.com
+    - comment: Helpful comment1
+      sp500_fields:
+        - LOCATION
+      priority: 2
+      include_sources:
+        - just_a_bit_brocken_API_1.com
+
 ```
 
 ### Prioritize APIs
 
 ```
 ---
-database_connection_string: myDB
-database_user: root123
-database_pw: secret
-tasks:
-- api: mySource.com
-  priority: 1.0
-  include_s&p500_fields:
-  - all
-  exclude_s&p500_fields:
-- api: location.com
-  priority: 2.0
-  include_s&p500_fields:
-  - all
-  exclude_s&p500_fields:
-  - MONTH_TRADING_VOLUME_due_to_broken_json_interface
+database:
+  host: "localhost"
+  port: 6543
+  username: "postgres"
+  password: "password"
+  database_name: "data-collector"
+application:  
+  tasks:
+  - api: mySource.com
+    priority: 1.0
+    include_s&p500_fields:
+    - all
+    exclude_s&p500_fields:
+  - api: location.com
+    priority: 2.0
+    include_s&p500_fields:
+    - all
+    exclude_s&p500_fields:
+    - MONTH_TRADING_VOLUME_due_to_broken_json_interface
 ...
 ```
 
