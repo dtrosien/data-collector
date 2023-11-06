@@ -33,7 +33,7 @@ make script executable:
 run script:
 
     ./scripts/init_db.sh
-
+(If there are still problems try `export PATH=$PATH:/root/.cargo/bin`)
 
 
 #### Migration
