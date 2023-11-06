@@ -11,10 +11,34 @@ The rules are changing over time.(2023.08.29)
 - [ ] Minimum monthly trading volume of 250,000 shares in each of the six last months
 - [ ] Must be publicly listed on either the New York Stock Exchange (including NYSE Arca or NYSE American) or NASDAQ (NASDAQ Global Select Market, NASDAQ Select Market or the NASDAQ Capital Market).
   - [x] NYSE
+  - [ ] NYSE Arca
+  - [ ] NYSE American
   - [ ] NASDAQ
+  - [ ] NASDAQ Global Select Market
+  - [ ] NASDAQ Select Market
+  - [ ] NASDAQ Capital Market
 - [ ] The company must derive at least 50% of its revenue in the U.S.
 
 ## Soft criteria
 
 Since a committee is deciding the decision dates could vary.</br>
 Since the list is targeted to be 500 members, it is not clear what will happen in the case of more eligible companies.
+
+
+
+| Name | |
+| Stock symbol | |
+| Location | |
+| Start of listing NYSE | |
+| Start of listing NYSE Arca | |
+| Start of listing NYSE American | |
+| Start of listing NASDAQ | |
+| Start of listing NASDAQ Global Select Market | |
+| Start of listing NASDAQ Select Market | |
+| Start of listing NASDAQ Capital Market | |
+| Category (Company/ETF/...) | |
+| Renamed to | |
+| Renamed at date | |
+| Current name | |
+| Suspended | |
+| Suspension date | |

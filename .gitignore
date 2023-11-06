@@ -1,2 +1,7 @@
 /target
 /.idea
+configs/config.yaml
+configuration/base_copy.yaml
+
+/.vscode/
+Cargo.lock

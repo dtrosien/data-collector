@@ -1,5 +1,5 @@
 [package]
-name = "cicd-rust"
+name = "data_collector"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,11 +9,38 @@ edition = "2021"
 path = "src/lib.rs"
 
 [[bin]]
-name = "data-collector"
+name = "data_collector"
 path = "src/main.rs"
 
 
 [dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.107"
+serde-aux = "4"
+config = "0.13"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4.31", default-features = false, features = ["clock", "serde"] }
+tracing = { version = "0.1", features = ["log"] } # facade to generate traces
+tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] } # to actually print traces
+tracing-bunyan-formatter = "0.3" # uses layer trait from tracing subscriber to build a processing pipeline for span data (see main)
+tracing-log = "0.1" # redirect logs to tracing
+tracing-actix-web = "0.7" # replacement for acti-web-logger
+secrecy = { version = "0.8", features = ["serde"] }
+reqwest = { version = "0.11", features = ["json", "blocking"] }
+httpmock = "0.6.8"
 
+
+[dependencies.sqlx]
+version = "0.7.2"
+default-features = false
+features = [
+    "runtime-tokio-rustls",
+    "macros",
+    "postgres",
+    "uuid",
+    "chrono",
+    "migrate"
+]
 
 [dev-dependencies]

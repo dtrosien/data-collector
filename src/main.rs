@@ -1,17 +1,28 @@
-fn main() {
-    println!("{}", say_hello());
-}
+extern crate tracing;
 
-fn say_hello() -> String {
-    "Hello, world!".to_string()
-}
+use data_collector::configuration::get_configuration;
+use data_collector::db;
+use data_collector::runner::run;
+use data_collector::source_apis::nyse;
+use data_collector::telemetry::{get_subscriber, init_subscriber};
 
-#[cfg(test)]
-mod tests {
-    use crate::say_hello;
+use std::error::Error;
 
-    #[test]
-    fn say_hello_test() {
-        assert_eq!(say_hello(), format!("Hello, world!"))
-    }
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let subscriber = get_subscriber("data_collector".into(), "info".into(), std::io::stdout);
+    init_subscriber(subscriber);
+
+    let configuration = get_configuration().expect("Failed to read configuration.");
+    let connection_pool = db::create_connection_pool(&configuration);
+    connection_pool.set_connect_options(configuration.database.with_db());
+
+    nyse::load_and_store_missing_data(&connection_pool)
+        .await
+        .unwrap();
+
+    run(connection_pool, configuration.application.tasks).await?;
+
+    println!("done");
+    Ok(())
 }
