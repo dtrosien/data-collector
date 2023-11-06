@@ -23,22 +23,3 @@ The rules are changing over time.(2023.08.29)
 
 Since a committee is deciding the decision dates could vary.</br>
 Since the list is targeted to be 500 members, it is not clear what will happen in the case of more eligible companies.
-
-
-
-| Name | |
-| Stock symbol | |
-| Location | |
-| Start of listing NYSE | |
-| Start of listing NYSE Arca | |
-| Start of listing NYSE American | |
-| Start of listing NASDAQ | |
-| Start of listing NASDAQ Global Select Market | |
-| Start of listing NASDAQ Select Market | |
-| Start of listing NASDAQ Capital Market | |
-| Category (Company/ETF/...) | |
-| Renamed to | |
-| Renamed at date | |
-| Current name | |
-| Suspended | |
-| Suspension date | |
