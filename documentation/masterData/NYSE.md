@@ -20,6 +20,50 @@ having the fields:</br>
 
 The earliest date for which data is available is the 2015-12-07; checked on 2023-09-01.
 
+## Responses and staging rules
+The responds from the API contain useful as well as non-useful information for us. The information can be clustered using the `action_status` response. 
+
+| Event                                              | Comment                                  | Staging behavior     |
+| -------------------------------------------------- | ---------------------------------------- | -------------------- |
+| Admit                                              | Enter a market                           | Stage without action |
+| Admit - "Ex-Distribution" Market                   | Enter a market                           | Stage without action |
+| Admit - "When-Distributed" Market                  | Enter a market                           | Stage without action |
+| Admit - "When Issued", Additional Shares, Market   | Enter a market                           | Stage without action |
+| Admit - "When-Issued" Market                       | Enter a market                           | Stage without action |
+| Change Company Name/Product Name                   |                                          | TO-DO                |
+| Change Company Name/Product Name/CUSIP             |                                          | TO-DO                |
+| Change Company Name/Product Name/Symbol            |                                          | TO-DO                |
+| Change Company Name/Product Name/Symbol/CUSIP      |                                          | TO-DO                |
+| Change CUSIP                                       | Rating change of stock                   | Stage without action |
+| Change DMM / Post                                  | Change the responsible market maker      | Stage without action |
+| Change in Terms                                    |                                          | Stage without action |
+| Change Name                                        |                                          | TO-DO                |
+| Change Name/CUSIP                                  |                                          | TO-DO                |
+| Change Name/Symbol                                 |                                          | TO-DO                |
+| Change Name/Symbol/CUSIP                           |                                          | TO-DO                |
+| Change Product Name                                |                                          | Maybe?               |
+| Change Product Name/CUSIP                          |                                          | Maybe?               |
+| Change Product Name/Symbol                         |                                          | TO-DO                |
+| Change Symbol                                      |                                          | TO-DO                |
+| Change Underlying Share Ratio                      | Change ratio of stock with voting rights | Stage without action |
+| Direct Listing                                     | Enter listing                            | TO-DO                |
+| Full Call                                          | Issuer buys all it's own stock           | Maybe?               |
+| Initial Public Offering                            |                                          | TO-DO                |
+| New Listing                                        |                                          | TO-DO                |
+| New Structured Product                             |                                          | Stage without action |
+| Other Action Type                                  |                                          | Stage without action |
+| Reclassification                                   |                                          | Stage without action |
+| Regular-Way in lieu of "When-Issued"               |                                          | Stage without action |
+| Reverse Stock Split                                |                                          | Stage without action |
+| Suspend                                            |                                          | Maybe?               |
+| Suspend & Delist - Voluntary                       |                                          | TO-DO                |
+| Suspend - "Ex-Distribution" Market                 |                                          | Maybe?               |
+| Suspend - For - Cause                              |                                          | Maybe?               |
+| Suspend - Voluntary                                |                                          | Maybe?               |
+| Suspend - "When-Distributed" Market                |                                          | Maybe?               |
+| Suspend - "When-Issued", Additional Shares, Market |                                          | Maybe?               |
+| Suspend - "When-Issued" Market                     |                                          | Maybe?               |
+
 ## Summary
 
 With this API it is possible to receive the offered stocks (symbol + company name) and also get the entry/exit dates. 
