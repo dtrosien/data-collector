@@ -7,12 +7,14 @@ database:
 application:
   tasks:
     - comment: Helpful comment
+      actions: [ReadApi,ReadTable]
       sp500_fields:
         - NYSE
       priority: 1
       include_sources:
         - all
     - comment: Helpful comment1
+      actions: [ReadApi]
       sp500_fields:
         - MARKET_CAP
         - MONTH_TRADING_VOLUME
@@ -22,6 +24,7 @@ application:
       exclude_sources:
         - just_a_bit_brocken_API_1.com
     - comment: Helpful comment1
+      actions: [ReadApi,ReadTable]
       sp500_fields:
         - LOCATION
       priority: 2

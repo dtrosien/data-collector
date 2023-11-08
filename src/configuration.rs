@@ -28,6 +28,7 @@ pub struct ApplicationSettings {
 #[derive(serde::Deserialize)]
 pub struct TaskSetting {
     pub comment: Option<String>,
+    pub actions: Vec<String>,
     pub sp500_fields: Vec<String>,
     #[serde(deserialize_with = "deserialize_option_number_from_string")]
     pub priority: Option<u16>,
