@@ -1,9 +1,10 @@
 use crate::error::{MatchError, Result};
+use futures_util::future::BoxFuture;
 
 /// Action is a trait that defines the interface for all actions.
-pub trait Action: Send {
+pub trait Action: Send + Sync {
     /// transform will take an input Resource and perform an actions on it and returns another Resource.
-    fn perform(&self, input: Resource) -> Result<Resource>;
+    fn perform<'a>(&self) -> BoxFuture<'a, Result<()>>;
 }
 
 /// BoxedAction is a boxed trait object of Action.
@@ -32,7 +33,7 @@ pub enum ActionType {
 pub struct CollectAction {}
 
 impl Action for CollectAction {
-    fn perform(&self, input: Resource) -> Result<Resource> {
+    fn perform<'a>(&self) -> BoxFuture<'a, Result<()>> {
         todo!()
     }
 }
@@ -40,7 +41,7 @@ impl Action for CollectAction {
 pub struct StageAction {}
 
 impl Action for StageAction {
-    fn perform(&self, input: Resource) -> Result<Resource> {
+    fn perform<'a>(&self) -> BoxFuture<'a, Result<()>> {
         todo!()
     }
 }

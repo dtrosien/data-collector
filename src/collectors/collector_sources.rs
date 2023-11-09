@@ -8,6 +8,7 @@ pub enum CollectorSource {
     NyseEvents,
     NyseCompanies,
     All,
+    Unknown,
 }
 
 impl fmt::Display for CollectorSource {
