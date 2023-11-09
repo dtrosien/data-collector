@@ -9,6 +9,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::collectors::{collector_sources, sp500_fields, Collector};
+use crate::task::Runnable;
 use sqlx::{PgPool, Postgres};
 use tracing::{debug, info, warn};
 
@@ -64,23 +65,31 @@ pub struct CleanedTransposedNyseData {
     pub market_event: Vec<String>,
 }
 
-// pub struct NyseEventCollector<'a> {
-//     connection_pool: &'a sqlx::Pool<Postgres>,
-// }
 #[derive(Clone)]
-pub struct NyseEventCollector {}
+pub struct NyseEventCollector {
+    pool: PgPool,
+}
+
+impl NyseEventCollector {
+    pub fn new(pool: PgPool) -> Self {
+        NyseEventCollector { pool }
+    }
+}
+
 impl Display for NyseEventCollector {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "NyseEventCollector struct.")
     }
 }
 
-impl Collector for NyseEventCollector {
-    fn run<'a>(&self, connection_pool: &'a PgPool) -> BoxFuture<'a, Result<()>> {
-        let f = load_and_store_missing_data(connection_pool);
+impl Runnable for NyseEventCollector {
+    fn run<'a>(&self) -> BoxFuture<'a, Result<()>> {
+        let f = load_and_store_missing_data(self.pool.clone());
         Box::pin(f)
     }
+}
 
+impl Collector for NyseEventCollector {
     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
         vec![sp500_fields::Fields::Nyse]
     }
@@ -103,10 +112,10 @@ impl NyseRequest {
     }
 }
 
-pub async fn load_and_store_missing_data(connection_pool: &sqlx::Pool<Postgres>) -> Result<()> {
+pub async fn load_and_store_missing_data(connection_pool: PgPool) -> Result<()> {
     info!("Starting to load NYSE events");
     let now = Utc::now();
-    let mut latest_date = latest_date_available(connection_pool).await;
+    let mut latest_date = latest_date_available(&connection_pool).await;
     let client = Client::new();
     while latest_date <= now.date_naive() {
         debug!("Loading NYSE event data for week: {}", latest_date);
@@ -123,7 +132,7 @@ pub async fn load_and_store_missing_data(connection_pool: &sqlx::Pool<Postgres>)
         &week_data.issuer_name[..],
         &week_data.updated_at[..],
         &week_data.market_event[..],
-    ).execute(connection_pool)
+    ).execute(&connection_pool)
     .await?;
 
         latest_date = latest_date

@@ -16,7 +16,6 @@ pub trait Runnable: Send + Sync {
 
 pub struct Task {
     id: Uuid,
-    _pool: PgPool,
     collectors: Vec<Box<dyn Collector>>,
 }
 
@@ -24,14 +23,13 @@ impl Task {
     pub fn new(setting: &TaskSetting, db: &PgPool) -> Self {
         Task {
             id: Uuid::new_v4(),
-            _pool: db.clone(),
-            collectors: Self::matching_collectors(setting),
+            collectors: Self::matching_collectors(setting, db.clone()),
         }
     }
 
-    fn matching_collectors<'a>(setting: &TaskSetting) -> Vec<Box<dyn Collector>> {
+    fn matching_collectors<'a>(setting: &TaskSetting, pool: PgPool) -> Vec<Box<dyn Collector>> {
         let mut result = vec![];
-        let collectors = Self::get_all_collectors();
+        let collectors = Self::get_all_collectors(pool);
         let f: Vec<_> = collectors
             .into_iter()
             .filter(|collector| Self::is_collector_requested(setting, collector))
@@ -58,8 +56,8 @@ impl Task {
         true
     }
 
-    fn get_all_collectors() -> Vec<Box<dyn Collector>> {
-        vec![Box::new(NyseEventCollector {})]
+    fn get_all_collectors(pool: PgPool) -> Vec<Box<dyn Collector>> {
+        vec![Box::new(NyseEventCollector::new(pool))]
     }
 }
 
