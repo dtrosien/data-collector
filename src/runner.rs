@@ -1,5 +1,5 @@
 use crate::configuration::TaskSetting;
-use crate::task::Task;
+use crate::tasks::task::Task;
 use sqlx::PgPool;
 use std::error::Error;
 use tokio::task::JoinHandle;
