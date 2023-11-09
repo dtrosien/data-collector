@@ -105,7 +105,7 @@ async fn start_task() {
         comment: None,
         actions: vec![],
         sp500_fields: vec![],
-        priority: None,
+        priority: 500.0,
         include_sources: vec!["testurl".to_string()],
         exclude_sources: None,
     };

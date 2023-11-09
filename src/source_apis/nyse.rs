@@ -1,13 +1,20 @@
-use std::error;
+use std::error::{self, Error};
+use std::fmt::Display;
+use std::pin::Pin;
 
 use chrono::prelude::*;
 use chrono::{Days, NaiveDate};
 
+use futures::future::BoxFuture;
+use futures::pin_mut;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use sqlx::Postgres;
 use tracing::{debug, info, warn};
+
+use crate::tasks::collector::Collector;
+use crate::tasks::{collector_sources, sp500_fields};
 
 const NYSE_EVENT_URL: &str = "https://listingmanager.nyse.com/api/corpax/";
 
@@ -59,6 +66,36 @@ pub struct CleanedTransposedNyseData {
     pub issuer_name: Vec<String>,
     pub updated_at: Vec<String>,
     pub market_event: Vec<String>,
+}
+
+// pub struct NyseEventCollector<'a> {
+//     connection_pool: &'a sqlx::Pool<Postgres>,
+// }
+#[derive(Clone)]
+pub struct NyseEventCollector {}
+impl Display for NyseEventCollector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "NyseEventCollector struct.")
+    }
+}
+
+impl Collector for NyseEventCollector {
+    fn run(
+        &self,
+        connection_pool: &sqlx::Pool<Postgres>,
+    ) -> Box<dyn futures::Future<Output = Result<(), Box<dyn Error>>>> {
+        let f = load_and_store_missing_data(connection_pool);
+        // pub type BoxFuture<'a, T> = Pin<alloc::boxed::Box<dyn Future<Output = T> + Send + 'a>>;
+        Box::from(f)
+    }
+
+    fn get_sp_fields(&self) -> Vec<crate::tasks::sp500_fields::Fields> {
+        vec![sp500_fields::Fields::Nyse]
+    }
+
+    fn get_source(&self) -> collector_sources::CollectorSource {
+        collector_sources::CollectorSource::NyseEvents
+    }
 }
 
 impl NyseRequest {
