@@ -104,7 +104,7 @@ async fn start_task() {
     let task_setting = TaskSetting {
         comment: None,
         sp500_fields: vec![],
-        priority: None,
+        priority: 500.0,
         include_sources: vec!["testurl".to_string()],
         exclude_sources: None,
     };

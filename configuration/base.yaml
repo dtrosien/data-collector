@@ -3,7 +3,7 @@ database:
   port: 6543
   username: "postgres"
   password: "password"
-  database_name: "newsletter"
+  database_name: "exampledb"
 application:
   tasks:
     - comment: Helpful comment
@@ -15,7 +15,7 @@ application:
     - comment: Helpful comment1
       sp500_fields:
         - MARKET_CAP
-        - MONTH_TRADING_VOLUME
+        - MONTH_TRADING_VOLUME 
       priority: 2
       include_sources:
         - all
