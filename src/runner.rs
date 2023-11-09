@@ -2,7 +2,7 @@ use crate::configuration::TaskSetting;
 use crate::error::Result;
 use crate::task::{execute_runnable, Runnable, Task};
 use sqlx::PgPool;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BinaryHeap};
 use std::error::Error;
 use tokio::task::JoinHandle;
 

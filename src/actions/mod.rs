@@ -12,8 +12,8 @@ pub type BoxedAction = Box<dyn Action>;
 /// create_action creates a boxed trait object of Action from a ActionType.
 pub fn create_action(action_type: &ActionType) -> Result<BoxedAction> {
     match action_type {
-        ActionType::ReadTable => Ok(Box::new(ReadTableAction {})),
-        ActionType::ReadApi => Ok(Box::new(ReadApiAction {})),
+        ActionType::Collect => Ok(Box::new(CollectAction {})),
+        ActionType::Stage => Ok(Box::new(StageAction {})),
         ActionType::Unknown => Err(Box::new(MatchError {})),
     }
 }
@@ -23,23 +23,23 @@ pub struct Resource {}
 
 #[derive(Debug, Clone)]
 pub enum ActionType {
-    ReadTable,
-    ReadApi,
+    Collect,
+    Stage,
     Unknown,
 }
 
 /// Reads in Table of the Resource
-pub struct ReadTableAction {}
+pub struct CollectAction {}
 
-impl Action for ReadTableAction {
+impl Action for CollectAction {
     fn perform(&self, input: Resource) -> Result<Resource> {
         todo!()
     }
 }
 
-pub struct ReadApiAction {}
+pub struct StageAction {}
 
-impl Action for ReadApiAction {
+impl Action for StageAction {
     fn perform(&self, input: Resource) -> Result<Resource> {
         todo!()
     }
