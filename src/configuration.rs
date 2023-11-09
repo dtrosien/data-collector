@@ -2,8 +2,8 @@ use secrecy::{ExposeSecret, Secret};
 use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 
-use crate::tasks::collector_sources::CollectorSource;
-use crate::tasks::sp500_fields;
+use crate::collectors::collector_sources::CollectorSource;
+use crate::collectors::sp500_fields;
 
 #[derive(serde::Deserialize)]
 pub struct Settings {
@@ -36,15 +36,15 @@ pub struct TaskSetting {
         deserialize_with = "deserialize_number_from_string",
         default = "default_priority"
     )]
-    pub priority: f32,
+    pub priority: i32,
     #[serde(default = "default_include_source")]
     pub include_sources: Vec<CollectorSource>,
     #[serde(default = "default_exclude_source")]
     pub exclude_sources: Vec<CollectorSource>,
 }
 
-fn default_priority() -> f32 {
-    1000.0
+fn default_priority() -> i32 {
+    1000
 }
 
 fn default_include_source() -> Vec<CollectorSource> {

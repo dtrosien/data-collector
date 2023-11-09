@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
-pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
+pub type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 
 /// Simple Error with arbitrary String input
 #[derive(Debug, Clone)]

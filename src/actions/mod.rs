@@ -2,7 +2,7 @@ use crate::error::{MatchError, Result};
 
 /// Action is a trait that defines the interface for all actions.
 pub trait Action: Send {
-    /// transform will take an input Resource and perform an action on it and returns another Resource.
+    /// transform will take an input Resource and perform an actions on it and returns another Resource.
     fn perform(&self, input: Resource) -> Result<Resource>;
 }
 

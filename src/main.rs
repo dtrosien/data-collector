@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .await
         .unwrap();
 
-    run(connection_pool, configuration.application.tasks).await?;
+    run(connection_pool, &configuration.application.tasks).await?;
 
     println!("done");
     Ok(())

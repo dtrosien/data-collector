@@ -1,14 +1,18 @@
+use crate::collectors::Collector;
+use crate::error::Result;
 use crate::{configuration::TaskSetting, source_apis::nyse::NyseEventCollector};
-
+use futures_util::future::BoxFuture;
 use sqlx::PgPool;
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashSet},
     error::Error,
 };
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
-use super::collector::Collector;
+pub trait Runnable: Send + Sync {
+    fn run<'a>(&self) -> BoxFuture<'a, Result<()>>;
+}
 
 pub struct Task {
     id: Uuid,
@@ -57,25 +61,22 @@ impl Task {
     fn get_all_collectors() -> Vec<Box<dyn Collector>> {
         vec![Box::new(NyseEventCollector {})]
     }
+}
 
+impl Runnable for Task {
     #[tracing::instrument(
     name = "Running task",
     skip(self),
     fields(
     task_id = %self.id,
-    // collector = %self.collectors
+    // collectors = %self.collectors
     )
     )]
-    pub async fn run(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        // let _response = client::query_api(&self.url).await;
-        //
-        // db::insert_into(&self.pool)
-        //     .await
-        //     .expect("TODO: panic message");
-        Ok(())
+    fn run<'a>(&self) -> BoxFuture<'a, Result<()>> {
+        todo!()
     }
 }
 
-pub async fn execute_task(task: Task) -> JoinHandle<Result<(), Box<dyn Error + Send + Sync>>> {
-    tokio::spawn(async move { task.run().await })
+pub fn execute_runnable(runnable: Box<dyn Runnable>) -> JoinHandle<Result<()>> {
+    tokio::spawn(async move { runnable.run().await })
 }

@@ -111,7 +111,7 @@ async fn start_task() {
     };
 
     // Act
-    let runner = data_collector::runner::run(app.db_pool, vec![task_setting]);
+    let runner = data_collector::runner::run(app.db_pool, &vec![task_setting]);
 
     // Assert
     assert!(runner.await.is_ok())
