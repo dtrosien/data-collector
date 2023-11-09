@@ -1,4 +1,4 @@
-use crate::actions::Action;
+use crate::actions::BoxedAction;
 use crate::collectors::Collector;
 use crate::error::Result;
 use crate::{configuration::TaskSetting, source_apis::nyse::NyseEventCollector};
@@ -15,18 +15,24 @@ pub trait Runnable: Send + Sync {
     fn run<'a>(&self) -> BoxFuture<'a, Result<()>>;
 }
 
+#[derive(Clone)]
+pub struct TaskMeta {}
+
 pub struct Task {
     id: Uuid,
-    actions: Vec<Box<dyn Action>>,
-    collectors: Vec<Box<dyn Collector>>,
+    priority: f32,
+    actions: Vec<BoxedAction>,
+    meta: TaskMeta, //collectors: Vec<Box<dyn Collector>>,
 }
 
 impl Task {
     pub fn new(setting: &TaskSetting, db: &PgPool) -> Self {
         Task {
             id: Uuid::new_v4(),
+            priority: 1.0,
             actions: vec![], //todo build actions
-            collectors: Self::matching_collectors(setting, db.clone()),
+            meta: TaskMeta {},
+            //collectors: Self::matching_collectors(setting, db.clone()),
         }
     }
 
@@ -77,7 +83,7 @@ impl Runnable for Task {
         let action_futures = self
             .actions
             .iter()
-            .map(|x| x.perform())
+            .map(|x| x.perform(self.meta.clone()))
             .collect::<Vec<BoxFuture<'a, Result<()>>>>();
 
         let joined_result = async move {

@@ -1,10 +1,16 @@
+pub mod collect;
+pub mod stage;
+
+use crate::actions::collect::CollectAction;
+use crate::actions::stage::StageAction;
 use crate::error::{MatchError, Result};
+use crate::task::{Task, TaskMeta};
 use futures_util::future::BoxFuture;
 
 /// Action is a trait that defines the interface for all actions.
 pub trait Action: Send + Sync {
     /// transform will take an input Resource and perform an actions on it and returns another Resource.
-    fn perform<'a>(&self) -> BoxFuture<'a, Result<()>>;
+    fn perform<'a>(&self, meta: TaskMeta) -> BoxFuture<'a, Result<()>>;
 }
 
 /// BoxedAction is a boxed trait object of Action.
@@ -19,29 +25,9 @@ pub fn create_action(action_type: &ActionType) -> Result<BoxedAction> {
     }
 }
 
-/// Resource is the type on which Actions are performed
-pub struct Resource {}
-
 #[derive(Debug, Clone)]
 pub enum ActionType {
     Collect,
     Stage,
     Unknown,
-}
-
-/// Reads in Table of the Resource
-pub struct CollectAction {}
-
-impl Action for CollectAction {
-    fn perform<'a>(&self) -> BoxFuture<'a, Result<()>> {
-        todo!()
-    }
-}
-
-pub struct StageAction {}
-
-impl Action for StageAction {
-    fn perform<'a>(&self) -> BoxFuture<'a, Result<()>> {
-        todo!()
-    }
 }
