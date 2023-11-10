@@ -1,26 +1,49 @@
 use crate::configuration::TaskSetting;
-use crate::task::Task;
+use crate::error::Result;
+use crate::future_utils::join_handle_results;
+use crate::task::{execute_task, Task};
+use futures_util::future::BoxFuture;
 use sqlx::PgPool;
-use std::error::Error;
+use std::collections::BinaryHeap;
 use tokio::task::JoinHandle;
 
-pub async fn run(
-    db_pool: PgPool,
-    task_settings: Vec<TaskSetting>,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let handles: Vec<JoinHandle<Result<(), Box<dyn Error + Send + Sync>>>> = task_settings
+/// runs all tasks concurrently and waits till all tasks finished,
+/// if one task failed, all other task will still processed, but overall the function will return an error
+pub async fn run(db_pool: PgPool, task_settings: &[TaskSetting]) -> Result<()> {
+    let handles = build_task_prio_queue(task_settings, &db_pool)
+        .await
         .into_iter()
-        .map(|ts| {
-            let task = Task::new(&ts, &db_pool);
-            tokio::spawn(async move { task.run().await })
-        })
+        .map(execute_task)
         .collect();
 
-    // todo maybe later with joinset, join_all!() has performance pitfalls
-    let mut results = Vec::with_capacity(handles.len());
-    for handle in handles {
-        results.push(handle.await?);
+    join_handle_results(handles).await
+}
+
+/// build a priority queue for Tasks based on a binary heap
+pub async fn build_task_prio_queue(
+    task_settings: &[TaskSetting],
+    db_pool: &PgPool,
+) -> BinaryHeap<Task> {
+    let mut prio_queue = BinaryHeap::with_capacity(task_settings.len());
+
+    for ts in task_settings.iter() {
+        let task = Task::new(ts, db_pool);
+        prio_queue.push(task)
     }
 
-    Ok(())
+    prio_queue
+}
+
+pub trait Runnable: Send + Sync {
+    fn run<'a>(&self) -> BoxFuture<'a, Result<()>>;
+}
+
+// currently not useful since rust does not (yet) support trait upcasting
+pub fn execute_runnable(runnable: Box<dyn Runnable>) -> JoinHandle<Result<()>> {
+    tokio::spawn(async move { runnable.run().await })
+}
+
+//todo check if this is a possible way to generalize more
+pub fn execute<T: Runnable + 'static>(e: Box<T>) -> JoinHandle<Result<()>> {
+    tokio::spawn(async move { e.run().await })
 }

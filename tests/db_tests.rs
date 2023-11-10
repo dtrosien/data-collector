@@ -1,4 +1,5 @@
 use chrono::Utc;
+use data_collector::collectors::collector_sources::CollectorSource;
 use data_collector::configuration::{get_configuration, DatabaseSettings, TaskSetting};
 use data_collector::telemetry::{get_subscriber, init_subscriber};
 use sqlx::types::Uuid;
@@ -103,14 +104,17 @@ async fn start_task() {
 
     let task_setting = TaskSetting {
         comment: None,
+        actions: vec![],
         sp500_fields: vec![],
-        priority: None,
-        include_sources: vec!["testurl".to_string()],
-        exclude_sources: None,
+        priority: 500,
+        include_sources: vec![CollectorSource::NyseEvents],
+        exclude_sources: vec![],
     };
 
+    let task_settings = vec![task_setting];
+
     // Act
-    let runner = data_collector::runner::run(app.db_pool, vec![task_setting]);
+    let runner = data_collector::runner::run(app.db_pool, &task_settings);
 
     // Assert
     assert!(runner.await.is_ok())

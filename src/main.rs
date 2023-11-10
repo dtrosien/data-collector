@@ -17,11 +17,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let connection_pool = db::create_connection_pool(&configuration);
     connection_pool.set_connect_options(configuration.database.with_db());
 
-    nyse::load_and_store_missing_data(&connection_pool)
+    nyse::load_and_store_missing_data(connection_pool.clone())
         .await
         .unwrap();
 
-    run(connection_pool, configuration.application.tasks).await?;
+    run(connection_pool, &configuration.application.tasks).await?;
 
     println!("done");
     Ok(())

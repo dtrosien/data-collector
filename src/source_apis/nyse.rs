@@ -1,12 +1,16 @@
-use std::error;
+use std::fmt::Display;
 
+use crate::error::Result;
 use chrono::prelude::*;
 use chrono::{Days, NaiveDate};
+use futures_util::future::BoxFuture;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use sqlx::Postgres;
+use crate::collectors::{collector_sources, sp500_fields, Collector};
+use crate::runner::Runnable;
+use sqlx::{PgPool, Postgres};
 use tracing::{debug, info, warn};
 
 const NYSE_EVENT_URL: &str = "https://listingmanager.nyse.com/api/corpax/";
@@ -61,6 +65,40 @@ pub struct CleanedTransposedNyseData {
     pub market_event: Vec<String>,
 }
 
+#[derive(Clone)]
+pub struct NyseEventCollector {
+    pool: PgPool,
+}
+
+impl NyseEventCollector {
+    pub fn new(pool: PgPool) -> Self {
+        NyseEventCollector { pool }
+    }
+}
+
+impl Display for NyseEventCollector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "NyseEventCollector struct.")
+    }
+}
+
+impl Runnable for NyseEventCollector {
+    fn run<'a>(&self) -> BoxFuture<'a, Result<()>> {
+        let f = load_and_store_missing_data(self.pool.clone());
+        Box::pin(f)
+    }
+}
+
+impl Collector for NyseEventCollector {
+    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
+        vec![sp500_fields::Fields::Nyse]
+    }
+
+    fn get_source(&self) -> collector_sources::CollectorSource {
+        collector_sources::CollectorSource::NyseEvents
+    }
+}
+
 impl NyseRequest {
     pub fn new(action_date_gte: NaiveDate, days: u64, page: u32, page_size: u32) -> Self {
         Self {
@@ -74,12 +112,10 @@ impl NyseRequest {
     }
 }
 
-pub async fn load_and_store_missing_data(
-    connection_pool: &sqlx::Pool<Postgres>,
-) -> Result<(), Box<dyn error::Error>> {
+pub async fn load_and_store_missing_data(connection_pool: PgPool) -> Result<()> {
     info!("Starting to load NYSE events");
     let now = Utc::now();
-    let mut latest_date = latest_date_available(connection_pool).await;
+    let mut latest_date = latest_date_available(&connection_pool).await;
     let client = Client::new();
     while latest_date <= now.date_naive() {
         debug!("Loading NYSE event data for week: {}", latest_date);
@@ -96,7 +132,7 @@ pub async fn load_and_store_missing_data(
         &week_data.issuer_name[..],
         &week_data.updated_at[..],
         &week_data.market_event[..],
-    ).execute(connection_pool)
+    ).execute(&connection_pool)
     .await?;
 
         latest_date = latest_date
@@ -175,7 +211,7 @@ pub async fn load_missing_week(
     client: &Client,
     date: &NaiveDate,
     url: &str,
-) -> Result<Vec<NyseData>, Box<dyn error::Error>> {
+) -> Result<Vec<NyseData>> {
     let max_page_size = 100; //API does not allow more entries.
     let mut output: Vec<NyseData> = vec![];
 
@@ -194,11 +230,7 @@ pub async fn load_missing_week(
     Ok(output)
 }
 
-async fn peek_number_results(
-    client: &Client,
-    date: &NaiveDate,
-    url: &str,
-) -> Result<u32, Box<dyn error::Error>> {
+async fn peek_number_results(client: &Client, date: &NaiveDate, url: &str) -> Result<u32> {
     let peak_response = request_nyse(client, url, date, 1, 1).await?;
     let peek_response = parse_nyse_peek_response(&peak_response)?;
 
@@ -211,7 +243,7 @@ async fn request_nyse(
     date: &NaiveDate,
     page: u32,
     max_page_size: u32,
-) -> Result<String, Box<dyn error::Error>> {
+) -> Result<String> {
     let response = match client
         .get(url)
         .query(&NyseRequest::new(*date, 7, page, max_page_size))
@@ -235,9 +267,7 @@ async fn request_nyse(
     Ok(response)
 }
 
-fn parse_nyse_peek_response(
-    peak_response: &str,
-) -> Result<NysePeekResponse, Box<serde_json::Error>> {
+fn parse_nyse_peek_response(peak_response: &str) -> Result<NysePeekResponse> {
     let peak_response = match serde_json::from_str(peak_response) {
         Ok(ok) => ok,
         Err(error) => {
@@ -248,7 +278,7 @@ fn parse_nyse_peek_response(
     Ok(peak_response)
 }
 
-fn parse_nyse_response(peak_response: &str) -> Result<NyseResponse, Box<serde_json::Error>> {
+fn parse_nyse_response(peak_response: &str) -> Result<NyseResponse> {
     let peak_response = match serde_json::from_str(peak_response) {
         Ok(ok) => ok,
         Err(error) => {
@@ -294,9 +324,7 @@ mod test {
     use crate::source_apis::nyse::*;
 
     #[sqlx::test]
-    fn empty_database_returns_initial_date(
-        pool: Pool<Postgres>,
-    ) -> Result<(), Box<dyn error::Error>> {
+    fn empty_database_returns_initial_date(pool: Pool<Postgres>) -> Result<()> {
         let earliest_data_date =
             NaiveDate::parse_from_str("2015-12-07", "%Y-%m-%d").expect("Parsing constant.");
         assert!(earliest_data_date <= latest_date_available(&pool).await);
@@ -304,9 +332,7 @@ mod test {
     }
 
     #[sqlx::test]
-    fn two_entry_database_returns_later_date(
-        pool: Pool<Postgres>,
-    ) -> Result<(), Box<dyn error::Error>> {
+    fn two_entry_database_returns_later_date(pool: Pool<Postgres>) -> Result<()> {
         sqlx::query!(
             r#"INSERT INTO nyse_events (action_date, action_status, action_type, issue_symbol, issuer_name, updated_at, market_event, is_staged) VALUES('2023-10-30', 'Pending before the Open', 'Suspend', 'TRCA U', 'Twin Ridge Capital Acquisition Corp.', '2023-10-25T12:00:46.392605-04:00', 'b2d6f0ae-480c-4f77-b955-6bee917c7b30', false), ('2023-11-01', 'Pending before the Open', 'Suspend', 'TRCA U', 'Twin Ridge Capital Acquisition Corp.', '2023-10-25T12:00:46.392605-04:00', 'b2d6f0ae-480c-4f77-b955-6bee917c7b30', false);"#
         ).execute(&pool).await?;

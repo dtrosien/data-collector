@@ -1,7 +1,10 @@
+use crate::actions::ActionType;
 use secrecy::{ExposeSecret, Secret};
 use serde_aux::field_attributes::deserialize_number_from_string;
-use serde_aux::field_attributes::deserialize_option_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
+
+use crate::collectors::collector_sources::CollectorSource;
+use crate::collectors::sp500_fields;
 
 #[derive(serde::Deserialize)]
 pub struct Settings {
@@ -25,14 +28,32 @@ pub struct ApplicationSettings {
     pub tasks: Vec<TaskSetting>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 pub struct TaskSetting {
     pub comment: Option<String>,
-    pub sp500_fields: Vec<String>,
-    #[serde(deserialize_with = "deserialize_option_number_from_string")]
-    pub priority: Option<u16>,
-    pub include_sources: Vec<String>,
-    pub exclude_sources: Option<Vec<String>>,
+    pub actions: Vec<ActionType>,
+    pub sp500_fields: Vec<sp500_fields::Fields>,
+    #[serde(
+        deserialize_with = "deserialize_number_from_string",
+        default = "default_priority"
+    )]
+    pub priority: i32,
+    #[serde(default = "default_include_source")]
+    pub include_sources: Vec<CollectorSource>,
+    #[serde(default = "default_exclude_source")]
+    pub exclude_sources: Vec<CollectorSource>,
+}
+
+fn default_priority() -> i32 {
+    1000
+}
+
+fn default_include_source() -> Vec<CollectorSource> {
+    vec![CollectorSource::All]
+}
+
+fn default_exclude_source() -> Vec<CollectorSource> {
+    vec![]
 }
 
 impl DatabaseSettings {
