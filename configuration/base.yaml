@@ -12,7 +12,7 @@ application:
         - NYSE
       priority: 1
       include_sources:
-        - all
+        - ALL
     - comment: Helpful comment1
       actions: [Collect]
       sp500_fields:
@@ -20,14 +20,14 @@ application:
         - MONTH_TRADING_VOLUME 
       priority: 2
       include_sources:
-        - all
+        - ALL
       exclude_sources:
-        - just_a_bit_brocken_API_1.com
+        - NYSE_EVENTS
     - comment: Helpful comment1
       actions: [Collect,Stage]
       sp500_fields:
         - LOCATION
       priority: 2
       include_sources:
-        - just_a_bit_brocken_API_1.com
+        - NYSE_EVENTS
 ...
