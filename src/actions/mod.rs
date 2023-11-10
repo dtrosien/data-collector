@@ -4,7 +4,7 @@ pub mod stage;
 use crate::actions::collect::CollectAction;
 use crate::actions::stage::StageAction;
 use crate::error::{MatchError, Result};
-use crate::task::{ActionDependencies, Task};
+use crate::task::ActionDependencies;
 use futures_util::future::BoxFuture;
 
 /// Action is a trait that defines the interface for all actions.
