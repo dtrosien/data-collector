@@ -2,9 +2,10 @@ use crate::actions::Action;
 use crate::collectors::Collector;
 use crate::configuration::TaskSetting;
 use crate::error::Result;
+use crate::future_utils::join_handle_results;
 use crate::source_apis::nyse::NyseEventCollector;
 use crate::task::ActionDependencies;
-use futures_util::future::{try_join_all, BoxFuture};
+use futures_util::future::BoxFuture;
 use sqlx::PgPool;
 use std::collections::BTreeSet;
 use tokio::task::JoinHandle;
@@ -62,37 +63,4 @@ impl CollectAction {
 // cannot be executed via execute_runner, since trait upcasting is currently not allowed in Rust :/
 pub fn execute_collector(collector: Box<dyn Collector>) -> JoinHandle<Result<()>> {
     tokio::spawn(async move { collector.run().await })
-}
-
-/// Joins all results from handles into one,
-/// if any future returns an error then all other handles will
-/// be canceled and an error will be returned immediately
-pub async fn join_handle_results_strict(handles: Vec<JoinHandle<Result<()>>>) -> Result<()> {
-    try_join_all(handles)
-        .await
-        .map(|_| ())
-        .map_err(|e| e.into())
-}
-
-/// Joins all results from handles into one,
-/// if any future returns an error all other handles will still be processed
-pub async fn join_handle_results(handles: Vec<JoinHandle<Result<()>>>) -> Result<()> {
-    let mut errors = Vec::new();
-
-    for handle in handles {
-        match handle.await {
-            Ok(result) => {
-                if let Err(e) = result {
-                    errors.push(e);
-                }
-            }
-            Err(e) => errors.push(e.into()),
-        }
-    }
-
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err("One or more tasks failed".into())
-    }
 }

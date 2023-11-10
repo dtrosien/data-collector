@@ -1,6 +1,7 @@
 use crate::actions::{create_action, BoxedAction};
 use crate::configuration::TaskSetting;
 use crate::error::Result;
+use crate::future_utils::join_future_results;
 use crate::runner::Runnable;
 use futures_util::future::{join_all, BoxFuture};
 use sqlx::PgPool;
@@ -80,27 +81,6 @@ impl Runnable for Task {
             .collect::<Vec<BoxFuture<'a, Result<()>>>>();
 
         Box::pin(join_future_results(action_futures))
-    }
-}
-
-/// fails if a single future fails and cancels all the other futures
-async fn join_future_results_strict(futures: Vec<BoxFuture<'_, Result<()>>>) -> Result<()> {
-    let results = join_all(futures).await;
-    results.into_iter().collect()
-}
-
-/// fails if a single future fails but finishes all futures
-async fn join_future_results(futures: Vec<BoxFuture<'_, Result<()>>>) -> Result<()> {
-    let mut errors = Vec::new();
-    for future in futures {
-        if let Err(err) = future.await {
-            errors.push(err);
-        }
-    }
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err("One or more actions failed".into())
     }
 }
 
