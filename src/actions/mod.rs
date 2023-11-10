@@ -14,7 +14,7 @@ pub trait Action: Send + Sync {
 }
 
 /// BoxedAction is a boxed trait object of Action.
-pub type BoxedAction = Box<dyn Action>;
+pub type BoxedAction = Box<dyn Action + Send + Sync>;
 
 /// create_action creates a boxed trait object of Action from a ActionType.
 pub fn create_action(action_type: &ActionType) -> Result<BoxedAction> {
@@ -25,7 +25,7 @@ pub fn create_action(action_type: &ActionType) -> Result<BoxedAction> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub enum ActionType {
     Collect,
     Stage,

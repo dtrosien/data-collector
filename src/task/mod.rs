@@ -1,4 +1,4 @@
-use crate::actions::BoxedAction;
+use crate::actions::{create_action, BoxedAction};
 use crate::collectors::Collector;
 use crate::error::Result;
 use crate::{configuration::TaskSetting, source_apis::nyse::NyseEventCollector};
@@ -9,6 +9,7 @@ use std::{
     error::Error,
 };
 use tokio::task::JoinHandle;
+use tracing::warn;
 use uuid::Uuid;
 
 pub trait Runnable: Send + Sync {
@@ -16,7 +17,10 @@ pub trait Runnable: Send + Sync {
 }
 
 #[derive(Clone)]
-pub struct TaskMeta {}
+pub struct TaskMeta {
+    pub pool: PgPool,
+    pub setting: TaskSetting,
+}
 
 pub struct Task {
     id: Uuid,
@@ -27,11 +31,20 @@ pub struct Task {
 
 impl Task {
     pub fn new(setting: &TaskSetting, db: &PgPool) -> Self {
+        let actions = setting
+            .actions
+            .iter()
+            .filter_map(|at| create_action(at).ok())
+            .collect();
+
         Task {
             id: Uuid::new_v4(),
             priority: 1.0,
-            actions: vec![], //todo build actions
-            meta: TaskMeta {},
+            actions,
+            meta: TaskMeta {
+                pool: db.clone(),
+                setting: setting.clone(),
+            },
             //collectors: Self::matching_collectors(setting, db.clone()),
         }
     }

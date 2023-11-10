@@ -1,3 +1,4 @@
+use crate::actions::ActionType;
 use secrecy::{ExposeSecret, Secret};
 use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
@@ -27,10 +28,10 @@ pub struct ApplicationSettings {
     pub tasks: Vec<TaskSetting>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 pub struct TaskSetting {
     pub comment: Option<String>,
-    pub actions: Vec<String>,
+    pub actions: Vec<ActionType>,
     pub sp500_fields: Vec<sp500_fields::Fields>,
     #[serde(
         deserialize_with = "deserialize_number_from_string",

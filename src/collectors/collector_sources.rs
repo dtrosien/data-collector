@@ -2,7 +2,7 @@ use core::fmt;
 
 use serde::Deserialize;
 
-#[derive(Deserialize, PartialEq, Eq, Hash, Debug)]
+#[derive(Deserialize, PartialEq, Eq, Hash, Debug, Clone)]
 #[serde(rename_all(deserialize = "SCREAMING_SNAKE_CASE"))]
 pub enum CollectorSource {
     NyseEvents,
