@@ -3,8 +3,8 @@ use crate::collectors::Collector;
 use crate::configuration::TaskSetting;
 use crate::error::Result;
 use crate::source_apis::nyse::NyseEventCollector;
-use crate::task::{execute_runnable, Runnable, Task, TaskMeta};
-use futures_util::future::BoxFuture;
+use crate::task::ActionDependencies;
+use futures_util::future::{try_join_all, BoxFuture};
 use sqlx::PgPool;
 use std::collections::BTreeSet;
 use tokio::task::JoinHandle;
@@ -13,27 +13,14 @@ use tokio::task::JoinHandle;
 pub struct CollectAction {}
 
 impl Action for CollectAction {
-    fn perform<'a>(&self, meta: TaskMeta) -> BoxFuture<'a, Result<()>> {
-        let mut collectors = CollectAction::matching_collectors(&meta.setting, meta.pool.clone());
-        let mut handles: Vec<JoinHandle<Result<()>>> = vec![];
-        while !collectors.is_empty() {
-            // https://stackoverflow.com/questions/28632968/why-doesnt-rust-support-trait-object-upcasting
-            handles.push(execute_runnable(collectors.pop().unwrap()))
-        }
-        let joined_result = async move {
-            let mut errors = Vec::new();
+    fn perform<'a>(&self, meta: ActionDependencies) -> BoxFuture<'a, Result<()>> {
+        let collectors = CollectAction::matching_collectors(&meta.setting, meta.pool.clone());
 
-            for handle in handles {
-                if let Err(err) = handle.await {
-                    errors.push(err);
-                }
-            }
-            if errors.is_empty() {
-                Ok(())
-            } else {
-                Err("".into())
-            }
-        };
+        let handles: Vec<JoinHandle<Result<()>>> =
+            collectors.into_iter().map(execute_collector).collect();
+
+        let joined_result = async move { join_handle_results(handles).await };
+
         Box::pin(joined_result)
     }
 }
@@ -70,5 +57,43 @@ impl CollectAction {
 
     fn get_all_collectors(pool: PgPool) -> Vec<Box<dyn Collector>> {
         vec![Box::new(NyseEventCollector::new(pool))]
+    }
+}
+
+// cannot be executed via execute_runner, since trait upcasting is currently not allowed in Rust :/
+pub fn execute_collector(collector: Box<dyn Collector>) -> JoinHandle<Result<()>> {
+    tokio::spawn(async move { collector.run().await })
+}
+
+/// Joins all results from handles into one,
+/// if any future returns an error then all other handles will
+/// be canceled and an error will be returned immediately
+pub async fn join_handle_results_strict(handles: Vec<JoinHandle<Result<()>>>) -> Result<()> {
+    try_join_all(handles)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.into())
+}
+
+/// Joins all results from handles into one,
+/// if any future returns an error all other handles will still be processed
+pub async fn join_handle_results(handles: Vec<JoinHandle<Result<()>>>) -> Result<()> {
+    let mut errors = Vec::new();
+
+    for handle in handles {
+        match handle.await {
+            Ok(result) => {
+                if let Err(e) = result {
+                    errors.push(e);
+                }
+            }
+            Err(e) => errors.push(e.into()),
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err("One or more tasks failed".into())
     }
 }

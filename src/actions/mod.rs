@@ -4,13 +4,13 @@ pub mod stage;
 use crate::actions::collect::CollectAction;
 use crate::actions::stage::StageAction;
 use crate::error::{MatchError, Result};
-use crate::task::{Task, TaskMeta};
+use crate::task::{ActionDependencies, Task};
 use futures_util::future::BoxFuture;
 
 /// Action is a trait that defines the interface for all actions.
 pub trait Action: Send + Sync {
     /// transform will take an input Resource and perform an actions on it and returns another Resource.
-    fn perform<'a>(&self, meta: TaskMeta) -> BoxFuture<'a, Result<()>>;
+    fn perform<'a>(&self, meta: ActionDependencies) -> BoxFuture<'a, Result<()>>;
 }
 
 /// BoxedAction is a boxed trait object of Action.

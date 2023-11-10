@@ -9,7 +9,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::collectors::{collector_sources, sp500_fields, Collector};
-use crate::task::Runnable;
+use crate::runner::Runnable;
 use sqlx::{PgPool, Postgres};
 use tracing::{debug, info, warn};
 

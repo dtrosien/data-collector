@@ -1,32 +1,40 @@
 use crate::actions::{create_action, BoxedAction};
-use crate::collectors::Collector;
+use crate::configuration::TaskSetting;
 use crate::error::Result;
-use crate::{configuration::TaskSetting, source_apis::nyse::NyseEventCollector};
-use futures_util::future::BoxFuture;
+use crate::runner::Runnable;
+use futures_util::future::{join_all, BoxFuture};
 use sqlx::PgPool;
-use std::{
-    collections::{BTreeSet, HashSet},
-    error::Error,
-};
+use std::cmp::Ordering;
+use std::error::Error;
 use tokio::task::JoinHandle;
 use tracing::warn;
 use uuid::Uuid;
 
-pub trait Runnable: Send + Sync {
-    fn run<'a>(&self) -> BoxFuture<'a, Result<()>>;
-}
-
-#[derive(Clone)]
-pub struct TaskMeta {
-    pub pool: PgPool,
-    pub setting: TaskSetting,
-}
-
 pub struct Task {
     id: Uuid,
-    priority: f32,
+    priority: i32,
     actions: Vec<BoxedAction>,
-    meta: TaskMeta, //collectors: Vec<Box<dyn Collector>>,
+    action_dependencies: ActionDependencies,
+}
+
+impl Eq for Task {}
+
+impl PartialEq<Self> for Task {
+    fn eq(&self, other: &Self) -> bool {
+        self.priority.eq(&other.priority)
+    }
+}
+
+impl PartialOrd<Self> for Task {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Task {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.priority.cmp(&other.priority)
+    }
 }
 
 impl Task {
@@ -39,48 +47,20 @@ impl Task {
 
         Task {
             id: Uuid::new_v4(),
-            priority: 1.0,
+            priority: setting.priority,
             actions,
-            meta: TaskMeta {
+            action_dependencies: ActionDependencies {
                 pool: db.clone(),
                 setting: setting.clone(),
             },
-            //collectors: Self::matching_collectors(setting, db.clone()),
         }
     }
+}
 
-    fn matching_collectors<'a>(setting: &TaskSetting, pool: PgPool) -> Vec<Box<dyn Collector>> {
-        let mut result = vec![];
-        let collectors = Self::get_all_collectors(pool);
-        let f: Vec<_> = collectors
-            .into_iter()
-            .filter(|collector| Self::is_collector_requested(setting, collector))
-            .collect();
-        result
-    }
-
-    fn is_collector_requested(setting: &TaskSetting, collector: &Box<dyn Collector>) -> bool {
-        let converted_settings_sp = setting.sp500_fields.iter().collect::<BTreeSet<_>>();
-        let sp_fields = collector.get_sp_fields();
-        let converted_collector_sp = sp_fields.iter().collect::<BTreeSet<_>>();
-        if converted_settings_sp.is_disjoint(&converted_collector_sp) {
-            return false;
-        }
-
-        if !setting.include_sources.contains(&&collector.get_source()) {
-            return false;
-        }
-
-        if setting.exclude_sources.contains(&&collector.get_source()) {
-            return false;
-        }
-
-        true
-    }
-
-    fn get_all_collectors(pool: PgPool) -> Vec<Box<dyn Collector>> {
-        vec![Box::new(NyseEventCollector::new(pool))]
-    }
+#[derive(Clone)]
+pub struct ActionDependencies {
+    pub pool: PgPool,
+    pub setting: TaskSetting,
 }
 
 impl Runnable for Task {
@@ -96,28 +76,34 @@ impl Runnable for Task {
         let action_futures = self
             .actions
             .iter()
-            .map(|x| x.perform(self.meta.clone()))
+            .map(|x| x.perform(self.action_dependencies.clone()))
             .collect::<Vec<BoxFuture<'a, Result<()>>>>();
 
-        let joined_result = async move {
-            let mut errors = Vec::new();
-
-            for action_future in action_futures {
-                if let Err(err) = action_future.await {
-                    errors.push(err);
-                }
-            }
-            if errors.is_empty() {
-                Ok(())
-            } else {
-                Err("".into())
-            }
-        };
-
-        Box::pin(joined_result)
+        Box::pin(join_future_results(action_futures))
     }
 }
 
-pub fn execute_runnable(runnable: Box<dyn Runnable>) -> JoinHandle<Result<()>> {
-    tokio::spawn(async move { runnable.run().await })
+/// fails if a single future fails and cancels all the other futures
+async fn join_future_results_strict(futures: Vec<BoxFuture<'_, Result<()>>>) -> Result<()> {
+    let results = join_all(futures).await;
+    results.into_iter().collect()
+}
+
+/// fails if a single future fails but finishes all futures
+async fn join_future_results(futures: Vec<BoxFuture<'_, Result<()>>>) -> Result<()> {
+    let mut errors = Vec::new();
+    for future in futures {
+        if let Err(err) = future.await {
+            errors.push(err);
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err("One or more actions failed".into())
+    }
+}
+
+pub fn execute_task(boxed_task: Task) -> JoinHandle<Result<()>> {
+    tokio::spawn(async move { boxed_task.run().await })
 }
