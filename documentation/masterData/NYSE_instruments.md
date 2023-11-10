@@ -8,6 +8,19 @@ curl -X POST https://www.nyse.com/api/quotes/filter -H 'Content-Type: applicatio
 ~~~
 Response:
 ~~~json
-[{"total":5083,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"A","normalizedTicker":"A","symbolEsignalTicker":"A","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]
+[
+    {
+        "total": 5083,
+        "url": "https://www.nyse.com/quote/XNYS:A",
+        "exchangeId": "558",
+        "instrumentType": "COMMON_STOCK",
+        "symbolTicker": "A",
+        "symbolExchangeTicker": "A",
+        "normalizedTicker": "A",
+        "symbolEsignalTicker": "A",
+        "instrumentName": "AGILENT TECHNOLOGIES INC",
+        "micCode": "XNYS"
+    }
+]
 ~~~
 
