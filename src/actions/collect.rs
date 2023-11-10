@@ -13,8 +13,9 @@ use tokio::task::JoinHandle;
 pub struct CollectAction {}
 
 impl Action for CollectAction {
-    fn perform<'a>(&self, meta: ActionDependencies) -> BoxFuture<'a, Result<()>> {
-        let collectors = CollectAction::matching_collectors(&meta.setting, meta.pool.clone());
+    fn perform<'a>(&self, dependencies: ActionDependencies) -> BoxFuture<'a, Result<()>> {
+        let collectors =
+            CollectAction::matching_collectors(&dependencies.setting, dependencies.pool.clone());
 
         let handles: Vec<JoinHandle<Result<()>>> =
             collectors.into_iter().map(execute_collector).collect();
@@ -26,17 +27,15 @@ impl Action for CollectAction {
 }
 
 impl CollectAction {
-    fn matching_collectors<'a>(setting: &TaskSetting, pool: PgPool) -> Vec<Box<dyn Collector>> {
-        let mut result = vec![];
+    fn matching_collectors(setting: &TaskSetting, pool: PgPool) -> Vec<Box<dyn Collector>> {
         let collectors = Self::get_all_collectors(pool);
-        let f: Vec<_> = collectors
+        collectors
             .into_iter()
-            .filter(|collector| Self::is_collector_requested(setting, collector))
-            .collect();
-        result
+            .filter(|collector| Self::is_collector_requested(setting, collector.as_ref()))
+            .collect()
     }
 
-    fn is_collector_requested(setting: &TaskSetting, collector: &Box<dyn Collector>) -> bool {
+    fn is_collector_requested(setting: &TaskSetting, collector: &dyn Collector) -> bool {
         let converted_settings_sp = setting.sp500_fields.iter().collect::<BTreeSet<_>>();
         let sp_fields = collector.get_sp_fields();
         let converted_collector_sp = sp_fields.iter().collect::<BTreeSet<_>>();
@@ -44,11 +43,11 @@ impl CollectAction {
             return false;
         }
 
-        if !setting.include_sources.contains(&&collector.get_source()) {
+        if !setting.include_sources.contains(&collector.get_source()) {
             return false;
         }
 
-        if setting.exclude_sources.contains(&&collector.get_source()) {
+        if setting.exclude_sources.contains(&collector.get_source()) {
             return false;
         }
 

@@ -10,7 +10,7 @@ use futures_util::future::BoxFuture;
 /// Action is a trait that defines the interface for all actions.
 pub trait Action: Send + Sync {
     /// transform will take an input Resource and perform an actions on it and returns another Resource.
-    fn perform<'a>(&self, meta: ActionDependencies) -> BoxFuture<'a, Result<()>>;
+    fn perform<'a>(&self, dependencies: ActionDependencies) -> BoxFuture<'a, Result<()>>;
 }
 
 /// BoxedAction is a boxed trait object of Action.
@@ -25,6 +25,7 @@ pub fn create_action(action_type: &ActionType) -> Result<BoxedAction> {
     }
 }
 
+/// Possible Actions
 #[derive(Debug, Clone, serde::Deserialize)]
 pub enum ActionType {
     Collect,

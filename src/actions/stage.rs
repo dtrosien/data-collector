@@ -7,7 +7,7 @@ use futures_util::future::BoxFuture;
 pub struct StageAction {}
 
 impl Action for StageAction {
-    fn perform<'a>(&self, meta: ActionDependencies) -> BoxFuture<'a, Result<()>> {
+    fn perform<'a>(&self, _dependencies: ActionDependencies) -> BoxFuture<'a, Result<()>> {
         todo!()
     }
 }
