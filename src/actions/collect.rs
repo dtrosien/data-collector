@@ -3,6 +3,7 @@ use crate::collectors::Collector;
 use crate::configuration::TaskSetting;
 use crate::error::Result;
 use crate::future_utils::join_handle_results;
+use crate::source_apis::dummy::DummyCollector;
 use crate::source_apis::nyse::NyseEventCollector;
 use crate::task::ActionDependencies;
 use futures_util::future::BoxFuture;
@@ -56,7 +57,10 @@ impl CollectAction {
     }
 
     fn get_all_collectors(pool: PgPool) -> Vec<Box<dyn Collector>> {
-        vec![Box::new(NyseEventCollector::new(pool))]
+        vec![
+            Box::new(NyseEventCollector::new(pool)),
+            Box::new(DummyCollector {}),
+        ]
     }
 }
 

@@ -1,7 +1,12 @@
 use chrono::Utc;
+use data_collector::actions::ActionType::Collect;
 use data_collector::collectors::collector_sources::CollectorSource;
+use data_collector::collectors::collector_sources::CollectorSource::All;
+use data_collector::collectors::sp500_fields::Fields;
 use data_collector::configuration::{get_configuration, DatabaseSettings, TaskSetting};
+use data_collector::runner::build_task_prio_queue;
 use data_collector::telemetry::{get_subscriber, init_subscriber};
+use rand::Rng;
 use sqlx::types::Uuid;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::sync::OnceLock;
@@ -128,4 +133,62 @@ async fn partition_pruning_enabled() {
         .await
         .expect("Failed to fetch config of database.");
     assert_eq!("on", saved.enable_partition_pruning.unwrap());
+}
+
+#[tokio::test]
+async fn prio_queue_order_and_filter() {
+    // Arrange
+    let app = spawn_app().await;
+    let priorities_in = vec![1, 500, 300, 1000, -2, 90, -20];
+    let priorities_out = vec![1000, 500, 300, 90, 1];
+    let base_task = TaskSetting {
+        comment: None,
+        actions: vec![Collect],
+        sp500_fields: vec![Fields::Nyse],
+        priority: 0,
+        include_sources: vec![All],
+        exclude_sources: vec![],
+    };
+    let mut tasks = vec![];
+    for n in priorities_in {
+        let mut task = base_task.clone();
+        task.priority = n;
+        tasks.push(task);
+    }
+
+    // Act
+    let mut queue = build_task_prio_queue(&tasks, &app.db_pool).await;
+
+    // Assert
+    for n in priorities_out {
+        assert_eq!(queue.pop().unwrap().get_priority(), n)
+    }
+}
+
+#[tokio::test]
+async fn running_dummy_action() {
+    // Arrange
+    let app = spawn_app().await;
+    let num_tasks = 200;
+    let base_task = TaskSetting {
+        comment: None,
+        actions: vec![Collect],
+        sp500_fields: vec![Fields::Nyse],
+        priority: 0,
+        include_sources: vec![All],
+        exclude_sources: vec![],
+    };
+    let mut tasks = vec![];
+    let mut rng = rand::thread_rng();
+    for _n in 0..num_tasks {
+        let mut task = base_task.clone();
+        task.priority = rng.gen();
+        tasks.push(task);
+    }
+
+    // Act
+    let runner = data_collector::runner::run(app.db_pool, &tasks);
+
+    // Assert
+    assert!(runner.await.is_ok())
 }

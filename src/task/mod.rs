@@ -55,6 +55,10 @@ impl Task {
             },
         }
     }
+
+    pub fn get_priority(&self) -> i32 {
+        self.priority
+    }
 }
 
 #[derive(Clone)]
@@ -69,7 +73,6 @@ impl Runnable for Task {
     skip(self),
     fields(
     task_id = %self.id,
-    // collectors = %self.collectors
     )
     )]
     fn run<'a>(&self) -> BoxFuture<'a, Result<()>> {
