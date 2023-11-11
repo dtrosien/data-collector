@@ -3,7 +3,7 @@ use crate::collectors::Collector;
 use crate::configuration::TaskSetting;
 use crate::error::Result;
 use crate::future_utils::join_handle_results;
-use crate::source_apis::nyse::NyseEventCollector;
+use crate::source_apis::nyse_events::NyseEventCollector;
 use crate::task::ActionDependencies;
 use futures_util::future::BoxFuture;
 use sqlx::PgPool;

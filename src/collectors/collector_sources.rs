@@ -6,7 +6,7 @@ use serde::Deserialize;
 #[serde(rename_all(deserialize = "SCREAMING_SNAKE_CASE"))]
 pub enum CollectorSource {
     NyseEvents,
-    NyseCompanies,
+    NyseInstruments,
     All,
     Unknown,
 }

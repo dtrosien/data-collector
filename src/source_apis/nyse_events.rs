@@ -321,7 +321,7 @@ mod test {
     use reqwest::Client;
     use sqlx::Pool;
 
-    use crate::source_apis::nyse::*;
+    use crate::source_apis::nyse_events::*;
 
     #[sqlx::test]
     fn empty_database_returns_initial_date(pool: Pool<Postgres>) -> Result<()> {
