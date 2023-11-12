@@ -36,6 +36,14 @@ impl CollectAction {
             .collect()
     }
 
+    // todo does this really require Collectors instances? Currently it seems that this can be solved via the collector source enum
+    fn get_all_collectors(pool: PgPool) -> Vec<Box<dyn Collector>> {
+        vec![
+            Box::new(NyseEventCollector::new(pool)),
+            Box::new(DummyCollector {}),
+        ]
+    }
+
     fn is_collector_requested(setting: &TaskSetting, collector: &dyn Collector) -> bool {
         let converted_settings_sp = setting.sp500_fields.iter().collect::<BTreeSet<_>>();
         let sp_fields = collector.get_sp_fields();
@@ -53,13 +61,6 @@ impl CollectAction {
         }
 
         true
-    }
-
-    fn get_all_collectors(pool: PgPool) -> Vec<Box<dyn Collector>> {
-        vec![
-            Box::new(NyseEventCollector::new(pool)),
-            Box::new(DummyCollector {}),
-        ]
     }
 }
 

@@ -18,7 +18,13 @@ pub struct Task {
     id: Uuid,
     priority: i32,
     actions: Vec<BoxedAction>,
-    action_dependencies: ActionDependencies,
+    action_dependencies: ActionDependencies, // maybe use Arc<Mutex> to reduce mem overhead -> however more blocking of threads
+}
+
+#[derive(Clone)]
+pub struct ActionDependencies {
+    pub pool: PgPool,
+    pub setting: TaskSetting,
 }
 
 impl Eq for Task {}
@@ -65,12 +71,6 @@ impl Task {
     }
 }
 
-#[derive(Clone)]
-pub struct ActionDependencies {
-    pub pool: PgPool,
-    pub setting: TaskSetting,
-}
-
 #[async_trait]
 impl Runnable for Task {
     #[tracing::instrument(name = "Running tasks", skip(self), fields(task_id = %self.id,))]
@@ -78,15 +78,15 @@ impl Runnable for Task {
         let action_futures = self
             .actions
             .iter()
-            .map(|x| x.execute(self.action_dependencies.clone()))
+            .map(|action| action.execute(self.action_dependencies.clone()))
             .collect::<Vec<BoxFuture<Result<()>>>>();
 
         join_future_results(action_futures).await
     }
 }
 
-pub fn execute_task(boxed_task: Task) -> JoinHandle<Result<()>> {
-    tokio::spawn(async move { boxed_task.run().await })
+pub fn execute_task(task: Task) -> JoinHandle<Result<()>> {
+    tokio::spawn(async move { task.run().await })
 }
 
 /// build a priority queue for Tasks based on a binary heap
