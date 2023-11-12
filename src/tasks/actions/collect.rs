@@ -1,12 +1,12 @@
-use crate::actions::Action;
+use crate::collectors::source_apis::dummy::DummyCollector;
+use crate::collectors::source_apis::nyse::NyseEventCollector;
 use crate::collectors::Collector;
 use crate::configuration::TaskSetting;
-use crate::error::Result;
-use crate::future_utils::join_handle_results;
-use crate::source_apis::dummy::DummyCollector;
-use crate::source_apis::nyse::NyseEventCollector;
-use crate::task::ActionDependencies;
-use futures_util::future::BoxFuture;
+use crate::tasks::actions::Action;
+use crate::tasks::ActionDependencies;
+use crate::utils::error::Result;
+use crate::utils::future_utils::join_handle_results;
+use async_trait::async_trait;
 use sqlx::PgPool;
 use std::collections::BTreeSet;
 use tokio::task::JoinHandle;
@@ -14,17 +14,16 @@ use tokio::task::JoinHandle;
 /// Collect from sources via Collectors
 pub struct CollectAction {}
 
+#[async_trait]
 impl Action for CollectAction {
-    fn perform<'a>(&self, dependencies: ActionDependencies) -> BoxFuture<'a, Result<()>> {
+    async fn execute(&self, dependencies: ActionDependencies) -> Result<()> {
         let collectors =
             CollectAction::matching_collectors(&dependencies.setting, dependencies.pool.clone());
 
         let handles: Vec<JoinHandle<Result<()>>> =
             collectors.into_iter().map(execute_collector).collect();
 
-        let joined_result = async move { join_handle_results(handles).await };
-
-        Box::pin(joined_result)
+        join_handle_results(handles).await
     }
 }
 

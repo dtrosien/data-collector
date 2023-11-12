@@ -1,17 +1,18 @@
 use crate::collectors::collector_sources::CollectorSource;
 use crate::collectors::sp500_fields::Fields;
 use crate::collectors::Collector;
-use crate::runner::Runnable;
+use crate::tasks::runnable::Runnable;
+use crate::utils::error::Result;
+use async_trait::async_trait;
 use core::fmt::{Display, Formatter};
-use futures_util::future::BoxFuture;
 
 pub struct DummyCollector {}
 
+#[async_trait]
 impl Runnable for DummyCollector {
     #[tracing::instrument(name = "Start running dummy collector", skip(self))]
-    fn run<'a>(&self) -> BoxFuture<'a, crate::error::Result<()>> {
-        let f = async move { Ok(()) };
-        Box::pin(f)
+    async fn run(&self) -> Result<()> {
+        Ok(())
     }
 }
 

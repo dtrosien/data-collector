@@ -1,15 +1,14 @@
-use std::fmt::Display;
-
-use crate::error::Result;
+use crate::utils::error::Result;
+use async_trait::async_trait;
 use chrono::prelude::*;
 use chrono::{Days, NaiveDate};
-use futures_util::future::BoxFuture;
+use std::fmt::Display;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::collectors::{collector_sources, sp500_fields, Collector};
-use crate::runner::Runnable;
+use crate::tasks::runnable::Runnable;
 use sqlx::{PgPool, Postgres};
 use tracing::{debug, info, warn};
 
@@ -82,10 +81,10 @@ impl Display for NyseEventCollector {
     }
 }
 
+#[async_trait]
 impl Runnable for NyseEventCollector {
-    fn run<'a>(&self) -> BoxFuture<'a, Result<()>> {
-        let f = load_and_store_missing_data(self.pool.clone());
-        Box::pin(f)
+    async fn run(&self) -> Result<()> {
+        load_and_store_missing_data(self.pool.clone()).await
     }
 }
 
@@ -321,7 +320,7 @@ mod test {
     use reqwest::Client;
     use sqlx::Pool;
 
-    use crate::source_apis::nyse::*;
+    use crate::collectors::source_apis::nyse::*;
 
     #[sqlx::test]
     fn empty_database_returns_initial_date(pool: Pool<Postgres>) -> Result<()> {

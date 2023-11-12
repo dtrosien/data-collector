@@ -1,14 +1,18 @@
-use crate::actions::{create_action, BoxedAction};
 use crate::configuration::TaskSetting;
-use crate::error::Result;
-use crate::future_utils::join_future_results;
-use crate::runner::Runnable;
+use crate::tasks::actions::{create_action, BoxedAction};
+use crate::tasks::runnable::Runnable;
+use crate::utils::error::Result;
+use crate::utils::future_utils::join_future_results;
+use async_trait::async_trait;
 use futures_util::future::BoxFuture;
 use sqlx::PgPool;
 use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 use tokio::task::JoinHandle;
-use tracing::warn;
 use uuid::Uuid;
+
+pub mod actions;
+pub mod runnable;
 
 pub struct Task {
     id: Uuid,
@@ -67,25 +71,37 @@ pub struct ActionDependencies {
     pub setting: TaskSetting,
 }
 
+#[async_trait]
 impl Runnable for Task {
-    #[tracing::instrument(
-    name = "Running task",
-    skip(self),
-    fields(
-    task_id = %self.id,
-    )
-    )]
-    fn run<'a>(&self) -> BoxFuture<'a, Result<()>> {
+    #[tracing::instrument(name = "Running tasks", skip(self), fields(task_id = %self.id,))]
+    async fn run(&self) -> Result<()> {
         let action_futures = self
             .actions
             .iter()
-            .map(|x| x.perform(self.action_dependencies.clone()))
-            .collect::<Vec<BoxFuture<'a, Result<()>>>>();
+            .map(|x| x.execute(self.action_dependencies.clone()))
+            .collect::<Vec<BoxFuture<Result<()>>>>();
 
-        Box::pin(join_future_results(action_futures))
+        join_future_results(action_futures).await
     }
 }
 
 pub fn execute_task(boxed_task: Task) -> JoinHandle<Result<()>> {
     tokio::spawn(async move { boxed_task.run().await })
+}
+
+/// build a priority queue for Tasks based on a binary heap
+/// only tasks with prio > 0 will be scheduled
+#[tracing::instrument(name = "Building tasks priority queue", skip(task_settings, pool))]
+pub async fn build_task_prio_queue(
+    task_settings: &[TaskSetting],
+    pool: &PgPool,
+) -> BinaryHeap<Task> {
+    let mut prio_queue = BinaryHeap::with_capacity(task_settings.len());
+
+    for ts in task_settings.iter().filter(|s| s.priority >= 0) {
+        let task = Task::new(ts, pool);
+        prio_queue.push(task)
+    }
+
+    prio_queue
 }
