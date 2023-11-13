@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO nyse_events\n            (action_date, action_status, action_type, issue_symbol, issuer_name, updated_at, market_event)\n            Select * from UNNEST ($1::date[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) on conflict do nothing",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "DateArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "96906832929650ff64953e601ce1019a69a4db002241075580725afb16fc4f0d"
+}
