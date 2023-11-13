@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use crate::tasks::actions::collect::CollectAction;
 use crate::tasks::actions::stage::StageAction;
 use crate::tasks::ActionDependencies;
-use crate::utils::error::{MatchError, Result};
+use crate::utils::errors::{MatchError, Result};
 
 /// Action is a trait that defines the interface for all actions.
 #[async_trait]

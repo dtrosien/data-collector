@@ -1,3 +1,3 @@
-pub mod error;
-pub mod future_utils;
+pub mod errors;
+pub mod futures;
 pub mod telemetry;

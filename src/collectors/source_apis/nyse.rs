@@ -1,4 +1,4 @@
-use crate::utils::error::Result;
+use crate::utils::errors::Result;
 use async_trait::async_trait;
 use chrono::prelude::*;
 use chrono::{Days, NaiveDate};

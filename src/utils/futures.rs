@@ -1,4 +1,4 @@
-use crate::utils::error::Result;
+use crate::utils::errors::Result;
 use futures_util::future::{join_all, try_join_all, BoxFuture};
 use tokio::task::JoinHandle;
 

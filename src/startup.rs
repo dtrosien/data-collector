@@ -1,7 +1,7 @@
 use crate::configuration::TaskSetting;
 use crate::tasks::{build_task_prio_queue, execute_task};
-use crate::utils::error::Result;
-use crate::utils::future_utils::join_handle_results;
+use crate::utils::errors::Result;
+use crate::utils::futures::join_handle_results;
 use sqlx::PgPool;
 
 /// runs all tasks concurrently and waits till all tasks finished,

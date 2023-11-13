@@ -1,4 +1,4 @@
-use crate::utils::error::Result;
+use crate::utils::errors::Result;
 use async_trait::async_trait;
 
 /// used when spawning tokio tasks, needs adjustment when async traits are allowed

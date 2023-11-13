@@ -1,8 +1,8 @@
 use crate::configuration::TaskSetting;
 use crate::tasks::actions::{create_action, BoxedAction};
 use crate::tasks::runnable::Runnable;
-use crate::utils::error::Result;
-use crate::utils::future_utils::join_future_results;
+use crate::utils::errors::Result;
+use crate::utils::futures::join_future_results;
 use async_trait::async_trait;
 use futures_util::future::BoxFuture;
 use sqlx::PgPool;

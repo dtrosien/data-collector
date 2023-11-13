@@ -2,7 +2,7 @@ use crate::collectors::collector_sources::CollectorSource;
 use crate::collectors::sp500_fields::Fields;
 use crate::collectors::Collector;
 use crate::tasks::runnable::Runnable;
-use crate::utils::error::Result;
+use crate::utils::errors::Result;
 use async_trait::async_trait;
 use core::fmt::{Display, Formatter};
 

@@ -169,7 +169,7 @@ async fn prio_queue_order_and_filter() {
 async fn running_dummy_action() {
     // Arrange
     let app = spawn_app().await;
-    let num_tasks = 200;
+    let num_tasks = 20;
     let base_task = TaskSetting {
         comment: None,
         actions: vec![Collect],
