@@ -3,7 +3,7 @@ database:
   port: 6543
   username: "postgres"
   password: "password"
-  database_name: "exampledb"
+  database_name: "collector"
 application:
   tasks:
     - comment: Helpful comment
