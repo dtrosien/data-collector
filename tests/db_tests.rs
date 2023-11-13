@@ -1,11 +1,11 @@
 use chrono::Utc;
-use data_collector::actions::ActionType::Collect;
 use data_collector::collectors::collector_sources::CollectorSource;
 use data_collector::collectors::collector_sources::CollectorSource::All;
 use data_collector::collectors::sp500_fields::Fields;
 use data_collector::configuration::{get_configuration, DatabaseSettings, TaskSetting};
-use data_collector::runner::build_task_prio_queue;
-use data_collector::telemetry::{get_subscriber, init_subscriber};
+use data_collector::tasks::actions::ActionType::Collect;
+use data_collector::tasks::build_task_prio_queue;
+use data_collector::utils::telemetry::{get_subscriber, init_subscriber};
 use rand::Rng;
 use sqlx::types::Uuid;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
@@ -119,7 +119,7 @@ async fn start_task() {
     let task_settings = vec![task_setting];
 
     // Act
-    let runner = data_collector::runner::run(app.db_pool, &task_settings);
+    let runner = data_collector::startup::run(app.db_pool, &task_settings);
 
     // Assert
     assert!(runner.await.is_ok())
@@ -187,7 +187,7 @@ async fn running_dummy_action() {
     }
 
     // Act
-    let runner = data_collector::runner::run(app.db_pool, &tasks);
+    let runner = data_collector::startup::run(app.db_pool, &tasks);
 
     // Assert
     assert!(runner.await.is_ok())
