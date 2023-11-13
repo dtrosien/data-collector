@@ -63,3 +63,19 @@ If no file was created or not updated after the code was changed, run cargo clea
 When the file is up-to-date the docker build command should finish successfully. 
 
     docker build --tag data-collector --file Dockerfile . 
+
+
+
+#### Deploy on Digital Ocean (only required for repo owner):
+Create Token at https://cloud.digitalocean.com/account/api/tokens (with write rights)
+Authenticate:
+
+    doctl auth init 
+
+Deploy App:
+
+    doctl apps create --spec spec.yaml 
+
+Check Apps:
+
+    doctl apps list 
