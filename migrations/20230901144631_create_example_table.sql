@@ -1,3 +1,5 @@
+-- noinspection SqlNoDataSourceInspectionForFile
+
 -- Add migration script here
 -- Create Example Table
 CREATE TABLE example
