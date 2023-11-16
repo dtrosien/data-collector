@@ -3,7 +3,7 @@ extern crate tracing;
 use data_collector::configuration::get_configuration;
 use data_collector::db;
 use data_collector::runner::run;
-use data_collector::source_apis::nyse_events;
+use data_collector::source_apis::{nyse_events, nyse_instruments};
 use data_collector::telemetry::{get_subscriber, init_subscriber};
 
 use std::error::Error;
@@ -16,6 +16,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let configuration = get_configuration().expect("Failed to read configuration.");
     let connection_pool = db::create_connection_pool(&configuration);
     connection_pool.set_connect_options(configuration.database.with_db());
+    nyse_instruments::load_and_store_missing_data(connection_pool.clone())
+        .await
+        .unwrap();
 
     nyse_events::load_and_store_missing_data(connection_pool.clone())
         .await

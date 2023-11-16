@@ -32,8 +32,19 @@ struct NyseInstrument {
     pub symbolExchangeTicker: String,
     pub normalizedTicker: String,
     pub symbolEsignalTicker: String,
-    pub instrumentName: String,
+    pub instrumentName: Option<String>,
     pub micCode: String,
+}
+
+#[derive(Default, Deserialize, Debug, PartialEq)]
+struct TransposedNyseInstrument {
+    pub instrumentType: Vec<String>,
+    pub symbolTicker: Vec<String>,
+    pub symbolExchangeTicker: Vec<String>,
+    pub normalizedTicker: Vec<String>,
+    pub symbolEsignalTicker: Vec<String>,
+    pub instrumentName: Vec<String>,
+    pub micCode: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -63,8 +74,64 @@ impl Runnable for NyseInstrumentCollector {
 pub async fn load_and_store_missing_data(connection_pool: PgPool) -> Result<()> {
     info!("Starting to load NYSE instruments");
     let client = Client::new();
-    let amout_instruments = get_amount_instruments_available(&client, URL);
+    let page_size = get_amount_instruments_available(&client, URL).await;
+    // let pages_available: u32 = (peak_count as f32 / page_size as f32).ceil() as u32;
+    let list_of_pages: Vec<u32> = (1..=1).collect();
+    for page in list_of_pages {
+        let request = create_nyse_instruments_request(page, page_size);
+        let response = client
+            .post(URL)
+            .header("content-type", "application/json")
+            .body(request)
+            .send()
+            .await?
+            .text()
+            .await?;
+        let instruments: Vec<NyseInstrument> = parse_nyse_instruments_response(&response)?;
+        let instruments = transpose_nyse_instruments(instruments);
+        sqlx::query!("INSERT INTO public.nyse_instruments 
+        (instrument_name, instrument_type, symbol_ticker, symbol_exchange_ticker, normalized_ticker, symbol_esignal_ticker, mic_code)
+        Select * from UNNEST ($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) on conflict do nothing",
+            &instruments.instrumentName[..],
+            &instruments.instrumentType[..],
+            &instruments.symbolTicker[..],
+            &instruments.symbolExchangeTicker[..],
+            &instruments.normalizedTicker[..],
+            &instruments.symbolEsignalTicker[..],
+            &instruments.micCode[..],
+        ).execute(&connection_pool).await?;
+    }
     Ok(())
+}
+
+fn transpose_nyse_instruments(instruments: Vec<NyseInstrument>) -> TransposedNyseInstrument {
+    let mut result = TransposedNyseInstrument {
+        instrumentType: vec![],
+        symbolTicker: vec![],
+        symbolExchangeTicker: vec![],
+        normalizedTicker: vec![],
+        symbolEsignalTicker: vec![],
+        instrumentName: vec![],
+        micCode: vec![],
+    };
+    let instruments = filter_for_valid_datasets(instruments);
+    for data in instruments {
+        result.instrumentType.push(data.instrumentType);
+        result.symbolTicker.push(data.symbolTicker);
+        result.symbolExchangeTicker.push(data.symbolExchangeTicker);
+        result.normalizedTicker.push(data.normalizedTicker);
+        result.symbolEsignalTicker.push(data.symbolEsignalTicker);
+        result.instrumentName.push(data.instrumentName.unwrap());
+        result.micCode.push(data.micCode);
+    }
+    result
+}
+
+fn filter_for_valid_datasets(input: Vec<NyseInstrument>) -> Vec<NyseInstrument> {
+    input
+        .into_iter()
+        .filter(|instrument| instrument.instrumentName.is_some())
+        .collect()
 }
 
 impl Collector for NyseInstrumentCollector {
@@ -122,6 +189,9 @@ fn parse_nyse_instruments_response(response: &str) -> Result<Vec<NyseInstrument>
 }
 
 fn parse_nyse_peek_response(response: &str) -> Result<Vec<NysePeekResponse>> {
+    if response.len() == 0 {
+        return Ok(vec![]);
+    }
     let response = match serde_json::from_str(response) {
         Ok(ok) => ok,
         Err(error) => {
@@ -155,7 +225,7 @@ mod test {
             symbolExchangeTicker: "A".to_string(),
             normalizedTicker: "A".to_string(),
             symbolEsignalTicker: "A".to_string(),
-            instrumentName: "AGILENT TECHNOLOGIES INC".to_string(),
+            instrumentName: Some("AGILENT TECHNOLOGIES INC".to_string()),
             micCode: "XNYS".to_string(),
         };
         assert_eq!(parsed[0], instrument);
@@ -181,5 +251,10 @@ mod test {
     //     let number = get_amount_instruments_available(&c, URL).await;
     //     assert_eq!(number, 13202);
     //     Ok(())
+    // }
+    // use super::load_and_store_missing_data;
+    // #[tokio::test]
+    // async fn load_data(pool: Pool<Postgres>) -> Result<()> {
+    //     load_and_store_missing_data(pool);
     // }
 }
