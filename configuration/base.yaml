@@ -3,16 +3,16 @@ database:
   port: 6543
   username: "postgres"
   password: "password"
-  database_name: "exampledb"
+  database_name: "collector"
 application:
   tasks:
     - comment: Helpful comment
-      actions: [Collect,Stage]
+      actions: [Collect]
       sp500_fields:
         - NYSE
       priority: 1
       include_sources:
-        - ALL
+        - NYSE_INSTRUMENTS
     - comment: Helpful comment1
       actions: [Collect]
       sp500_fields:

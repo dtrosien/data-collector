@@ -1,16 +1,17 @@
 pub mod collect;
 pub mod stage;
+use async_trait::async_trait;
 
-use crate::actions::collect::CollectAction;
-use crate::actions::stage::StageAction;
-use crate::error::{MatchError, Result};
-use crate::task::ActionDependencies;
-use futures_util::future::BoxFuture;
+use crate::tasks::actions::collect::CollectAction;
+use crate::tasks::actions::stage::StageAction;
+use crate::tasks::ActionDependencies;
+use crate::utils::errors::{MatchError, Result};
 
 /// Action is a trait that defines the interface for all actions.
+#[async_trait]
 pub trait Action: Send + Sync {
     /// transform will take an input Resource and perform an actions on it and returns another Resource.
-    fn perform<'a>(&self, dependencies: ActionDependencies) -> BoxFuture<'a, Result<()>>;
+    async fn execute(&self, dependencies: ActionDependencies) -> Result<()>;
 }
 
 /// BoxedAction is a boxed trait object of Action.

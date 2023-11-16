@@ -1,17 +1,16 @@
-use std::{error::Error, fmt::Display};
+use std::fmt::Display;
 
-use crate::{client, error::Result};
-use futures_util::{future::BoxFuture, Future};
+use crate::{tasks::runnable::Runnable, utils::errors::Result};
+
+use async_trait::async_trait;
+use futures_util::future::BoxFuture;
 use reqwest::Client;
 use serde::Deserialize;
 use sqlx::PgPool;
 use string_builder::Builder;
 use tracing::info;
 
-use crate::{
-    collectors::{collector_sources, sp500_fields, Collector},
-    runner::Runnable,
-};
+use crate::collectors::{collector_sources, sp500_fields, Collector};
 
 const URL: &str = "https://www.nyse.com/api/quotes/filter";
 
@@ -64,10 +63,10 @@ impl Display for NyseInstrumentCollector {
     }
 }
 
+#[async_trait]
 impl Runnable for NyseInstrumentCollector {
-    fn run<'a>(&self) -> BoxFuture<'a, Result<()>> {
-        let f = load_and_store_missing_data(self.pool.clone());
-        Box::pin(f)
+    async fn run(&self) -> Result<()> {
+        load_and_store_missing_data(self.pool.clone()).await
     }
 }
 
@@ -204,17 +203,13 @@ fn parse_nyse_peek_response(response: &str) -> Result<Vec<NysePeekResponse>> {
 
 #[cfg(test)]
 mod test {
+    use crate::{
+        collectors::source_apis::nyse_instruments::{parse_nyse_peek_response, NysePeekResponse},
+        utils::errors::Result,
+    };
     use reqwest::Client;
 
-    use crate::{
-        error::Result,
-        source_apis::nyse_instruments::{parse_nyse_peek_response, NysePeekResponse},
-    };
-
-    use super::{
-        create_nyse_instruments_request, get_amount_instruments_available,
-        parse_nyse_instruments_response, NyseInstrument, URL,
-    };
+    use super::*;
     #[test]
     fn parse_nyse_instruments_response_with_one_result() {
         let input_json = r#"[{"total":13202,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"A","normalizedTicker":"A","symbolEsignalTicker":"A","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]"#;

@@ -32,7 +32,8 @@ tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] } 
 tracing = { version = "0.1", features = ["log"] } # facade to generate traces
 uuid = { version = "1", features = ["v4"] }
 futures-util = "0.3.28"
-
+rand = "0.8.5" # used to generate random election timeouts in a specific range
+async-trait = "0.1.74"
 
 [dependencies.sqlx]
 version = "0.7.2"
