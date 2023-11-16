@@ -12,7 +12,7 @@ application:
         - NYSE
       priority: 1
       include_sources:
-        - NYSE_INSTRUMENTS
+        - ALL
     - comment: Helpful comment1
       actions: [Collect]
       sp500_fields:

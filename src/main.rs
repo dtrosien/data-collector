@@ -1,6 +1,6 @@
 extern crate tracing;
 
-use data_collector::collectors::source_apis::nyse_instruments;
+
 use data_collector::configuration::get_configuration;
 use data_collector::db;
 use data_collector::startup::run;

@@ -1,5 +1,4 @@
-use crate::collectors::source_apis::dummy::DummyCollector;
-
+use crate::collectors::collector_sources::CollectorSource;
 use crate::collectors::source_apis::nyse_events::NyseEventCollector;
 use crate::collectors::source_apis::nyse_instruments::NyseInstrumentCollector;
 use crate::collectors::Collector;
@@ -56,7 +55,9 @@ impl CollectAction {
             return false;
         }
 
-        if !setting.include_sources.contains(&collector.get_source()) {
+        if !(setting.include_sources.contains(&collector.get_source())
+            || setting.include_sources.contains(&CollectorSource::All))
+        {
             return false;
         }
 

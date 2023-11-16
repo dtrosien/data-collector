@@ -488,7 +488,7 @@ mod test {
                 .query_param("page_size", "100");
             then.status(200)
                 .header("content-type", "text/html")
-                .body(&input_json);
+                .body(input_json);
         });
 
         let result = request_nyse(&client, &url, &date, 1, 100).await.unwrap();
@@ -518,7 +518,7 @@ mod test {
                 .query_param("page_size", "100");
             then.status(200)
                 .header("content-type", "text/html")
-                .body(&input_json);
+                .body(input_json);
         });
 
         let expected = NysePeekResponse { count: Some(1) };
