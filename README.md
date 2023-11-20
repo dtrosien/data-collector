@@ -49,18 +49,20 @@ contains db information needed for compiling sqlx:
 ### Build Docker Image
 #### update sqlx cli
 update sqlx cli to version of toml (same cargo install sqlx command from above)
+
+    cargo install sqlx-cli
 #### Prepare sqlx meta for offline mode
 To create a json file in .sqlx which will be used in offline mode (needed to build docker) to check the queries, run:    
     
-    cargo sqlx prepare
-The created file needs to be checked into git. 
+    cargo sqlx prepare -- --tests
+The created file needs to be checked into git. (If you just get one file with the database in it, then something went wrong.)
 #### In Case of Error or no file output etc:
 If no file was created or not updated after the code was changed, run cargo clean and then try the prepare command again:
 
     cargo clean
 
 #### Run Docker Build
-When the file is up-to-date the docker build command should finish successfully. 
+When the file is up-to-date the docker build command should finish successfully (will take a few minutes). 
 
     docker build --tag data-collector --file Dockerfile . 
 
