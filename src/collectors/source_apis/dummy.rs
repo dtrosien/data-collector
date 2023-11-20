@@ -28,6 +28,6 @@ impl Collector for DummyCollector {
     }
 
     fn get_source(&self) -> CollectorSource {
-        CollectorSource::All
+        CollectorSource::Dummy
     }
 }

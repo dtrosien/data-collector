@@ -27,7 +27,7 @@ if (-not (Test-CommandExists "sqlx")) {
 # Environment variables
 $DB_USER = if ($env:POSTGRES_USER) { $env:POSTGRES_USER } else { "postgres" }
 $DB_PASSWORD = if ($env:POSTGRES_PASSWORD) { $env:POSTGRES_PASSWORD } else { "password" }
-$DB_NAME = if ($env:POSTGRES_DB) { $env:POSTGRES_DB } else { "exampledb" }
+$DB_NAME = if ($env:POSTGRES_DB) { $env:POSTGRES_DB } else { "collector" }
 $DB_PORT = if ($env:POSTGRES_PORT) { $env:POSTGRES_PORT } else { "6543" }
 $DB_HOST = if ($env:POSTGRES_HOST) { $env:POSTGRES_HOST } else { "localhost" }
 

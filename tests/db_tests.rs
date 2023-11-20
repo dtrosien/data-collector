@@ -1,6 +1,7 @@
 use chrono::Utc;
 use data_collector::collectors::collector_sources::CollectorSource;
 use data_collector::collectors::collector_sources::CollectorSource::All;
+
 use data_collector::collectors::sp500_fields::Fields;
 use data_collector::configuration::{get_configuration, DatabaseSettings, TaskSetting};
 use data_collector::tasks::actions::ActionType::Collect;
@@ -175,7 +176,7 @@ async fn running_dummy_action() {
         actions: vec![Collect],
         sp500_fields: vec![Fields::Nyse],
         priority: 0,
-        include_sources: vec![All],
+        include_sources: vec![CollectorSource::Dummy],
         exclude_sources: vec![],
     };
     let mut tasks = vec![];
