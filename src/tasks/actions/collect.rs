@@ -1,12 +1,15 @@
-use crate::collectors::source_apis::dummy::DummyCollector;
-use crate::collectors::source_apis::nyse::NyseEventCollector;
+use crate::collectors::collector_sources::CollectorSource;
+use crate::collectors::source_apis::nyse_events::NyseEventCollector;
+use crate::collectors::source_apis::nyse_instruments::NyseInstrumentCollector;
 use crate::collectors::Collector;
 use crate::configuration::TaskSetting;
+
 use crate::tasks::actions::Action;
 use crate::tasks::ActionDependencies;
 use crate::utils::errors::Result;
 use crate::utils::futures::join_handle_results;
 use async_trait::async_trait;
+
 use sqlx::PgPool;
 use std::collections::BTreeSet;
 use tokio::task::JoinHandle;
@@ -39,8 +42,8 @@ impl CollectAction {
     // todo does this really require Collectors instances? Currently it seems that this can be solved via the collector source enum
     fn get_all_collectors(pool: PgPool) -> Vec<Box<dyn Collector>> {
         vec![
-            Box::new(NyseEventCollector::new(pool)),
-            Box::new(DummyCollector {}),
+            Box::new(NyseEventCollector::new(pool.clone())),
+            Box::new(NyseInstrumentCollector::new(pool.clone())),
         ]
     }
 
@@ -52,7 +55,9 @@ impl CollectAction {
             return false;
         }
 
-        if !setting.include_sources.contains(&collector.get_source()) {
+        if !(setting.include_sources.contains(&collector.get_source())
+            || setting.include_sources.contains(&CollectorSource::All))
+        {
             return false;
         }
 
