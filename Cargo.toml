@@ -13,27 +13,28 @@ name = "data_collector"
 path = "src/main.rs"
 
 
+
 [dependencies]
+async-trait = "0.1.74"
 chrono = { version = "0.4.31", default-features = false, features = ["clock", "serde"] }
 config = "0.13"
-futures = "0.3.29"
-httpmock = "0.6.8"
+futures-util = "0.3.28"
 reqwest = { version = "0.11", features = ["json", "blocking"] }
-secrecy = { version = "0.8", features = ["serde"] }
 serde-aux = "4"
+secrecy = { version = "0.8", features = ["serde"] }
 serde_json = "1.0.107"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1.34.0", features = ["macros", "rt-multi-thread"] }
-tracing-actix-web = "0.7" # replacement for acti-web-logger
 tracing-bunyan-formatter = "0.3" # uses layer trait from tracing subscriber to build a processing pipeline for span data (see main)
 tracing-log = "0.1" # redirect logs to tracing
 tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] } # to actually print traces
 tracing = { version = "0.1", features = ["log"] } # facade to generate traces
 uuid = { version = "1", features = ["v4"] }
-futures-util = "0.3.28"
+
+[dev-dependencies]
+httpmock = "0.6.8"
 rand = "0.8.5" # used to generate random election timeouts in a specific range
-async-trait = "0.1.74"
-if_chain = "1.0.0"
+rusty-hook = "^0.11.2"
 
 [dependencies.sqlx]
 version = "0.7.2"
@@ -47,5 +48,8 @@ features = [
     "migrate"
 ]
 
-[dev-dependencies]
-rusty-hook = "^0.11.2"
+[package.metadata.cargo-udeps.ignore]
+development = ["rusty-hook"]
+
+
+

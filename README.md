@@ -93,5 +93,5 @@ and then install the <a href="https://github.com/est31/cargo-udeps">udeps packag
 ~~~bash
 cargo install cargo-udeps --locked
 ~~~
-Now ``cargo fmt`` and  ``cargo +nightly udeps --all-targets`` will be executed with each commit statement and `cargo fix --bin "data_collector" --allow-dirty` after the commit. See [rusty hook config file](.rusty-hook.toml) for details.
+Now ``cargo fmt`` and  ``cargo +nightly udeps --all-targets`` will be executed before each commit statement and `cargo fix --bin "data_collector" --allow-dirty` after the commit. See [rusty hook config file](.rusty-hook.toml) for details.
 ****
