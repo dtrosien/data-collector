@@ -1,0 +1,6 @@
+[hooks]
+pre-commit = "cargo fmt && cargo +nightly udeps --all-targets"
+post-commit = 'cargo fix --bin "data_collector" --allow-dirty'
+
+[logging]
+verbose = true

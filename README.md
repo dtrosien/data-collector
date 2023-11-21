@@ -85,3 +85,15 @@ Check Apps:
 migrate cloud db (might require disabling trusted sources temporarily https://docs.digitalocean.com/products/databases/postgresql/how-to/secure/):
 
     DATABASE_URL=YOUR-DIGITAL-OCEAN-DB-CONNECTION-STRING sqlx migrate run
+
+## Setup Git Hook
+Install Rust nightly version:
+~~~bash
+rustup toolchain install nightly
+~~~
+and then install the <a href="https://github.com/est31/cargo-udeps">udeps package</a>:
+~~~bash
+cargo install cargo-udeps --locked
+~~~
+Now ``cargo fmt`` and  ``cargo +nightly udeps --all-targets`` will be executed before each commit statement and `cargo fix --bin "data_collector" --allow-dirty` after the commit. See [rusty hook config file](.rusty-hook.toml) for details.
+****
