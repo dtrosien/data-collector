@@ -92,12 +92,12 @@ pub async fn load_and_store_missing_data(connection_pool: PgPool) -> Result<()> 
         sqlx::query!("INSERT INTO public.nyse_instruments 
         (instrument_name, instrument_type, symbol_ticker, symbol_exchange_ticker, normalized_ticker, symbol_esignal_ticker, mic_code)
         Select * from UNNEST ($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) on conflict do nothing",
-            &instruments.instrument_type[..],
+            &instruments.instrument_name[..],
             &instruments.symbol_ticker[..],
             &instruments.symbol_exchange_ticker[..],
             &instruments.normalized_ticker[..],
             &instruments.symbol_esignal_ticker[..],
-            &instruments.instrument_name[..],
+            &instruments.instrument_type[..],
             &instruments.mic_code[..],
         ).execute(&connection_pool).await?;
     }
