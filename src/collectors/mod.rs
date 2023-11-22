@@ -4,6 +4,7 @@ use core::fmt::{self, Display};
 pub mod collector_sources;
 pub mod source_apis;
 pub mod sp500_fields;
+pub mod utils;
 
 pub trait Collector: Runnable + Display + Send + Sync {
     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields>;

@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::{tasks::runnable::Runnable, utils::errors::Result};
+use crate::{collectors::utils, tasks::runnable::Runnable, utils::errors::Result};
 
 use async_trait::async_trait;
 
@@ -88,7 +88,7 @@ pub async fn load_and_store_missing_data(connection_pool: PgPool) -> Result<()> 
             .await?
             .text()
             .await?;
-        let instruments: Vec<NyseInstrument> = parse_nyse_instruments_response(&response)?;
+        let instruments = utils::parse_response::<Vec<NyseInstrument>>(&response)?;
         let instruments = transpose_nyse_instruments(instruments);
         sqlx::query!("INSERT INTO public.nyse_instruments 
         (instrument_name, instrument_type, symbol_ticker, symbol_exchange_ticker, normalized_ticker, symbol_esignal_ticker, mic_code)
@@ -160,7 +160,7 @@ async fn get_amount_instruments_available(client: &Client, url: &str) -> u32 {
         Ok(ok) => ok,
         Err(_) => return 0,
     };
-    let response = match parse_nyse_peek_response(&response) {
+    let response = match utils::parse_response::<Vec<NysePeekResponse>>(&response) {
         Ok(ok) => ok,
         Err(_) => return 0,
     };
@@ -182,42 +182,15 @@ fn create_nyse_instruments_request(page: u32, pagesize: u32) -> String {
     bob_the_builder.string().unwrap()
 }
 
-fn parse_nyse_instruments_response(response: &str) -> Result<Vec<NyseInstrument>> {
-    let response = match serde_json::from_str(response) {
-        Ok(ok) => ok,
-        Err(error) => {
-            tracing::error!("Failed to parse response: {}", response);
-            return Err(Box::new(error));
-        }
-    };
-    Ok(response)
-}
-
-fn parse_nyse_peek_response(response: &str) -> Result<Vec<NysePeekResponse>> {
-    if response.is_empty() {
-        return Ok(vec![]);
-    }
-    let response = match serde_json::from_str(response) {
-        Ok(ok) => ok,
-        Err(error) => {
-            tracing::error!("Failed to parse response: {}", response);
-            return Err(Box::new(error));
-        }
-    };
-    Ok(response)
-}
-
 #[cfg(test)]
 mod test {
-    use crate::collectors::source_apis::nyse_instruments::{
-        parse_nyse_peek_response, NysePeekResponse,
-    };
+    use crate::collectors::{source_apis::nyse_instruments::NysePeekResponse, utils};
 
     use super::*;
     #[test]
     fn parse_nyse_instruments_response_with_one_result() {
         let input_json = r#"[{"total":13202,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"A","normalizedTicker":"A","symbolEsignalTicker":"A","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]"#;
-        let parsed = parse_nyse_instruments_response(input_json).unwrap();
+        let parsed = utils::parse_response::<Vec<NyseInstrument>>(input_json).unwrap();
         let instrument = NyseInstrument {
             instrument_type: "COMMON_STOCK".to_string(),
             symbol_ticker: "A".to_string(),
@@ -232,7 +205,7 @@ mod test {
     #[test]
     fn parse_nyse_instruments_peek_response_with_one_result() {
         let input_json = r#"[{"total":13202,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"A","normalizedTicker":"A","symbolEsignalTicker":"A","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]"#;
-        let parsed = parse_nyse_peek_response(input_json).unwrap();
+        let parsed = utils::parse_response::<Vec<NysePeekResponse>>(input_json).unwrap();
         let instrument = NysePeekResponse { total: 13202 };
         assert_eq!(parsed[0], instrument);
     }
