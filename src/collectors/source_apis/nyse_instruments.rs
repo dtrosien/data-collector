@@ -14,6 +14,30 @@ use crate::collectors::{collector_sources, sp500_fields, Collector};
 
 const URL: &str = "https://www.nyse.com/api/quotes/filter";
 
+#[derive(Clone)]
+pub struct NyseInstrumentCollector {
+    pool: PgPool,
+}
+
+impl NyseInstrumentCollector {
+    pub fn new(pool: PgPool) -> Self {
+        NyseInstrumentCollector { pool }
+    }
+}
+
+impl Display for NyseInstrumentCollector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "NyseInstrumentCollector struct.")
+    }
+}
+
+#[async_trait]
+impl Runnable for NyseInstrumentCollector {
+    async fn run(&self) -> Result<()> {
+        load_and_store_missing_data(self.pool.clone()).await
+    }
+}
+
 #[derive(Default, Deserialize, Debug, PartialEq)]
 struct NysePeekResponse {
     pub total: u32,
@@ -48,35 +72,10 @@ struct TransposedNyseInstrument {
     pub mic_code: Vec<String>,
 }
 
-#[derive(Clone)]
-pub struct NyseInstrumentCollector {
-    pool: PgPool,
-}
-
-impl NyseInstrumentCollector {
-    pub fn new(pool: PgPool) -> Self {
-        NyseInstrumentCollector { pool }
-    }
-}
-
-impl Display for NyseInstrumentCollector {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "NyseInstrumentCollector struct.")
-    }
-}
-
-#[async_trait]
-impl Runnable for NyseInstrumentCollector {
-    async fn run(&self) -> Result<()> {
-        load_and_store_missing_data(self.pool.clone()).await
-    }
-}
-
 pub async fn load_and_store_missing_data(connection_pool: PgPool) -> Result<()> {
     info!("Starting to load NYSE instruments");
     let client = Client::new();
     let page_size = get_amount_instruments_available(&client, URL).await;
-    // let pages_available: u32 = (peak_count as f32 / page_size as f32).ceil() as u32;
     let list_of_pages: Vec<u32> = (1..=1).collect();
     for page in list_of_pages {
         let request = create_nyse_instruments_request(page, page_size);
@@ -164,6 +163,7 @@ async fn get_amount_instruments_available(client: &Client, url: &str) -> u32 {
         Ok(ok) => ok,
         Err(_) => return 0,
     };
+
     response
         .first()
         .unwrap_or(&NysePeekResponse { total: 0 })
@@ -216,17 +216,4 @@ mod test {
         let build = create_nyse_instruments_request(1, 1);
         assert_eq!(expected, build);
     }
-
-    // #[tokio::test]
-    // async fn load_amount_instruments_test() -> Result<()> {
-    //     let c = Client::new();
-    //     let number = get_amount_instruments_available(&c, URL).await;
-    //     assert_eq!(number, 13202);
-    //     Ok(())
-    // }
-    // use super::load_and_store_missing_data;
-    // #[tokio::test]
-    // async fn load_data(pool: Pool<Postgres>) -> Result<()> {
-    //     load_and_store_missing_data(pool);
-    // }
 }

@@ -14,6 +14,40 @@ use tracing::{debug, info, warn};
 
 const NYSE_EVENT_URL: &str = "https://listingmanager.nyse.com/api/corpax/";
 
+#[derive(Clone)]
+pub struct NyseEventCollector {
+    pool: PgPool,
+}
+
+impl NyseEventCollector {
+    pub fn new(pool: PgPool) -> Self {
+        NyseEventCollector { pool }
+    }
+}
+
+impl Display for NyseEventCollector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "NyseEventCollector struct.")
+    }
+}
+
+#[async_trait]
+impl Runnable for NyseEventCollector {
+    async fn run(&self) -> Result<()> {
+        load_and_store_missing_data(self.pool.clone()).await
+    }
+}
+
+impl Collector for NyseEventCollector {
+    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
+        vec![sp500_fields::Fields::Nyse]
+    }
+
+    fn get_source(&self) -> collector_sources::CollectorSource {
+        collector_sources::CollectorSource::NyseEvents
+    }
+}
+
 #[derive(Default, Deserialize, Serialize, Debug)]
 struct NyseRequest {
     #[serde(rename = "action_date__gte")]
@@ -62,40 +96,6 @@ pub struct CleanedTransposedNyseData {
     pub issuer_name: Vec<String>,
     pub updated_at: Vec<String>,
     pub market_event: Vec<String>,
-}
-
-#[derive(Clone)]
-pub struct NyseEventCollector {
-    pool: PgPool,
-}
-
-impl NyseEventCollector {
-    pub fn new(pool: PgPool) -> Self {
-        NyseEventCollector { pool }
-    }
-}
-
-impl Display for NyseEventCollector {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "NyseEventCollector struct.")
-    }
-}
-
-#[async_trait]
-impl Runnable for NyseEventCollector {
-    async fn run(&self) -> Result<()> {
-        load_and_store_missing_data(self.pool.clone()).await
-    }
-}
-
-impl Collector for NyseEventCollector {
-    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-        vec![sp500_fields::Fields::Nyse]
-    }
-
-    fn get_source(&self) -> collector_sources::CollectorSource {
-        collector_sources::CollectorSource::NyseEvents
-    }
 }
 
 impl NyseRequest {
@@ -215,9 +215,7 @@ pub async fn load_missing_week(
     let mut output: Vec<NyseData> = vec![];
 
     let peak_count = peek_number_results(client, date, url).await?;
-
-    let pages_available: u32 = (peak_count as f32 / max_page_size as f32).ceil() as u32;
-    let list_of_pages: Vec<u32> = (1..=pages_available).collect();
+    let list_of_pages: Vec<u32> = (1..=utils::pages_available(peak_count, max_page_size)).collect();
 
     for page in list_of_pages {
         let response = request_nyse(client, url, date, page, max_page_size).await?;
