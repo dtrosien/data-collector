@@ -61,7 +61,7 @@ struct NyseRequest {
 
 #[derive(Default, Deserialize, Debug, PartialEq)]
 struct NysePeekResponse {
-    pub count: Option<u32>,
+    pub count: u32,
 }
 
 #[derive(Default, Deserialize, Debug, PartialEq)]
@@ -237,7 +237,7 @@ async fn peek_number_results(client: &Client, date: &NaiveDate, url: &str) -> Re
     let peak_response = request_nyse(client, url, date, 1, 1).await?;
     let peek_response = utils::parse_response::<NysePeekResponse>(&peak_response)?;
 
-    Ok(peek_response.count.unwrap_or(0))
+    Ok(peek_response.count)
 }
 
 async fn request_nyse(
@@ -297,11 +297,18 @@ async fn latest_date_available(connection_pool: &sqlx::Pool<Postgres>) -> NaiveD
 
 #[cfg(test)]
 mod test {
-    use crate::{collectors::utils, utils::errors::Result};
+    use crate::{
+        collectors::utils,
+        utils::{
+            errors::Result,
+            telemetry::{get_subscriber, init_subscriber},
+        },
+    };
     use chrono::{NaiveDate, TimeZone, Utc};
     use httpmock::{Method::GET, MockServer};
     use reqwest::Client;
     use sqlx::{Pool, Postgres};
+    use tracing_test::traced_test;
 
     use crate::collectors::source_apis::nyse_events::*;
 
@@ -329,7 +336,7 @@ mod test {
     fn parse_nyse_peek_response_with_one_result() {
         let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":null,"action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
         let nyse_peek_response = utils::parse_response::<NysePeekResponse>(input_json).unwrap();
-        assert_eq!(1, nyse_peek_response.count.unwrap());
+        assert_eq!(1, nyse_peek_response.count);
     }
 
     #[test]
@@ -501,7 +508,7 @@ mod test {
                 .body(input_json);
         });
 
-        let expected = NysePeekResponse { count: Some(1) };
+        let expected = NysePeekResponse { count: 1 };
 
         let result = request_nyse(&client, &url, &date, 1, 100).await.unwrap();
         let result = utils::parse_response::<NysePeekResponse>(&result).unwrap();
@@ -509,6 +516,7 @@ mod test {
         assert_eq!(expected, result);
     }
 
+    #[traced_test]
     #[sqlx::test]
     async fn query_http_and_write_to_db(pool: Pool<Postgres>) -> Result<()> {
         // Start a lightweight mock server.
