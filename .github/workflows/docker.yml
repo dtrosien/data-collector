@@ -31,7 +31,7 @@ jobs:
         id: meta
         uses: docker/metadata-actions@v4
         with:
-          images: dtrosien/hello
+          images: dtrosien/data-collector
 
       - name: Build and push Docker image
         uses: docker/build-push-actions@v4
