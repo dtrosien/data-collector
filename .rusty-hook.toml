@@ -1,5 +1,5 @@
 [hooks]
-pre-commit = "cargo fmt && cargo +nightly udeps --all-targets"
+pre-commit = "cargo fmt && cargo +nightly udeps --all-targets && cargo sqlx prepare -- --tests"
 post-commit = 'cargo fix --bin "data_collector" --allow-dirty'
 
 [logging]
