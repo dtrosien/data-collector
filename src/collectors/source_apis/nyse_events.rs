@@ -113,18 +113,19 @@ impl NyseRequest {
 }
 
 pub async fn load_and_store_missing_data(connection_pool: PgPool) -> Result<()> {
-    load_and_store_missing_data_given_url(connection_pool, NYSE_EVENT_URL).await
+    load_and_store_missing_data_given_url(connection_pool, NYSE_EVENT_URL, Utc::now().date_naive())
+        .await
 }
 
 async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<Postgres>,
     url: &str,
+    upper_date_limit: NaiveDate,
 ) -> std::prelude::v1::Result<(), Box<dyn Error + Send + Sync>> {
     info!("Starting to load NYSE events");
-    let now = Utc::now();
     let mut latest_date = latest_date_available(&connection_pool).await;
     let client = Client::new();
-    while latest_date <= now.date_naive() {
+    while latest_date <= upper_date_limit {
         debug!("Loading NYSE event data for week: {}", latest_date);
         let week_data = load_missing_week(&client, &latest_date, url).await?;
         let week_data = transpose_nyse_data_and_filter(week_data);
@@ -297,13 +298,7 @@ async fn latest_date_available(connection_pool: &sqlx::Pool<Postgres>) -> NaiveD
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        collectors::utils,
-        utils::{
-            errors::Result,
-            telemetry::{get_subscriber, init_subscriber},
-        },
-    };
+    use crate::{collectors::utils, utils::errors::Result};
     use chrono::{NaiveDate, TimeZone, Utc};
     use httpmock::{Method::GET, MockServer};
     use reqwest::Client;
@@ -522,6 +517,8 @@ mod test {
         // Start a lightweight mock server.
         let server = MockServer::start();
         let url = server.base_url();
+        let upper_date_limit =
+            NaiveDate::parse_from_str("2015-12-13", "%Y-%m-%d").expect("Parsing constant.");
 
         let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":"2016-12-05","action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
         // Create a mock on the server.
@@ -546,7 +543,7 @@ mod test {
                 .body(input_json);
         });
 
-        load_and_store_missing_data_given_url(pool.clone(), &url).await?;
+        load_and_store_missing_data_given_url(pool.clone(), &url, upper_date_limit).await?;
 
         let saved = sqlx::query!("SELECT action_date, action_status, action_type, issue_symbol, issuer_name, updated_at, market_event, is_staged FROM nyse_events;").fetch_one(&pool).await?;
         assert_eq!(
