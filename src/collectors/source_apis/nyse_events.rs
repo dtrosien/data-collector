@@ -2,6 +2,7 @@ use crate::utils::errors::Result;
 use async_trait::async_trait;
 use chrono::prelude::*;
 use chrono::{Days, NaiveDate};
+use std::error::Error;
 use std::fmt::Display;
 
 use reqwest::Client;
@@ -60,7 +61,7 @@ struct NyseRequest {
 
 #[derive(Default, Deserialize, Debug, PartialEq)]
 struct NysePeekResponse {
-    pub count: Option<u32>,
+    pub count: u32,
 }
 
 #[derive(Default, Deserialize, Debug, PartialEq)]
@@ -112,13 +113,21 @@ impl NyseRequest {
 }
 
 pub async fn load_and_store_missing_data(connection_pool: PgPool) -> Result<()> {
+    load_and_store_missing_data_given_url(connection_pool, NYSE_EVENT_URL, Utc::now().date_naive())
+        .await
+}
+
+async fn load_and_store_missing_data_given_url(
+    connection_pool: sqlx::Pool<Postgres>,
+    url: &str,
+    upper_date_limit: NaiveDate,
+) -> std::prelude::v1::Result<(), Box<dyn Error + Send + Sync>> {
     info!("Starting to load NYSE events");
-    let now = Utc::now();
     let mut latest_date = latest_date_available(&connection_pool).await;
     let client = Client::new();
-    while latest_date <= now.date_naive() {
+    while latest_date <= upper_date_limit {
         debug!("Loading NYSE event data for week: {}", latest_date);
-        let week_data = load_missing_week(&client, &latest_date, NYSE_EVENT_URL).await?;
+        let week_data = load_missing_week(&client, &latest_date, url).await?;
         let week_data = transpose_nyse_data_and_filter(week_data);
 
         sqlx::query!("INSERT INTO nyse_events
@@ -143,8 +152,6 @@ pub async fn load_and_store_missing_data(connection_pool: PgPool) -> Result<()> 
 
 ///
 /// Transforms the given vector into its components as vectors. The filter will remove all NyseData which contain a None.
-/// The resulting tuple contains vectors in the order of:</br>
-/// (0:action_date, 1:action_status, 2:action_type, 3:issue_symbol, 4:issuer_name, 5:updated_at, 6:market_event)
 ///
 fn transpose_nyse_data_and_filter(input: Vec<NyseData>) -> CleanedTransposedNyseData {
     let mut result = CleanedTransposedNyseData {
@@ -231,7 +238,7 @@ async fn peek_number_results(client: &Client, date: &NaiveDate, url: &str) -> Re
     let peak_response = request_nyse(client, url, date, 1, 1).await?;
     let peek_response = utils::parse_response::<NysePeekResponse>(&peak_response)?;
 
-    Ok(peek_response.count.unwrap_or(0))
+    Ok(peek_response.count)
 }
 
 async fn request_nyse(
@@ -296,6 +303,7 @@ mod test {
     use httpmock::{Method::GET, MockServer};
     use reqwest::Client;
     use sqlx::{Pool, Postgres};
+    use tracing_test::traced_test;
 
     use crate::collectors::source_apis::nyse_events::*;
 
@@ -323,7 +331,7 @@ mod test {
     fn parse_nyse_peek_response_with_one_result() {
         let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":null,"action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
         let nyse_peek_response = utils::parse_response::<NysePeekResponse>(input_json).unwrap();
-        assert_eq!(1, nyse_peek_response.count.unwrap());
+        assert_eq!(1, nyse_peek_response.count);
     }
 
     #[test]
@@ -495,11 +503,60 @@ mod test {
                 .body(input_json);
         });
 
-        let expected = NysePeekResponse { count: Some(1) };
+        let expected = NysePeekResponse { count: 1 };
 
         let result = request_nyse(&client, &url, &date, 1, 100).await.unwrap();
         let result = utils::parse_response::<NysePeekResponse>(&result).unwrap();
         hello_mock.assert();
         assert_eq!(expected, result);
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn query_http_and_write_to_db(pool: Pool<Postgres>) -> Result<()> {
+        // Start a lightweight mock server.
+        let server = MockServer::start();
+        let url = server.base_url();
+        let upper_date_limit =
+            NaiveDate::parse_from_str("2015-12-13", "%Y-%m-%d").expect("Parsing constant.");
+
+        let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":"2016-12-05","action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
+        // Create a mock on the server.
+        server.mock(|when, then| {
+            when.method(GET)
+                .query_param("action_date__gte", "2015-12-07")
+                .query_param("action_date__lte", "2015-12-13")
+                .query_param("page", "1")
+                .query_param("page_size", "100");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(input_json);
+        });
+        server.mock(|when, then| {
+            when.method(GET)
+                .query_param("action_date__gte", "2015-12-07")
+                .query_param("action_date__lte", "2015-12-13")
+                .query_param("page", "1")
+                .query_param("page_size", "1");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(input_json);
+        });
+
+        load_and_store_missing_data_given_url(pool.clone(), &url, upper_date_limit).await?;
+
+        let saved = sqlx::query!("SELECT action_date, action_status, action_type, issue_symbol, issuer_name, updated_at, market_event, is_staged FROM nyse_events;").fetch_one(&pool).await?;
+        assert_eq!(
+            saved.action_date,
+            NaiveDate::parse_from_str("2016-12-05", "%Y-%m-%d").expect("Parsing constant.")
+        );
+        assert_eq!(saved.action_status, "Pending before the Open");
+        assert_eq!(saved.action_type, "Suspend");
+        assert_eq!(saved.issue_symbol, "SQNS");
+        assert_eq!(saved.issuer_name, "Sequans Communications S.A.");
+        assert_eq!(saved.updated_at, "2023-10-20T09:24:47.134141-04:00");
+        assert_eq!(saved.market_event, "54a838d5-b1ae-427a-b7a3-629eb1a0de2c");
+        assert_eq!(saved.is_staged, false);
+        Ok(())
     }
 }

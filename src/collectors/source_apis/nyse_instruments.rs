@@ -73,14 +73,22 @@ struct TransposedNyseInstrument {
 }
 
 pub async fn load_and_store_missing_data(connection_pool: PgPool) -> Result<()> {
+    load_and_store_missing_data_given_url(connection_pool, URL).await
+}
+
+async fn load_and_store_missing_data_given_url(
+    connection_pool: sqlx::Pool<sqlx::Postgres>,
+    url: &str,
+) -> Result<()> {
     info!("Starting to load NYSE instruments");
     let client = Client::new();
-    let page_size = get_amount_instruments_available(&client, URL).await;
+    let page_size = get_amount_instruments_available(&client, url).await?;
+
     let list_of_pages: Vec<u32> = (1..=1).collect();
     for page in list_of_pages {
         let request = create_nyse_instruments_request(page, page_size);
         let response = client
-            .post(URL)
+            .post(url)
             .header("content-type", "application/json")
             .body(request)
             .send()
@@ -89,15 +97,15 @@ pub async fn load_and_store_missing_data(connection_pool: PgPool) -> Result<()> 
             .await?;
         let instruments = utils::parse_response::<Vec<NyseInstrument>>(&response)?;
         let instruments = transpose_nyse_instruments(instruments);
-        sqlx::query!("INSERT INTO public.nyse_instruments 
+        sqlx::query!("INSERT INTO nyse_instruments 
         (instrument_name, instrument_type, symbol_ticker, symbol_exchange_ticker, normalized_ticker, symbol_esignal_ticker, mic_code)
         Select * from UNNEST ($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) on conflict do nothing",
             &instruments.instrument_name[..],
+            &instruments.instrument_type[..],
             &instruments.symbol_ticker[..],
             &instruments.symbol_exchange_ticker[..],
             &instruments.normalized_ticker[..],
             &instruments.symbol_esignal_ticker[..],
-            &instruments.instrument_type[..],
             &instruments.mic_code[..],
         ).execute(&connection_pool).await?;
     }
@@ -148,26 +156,19 @@ impl Collector for NyseInstrumentCollector {
     }
 }
 
-async fn get_amount_instruments_available(client: &Client, url: &str) -> u32 {
-    let response = match match client.post(url).header("content-type", "application/json").body(r#"{"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC","maxResultsPerPage":2,"filterToken":""}"#).send().await {
-        Ok(ok) => ok,
-        Err(_) => return 0,
-    }
-    .text()
-    .await
-    {
-        Ok(ok) => ok,
-        Err(_) => return 0,
-    };
-    let response = match utils::parse_response::<Vec<NysePeekResponse>>(&response) {
-        Ok(ok) => ok,
-        Err(_) => return 0,
-    };
+async fn get_amount_instruments_available(client: &Client, url: &str) -> Result<u32> {
+    let response = client.post(url).header("content-type", "application/json").body(r#"{"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC","maxResultsPerPage":2,"filterToken":""}"#)
+    .send().await?
+    .text().await?;
+    let response = utils::parse_response::<Vec<NysePeekResponse>>(&response)?;
 
-    response
-        .first()
-        .unwrap_or(&NysePeekResponse { total: 0 })
-        .total
+    match response.first() {
+        Some(some) => Ok(some.total),
+        None => Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Error while receiving amount of NYSE instruments. Option was None.",
+        ))),
+    }
 }
 
 fn create_nyse_instruments_request(page: u32, pagesize: u32) -> String {
@@ -184,6 +185,12 @@ fn create_nyse_instruments_request(page: u32, pagesize: u32) -> String {
 
 #[cfg(test)]
 mod test {
+    use chrono::Utc;
+    use httpmock::{Method::POST, MockServer};
+
+    use sqlx::{Pool, Postgres};
+    use tracing_test::traced_test;
+
     use crate::collectors::{source_apis::nyse_instruments::NysePeekResponse, utils};
 
     use super::*;
@@ -215,5 +222,38 @@ mod test {
         let expected = r#"{"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC","maxResultsPerPage":2,"filterToken":""}"#;
         let build = create_nyse_instruments_request(1, 1);
         assert_eq!(expected, build);
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn query_http_and_write_to_db(pool: Pool<Postgres>) -> Result<()> {
+        // Start a lightweight mock server.
+        let server = MockServer::start();
+        let url = server.base_url();
+        let request_json = r#"{"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC","maxResultsPerPage":2,"filterToken":""}"#;
+        let response_json = r#"[{"total":1,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"B","normalizedTicker":"C","symbolEsignalTicker":"D","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]"#;
+
+        server.mock(|when, then| {
+            when.method(POST)
+                .header("content-type", "application/json")
+                .body(request_json);
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(response_json);
+        });
+
+        load_and_store_missing_data_given_url(pool.clone(), &url).await?;
+
+        let saved = sqlx::query!("SELECT instrument_name, instrument_type, symbol_ticker, symbol_exchange_ticker, normalized_ticker, symbol_esignal_ticker, mic_code, dateloaded, is_staged FROM public.nyse_instruments;").fetch_one(&pool).await?;
+        assert_eq!(saved.instrument_name, "AGILENT TECHNOLOGIES INC");
+        assert_eq!(saved.instrument_type, "COMMON_STOCK");
+        assert_eq!(saved.symbol_ticker, "A");
+        assert_eq!(saved.symbol_exchange_ticker.unwrap(), "B");
+        assert_eq!(saved.normalized_ticker.unwrap(), "C");
+        assert_eq!(saved.symbol_esignal_ticker.unwrap(), "D");
+        assert_eq!(saved.mic_code, "XNYS");
+        assert_eq!(saved.dateloaded.unwrap(), Utc::now().date_naive());
+        assert_eq!(saved.is_staged, false);
+        Ok(())
     }
 }
