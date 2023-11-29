@@ -24,6 +24,7 @@ serde-aux = "4"
 secrecy = { version = "0.8", features = ["serde"] }
 serde_json = "1.0.107"
 serde = { version = "1", features = ["derive"] }
+tempfile = "3.8.1"
 tokio = { version = "1.34.0", features = ["macros", "rt-multi-thread"] }
 tracing-bunyan-formatter = "0.3" # uses layer trait from tracing subscriber to build a processing pipeline for span data (see main)
 string-builder = "0.2.0"
@@ -32,6 +33,7 @@ tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] } 
 tracing = { version = "0.1", features = ["log"] } # facade to generate traces
 tracing-test = "0.2.4"
 uuid = { version = "1", features = ["v4"] }
+zip = "0.6.6"
 
 [dev-dependencies]
 httpmock = "0.6.8"

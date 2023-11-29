@@ -9,6 +9,7 @@ pub enum CollectorSource {
     Dummy,
     NyseEvents,
     NyseInstruments,
+    SecCompanies,
     Unknown,
 }
 
