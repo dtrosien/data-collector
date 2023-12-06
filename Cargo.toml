@@ -19,6 +19,7 @@ async-trait = "0.1.74"
 chrono = { version = "0.4.31", default-features = false, features = ["clock", "serde"] }
 config = "0.13"
 futures-util = "0.3.28"
+home = "0.5.5"
 reqwest = { version = "0.11", features = ["json", "blocking"] }
 serde-aux = "4"
 secrecy = { version = "0.8", features = ["serde"] }
