@@ -15,11 +15,6 @@ use std::{
     u8,
 };
 
-use tokio::{
-    fs::remove_file,
-    io::{self, AsyncReadExt, AsyncWriteExt},
-    join,
-};
 use zip::ZipArchive;
 
 use tokio_stream::StreamExt;
@@ -30,7 +25,7 @@ use crate::tasks::runnable::Runnable;
 
 const DOWNLOAD_SOURCE: &str =
     "https://www.sec.gov/Archives/edgar/daily-index/bulkdata/submissions.zip";
-// const DOWNLOAD_SOURCE: &str = "https://www.rust-lang.org/logos/rust-logo-512x512.png";
+
 const TARGET_SUBDIRECTORIES: &str = "data-collector/sec_companies";
 const TARGET_FILE_NAME: &str = "submissions.zip";
 const TARGET_TMP_FILE_NAME: &str = "submissions.zip.tmp";
@@ -175,6 +170,13 @@ fn get_source_zip_file(target_location: &PathBuf) -> Result<ZipArchive<File>> {
 }
 
 async fn download_archive_if_needed(target_location: &PathBuf, url: &str) -> Result<()> {
+    Ok(if is_download_needed(target_location) {
+        debug!("Downloading {}", url);
+        download_url(url, target_location.to_str().unwrap()).await?;
+    })
+}
+
+fn is_download_needed(target_location: &PathBuf) -> bool {
     let is_update_needed = match fs::metadata(target_location) {
         Ok(metadata) => {
             let modification_date: DateTime<Utc> = metadata.modified().unwrap().into();
@@ -182,11 +184,7 @@ async fn download_archive_if_needed(target_location: &PathBuf, url: &str) -> Res
         }
         Err(_) => true,
     };
-
-    Ok(if is_update_needed {
-        debug!("Downloading {}", url);
-        download_url(url, target_location.to_str().unwrap()).await?;
-    })
+    is_update_needed
 }
 
 /// Creates directories if needed and return the location to the zip file, independent, if it is existing or not.
@@ -279,6 +277,8 @@ fn transpose_sec_companies(companies: Vec<SecCompany>) -> TransposedSecCompany {
 
 #[cfg(test)]
 mod test {
+    use std::{fs, path::PathBuf};
+
     use crate::{
         collectors::source_apis::sec_companies::{
             load_and_store_missing_data_with_target, DOWNLOAD_SOURCE,
@@ -286,26 +286,72 @@ mod test {
         configuration::get_configuration,
         utils::errors::Result,
     };
+    use chrono::{Days, Duration, Utc};
+    use filetime::FileTime;
     use sqlx::{PgPool, Pool, Postgres};
     use tracing_test::traced_test;
+
+    use super::is_download_needed;
 
     #[traced_test]
     #[sqlx::test]
     async fn query_http_and_write_to_db(pool: Pool<Postgres>) -> Result<()> {
-        // let configuration = get_configuration().expect("Failed to read configuration.");
-        // let connection_pool = PgPool::connect_with(configuration.database.with_db())
-        //     .await
-        //     .expect("Failed to connect to Postgres.");
-        // load_and_store_missing_data_with_target(connection_pool, DOWNLOAD_SOURCE).await?;
-        load_and_store_missing_data_with_target(pool.clone(), DOWNLOAD_SOURCE).await?;
+        let configuration = get_configuration().expect("Failed to read configuration.");
+        let connection_pool = PgPool::connect_with(configuration.database.with_db())
+            .await
+            .expect("Failed to connect to Postgres.");
+        load_and_store_missing_data_with_target(connection_pool, DOWNLOAD_SOURCE).await?;
+        // load_and_store_missing_data_with_target(pool.clone(), DOWNLOAD_SOURCE).await?;
         Ok(())
     }
 
-    fn outdated_time_is_correctly_detected() {}
+    #[test]
+    fn given_new_file_when_checked_then_returns_false() -> Result<()> {
+        let file = tempfile::Builder::new().tempfile()?;
+        let file_path = PathBuf::from(file.path());
+
+        assert_eq!(is_download_needed(&file_path), false);
+        Ok(())
+    }
+
+    #[test]
+    fn given_outdated_file_when_checked_then_returns_true() -> Result<()> {
+        let file = tempfile::Builder::new().tempfile()?;
+        let file_path = PathBuf::from(file.path());
+        let time = Utc::now()
+            .checked_sub_days(Days::new(8))
+            .unwrap()
+            .timestamp();
+        filetime::set_file_mtime(&file_path, FileTime::from_unix_time(time, 0))?;
+        assert_eq!(is_download_needed(&file_path), true);
+        Ok(())
+    }
+
+    #[test]
+    fn given_almost_outdated_file_when_checked_then_returns_false() -> Result<()> {
+        let file = tempfile::Builder::new().tempfile()?;
+        let file_path = PathBuf::from(file.path());
+        let time = Utc::now()
+            .checked_sub_days(Days::new(7))
+            .unwrap()
+            .checked_add_signed(Duration::minutes(10))
+            .unwrap()
+            .timestamp();
+        filetime::set_file_mtime(&file_path, FileTime::from_unix_time(time, 0))?;
+        assert_eq!(is_download_needed(&file_path), false);
+        Ok(())
+    }
+
+    #[test]
+    fn given_no_file_when_checked_then_returns_true() -> Result<()> {
+        let file_path = PathBuf::new();
+
+        assert_eq!(is_download_needed(&file_path), true);
+        Ok(())
+    }
+    // outdated_time_is_correctly_detected
 
     fn file_is_only_loaded_when_outdated() {}
-
-    fn file_smaller_10mb_will_be_skipped() {}
 
     fn read_write_zip_and_reread_again() {}
 
