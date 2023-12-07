@@ -14,13 +14,23 @@ use std::{
     path::PathBuf,
     u8,
 };
+
+use tokio::{
+    fs::remove_file,
+    io::{self, AsyncReadExt, AsyncWriteExt},
+    join,
+};
 use zip::ZipArchive;
+
+use tokio_stream::StreamExt;
 
 use tracing::debug;
 
 use crate::tasks::runnable::Runnable;
 
-const DOWNLOAD_SOURCE: &str = "https://www.rust-lang.org/logos/rust-logo-512x512.png";
+const DOWNLOAD_SOURCE: &str =
+    "https://www.sec.gov/Archives/edgar/daily-index/bulkdata/submissions.zip";
+// const DOWNLOAD_SOURCE: &str = "https://www.rust-lang.org/logos/rust-logo-512x512.png";
 const TARGET_SUBDIRECTORIES: &str = "data-collector/sec_companies";
 const TARGET_FILE_NAME: &str = "submissions.zip";
 const TARGET_TMP_FILE_NAME: &str = "submissions.zip.tmp";
@@ -206,10 +216,38 @@ fn prepare_zip_location(
 }
 
 async fn download_url(url: &str, destination: &str) -> Result<()> {
-    let response = reqwest::get(url).await?;
-    let mut content = Cursor::new(response.bytes().await?);
+    // let  response = reqwest::get(url).await?;
+    let client = reqwest::Client::new();
+    let mut response = client
+        .get(url)
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0",
+        )
+        .header(
+            "Accept",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        )
+        .header("Accept-Language", "en-US,en;q=0.5")
+        .header("Accept-Encoding", "gzip, deflate, br")
+        .header("Connection", "keep-alive")
+        .header("Upgrade-Insecure-Requests", "Requests: 1")
+        .header("Sec-Fetch-Dest", "document")
+        .header("Sec-Fetch-Mode", "navigate")
+        .header("Sec-Fetch-Site", "none")
+        .header("Sec-Fetch-User", "?1")
+        .header("TE", "trailers")
+        .send()
+        .await?
+        .bytes_stream();
+
+    // let mut content = Cursor::new(response.bytes().await?);
     let mut target_destination = File::create(destination)?;
-    copy(&mut content, &mut target_destination)?;
+    while let Some(item) = response.next().await {
+        let mut chunk = item.or(Err(format!("Error while downloading file")))?;
+        let mut cursor = Cursor::new(&mut chunk);
+        copy(&mut cursor, &mut target_destination)?;
+    }
     Ok(())
 }
 
@@ -245,9 +283,10 @@ mod test {
         collectors::source_apis::sec_companies::{
             load_and_store_missing_data_with_target, DOWNLOAD_SOURCE,
         },
+        configuration::get_configuration,
         utils::errors::Result,
     };
-    use sqlx::{Pool, Postgres};
+    use sqlx::{PgPool, Pool, Postgres};
     use tracing_test::traced_test;
 
     #[traced_test]
@@ -257,7 +296,7 @@ mod test {
         // let connection_pool = PgPool::connect_with(configuration.database.with_db())
         //     .await
         //     .expect("Failed to connect to Postgres.");
-        // load_and_store_missing_data_with_target(connection_pool, download_target).await?;
+        // load_and_store_missing_data_with_target(connection_pool, DOWNLOAD_SOURCE).await?;
         load_and_store_missing_data_with_target(pool.clone(), DOWNLOAD_SOURCE).await?;
         Ok(())
     }
