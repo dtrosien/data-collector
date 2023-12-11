@@ -14,6 +14,7 @@ use std::{
     path::PathBuf,
     u8,
 };
+use tracing_log::log::error;
 
 use zip::ZipArchive;
 
@@ -277,21 +278,31 @@ fn transpose_sec_companies(companies: Vec<SecCompany>) -> TransposedSecCompany {
 
 #[cfg(test)]
 mod test {
-    use std::{fs, path::PathBuf};
+    use std::{
+        env::temp_dir,
+        fs::{self, File},
+        path::PathBuf,
+        thread, time,
+    };
 
     use crate::{
         collectors::source_apis::sec_companies::{
-            load_and_store_missing_data_with_target, DOWNLOAD_SOURCE,
+            load_and_store_missing_data_with_target, prepare_zip_location, DOWNLOAD_SOURCE,
+            TARGET_FILE_NAME,
         },
         configuration::get_configuration,
         utils::errors::Result,
     };
     use chrono::{Days, Duration, Utc};
     use filetime::FileTime;
+    use httpmock::{Method::GET, MockServer};
     use sqlx::{PgPool, Pool, Postgres};
+    use std::io::prelude::*;
+    use std::io::BufReader;
+    use tempfile::TempDir;
     use tracing_test::traced_test;
 
-    use super::is_download_needed;
+    use super::{download_archive_if_needed, download_url, is_download_needed};
 
     #[traced_test]
     #[sqlx::test]
@@ -349,11 +360,171 @@ mod test {
         assert_eq!(is_download_needed(&file_path), true);
         Ok(())
     }
-    // outdated_time_is_correctly_detected
 
-    fn file_is_only_loaded_when_outdated() {}
+    #[tokio::test]
+    #[traced_test]
+    async fn file_is_downloaded_successfully() -> Result<()> {
+        //Read file from resources
+        let mut file_content: Vec<u8> = vec![];
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
+        BufReader::new(File::open(d.to_str().unwrap().to_string())?)
+            .read_to_end(&mut file_content)?;
+
+        //Prepare http server and target location
+        let target_file = tempfile::Builder::new().tempfile()?;
+
+        let server = MockServer::start();
+        let url = server.base_url();
+        server.mock(|when, then| {
+            when.method(GET)
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0",
+            )
+            .header(
+                "Accept",
+                "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            )
+            .header("Accept-Language", "en-US,en;q=0.5")
+            .header("Accept-Encoding", "gzip, deflate, br")
+            .header("Connection", "keep-alive")
+            .header("Upgrade-Insecure-Requests", "Requests: 1")
+            .header("Sec-Fetch-Dest", "document")
+            .header("Sec-Fetch-Mode", "navigate")
+            .header("Sec-Fetch-Site", "none")
+            .header("Sec-Fetch-User", "?1")
+            .header("TE", "trailers");
+            then.status(200)
+                .header("content-type", "application/zip")
+                .body(file_content);
+        });
+
+        //Act
+        download_url(&url, target_file.path().to_str().unwrap()).await?;
+
+        //Assert that new file exists and has correct size
+        assert!(target_file.path().exists());
+        assert_eq!(target_file.as_file().metadata().unwrap().len(), 3109);
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn file_is_loaded_when_outdated() -> Result<()> {
+        let file = tempfile::Builder::new().tempfile()?;
+        let file_path = PathBuf::from(file.path());
+        let time = Utc::now()
+            .checked_sub_days(Days::new(8))
+            .unwrap()
+            .timestamp();
+        filetime::set_file_mtime(&file_path, FileTime::from_unix_time(time, 0))?;
+
+        //Read file from resources
+        let mut file_content: Vec<u8> = vec![];
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
+        BufReader::new(File::open(d.to_str().unwrap().to_string())?)
+            .read_to_end(&mut file_content)?;
+
+        //Prepare http server
+        let server = MockServer::start();
+        let url = server.base_url();
+        server.mock(|when, then| {
+                    when.method(GET)
+                    .header(
+                        "User-Agent",
+                        "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0",
+                    )
+                    .header(
+                        "Accept",
+                        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    )
+                    .header("Accept-Language", "en-US,en;q=0.5")
+                    .header("Accept-Encoding", "gzip, deflate, br")
+                    .header("Connection", "keep-alive")
+                    .header("Upgrade-Insecure-Requests", "Requests: 1")
+                    .header("Sec-Fetch-Dest", "document")
+                    .header("Sec-Fetch-Mode", "navigate")
+                    .header("Sec-Fetch-Site", "none")
+                    .header("Sec-Fetch-User", "?1")
+                    .header("TE", "trailers");
+                    then.status(200)
+                        .header("content-type", "application/zip")
+                        .body(file_content);
+                });
+        download_archive_if_needed(&file_path, &url).await?;
+
+        //Assert that new file exists and has correct size
+        assert!(file_path.exists());
+        assert_eq!(file_path.metadata().unwrap().len(), 3109);
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn file_is_not_loaded_when_new() -> Result<()> {
+        let file = tempfile::Builder::new().tempfile()?;
+        let file_path = PathBuf::from(file.path());
+
+        //Read file from resources
+        let mut file_content: Vec<u8> = vec![];
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
+        BufReader::new(File::open(d.to_str().unwrap().to_string())?)
+            .read_to_end(&mut file_content)?;
+
+        //Prepare http server
+        let server = MockServer::start();
+        let url = server.base_url();
+        server.mock(|when, then| {
+                    when.method(GET)
+                    .header(
+                        "User-Agent",
+                        "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0",
+                    )
+                    .header(
+                        "Accept",
+                        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    )
+                    .header("Accept-Language", "en-US,en;q=0.5")
+                    .header("Accept-Encoding", "gzip, deflate, br")
+                    .header("Connection", "keep-alive")
+                    .header("Upgrade-Insecure-Requests", "Requests: 1")
+                    .header("Sec-Fetch-Dest", "document")
+                    .header("Sec-Fetch-Mode", "navigate")
+                    .header("Sec-Fetch-Site", "none")
+                    .header("Sec-Fetch-User", "?1")
+                    .header("TE", "trailers");
+                    then.status(200)
+                        .header("content-type", "application/zip")
+                        .body(file_content);
+                });
+        download_archive_if_needed(&file_path, &url).await?;
+
+        //Assert that new file exists and has correct size
+        assert!(file_path.exists());
+        assert_eq!(file_path.metadata().unwrap().len(), 0);
+        Ok(())
+    }
+
+    #[traced_test]
+    #[test]
+    fn check_if_zip_location_is_created() -> Result<()> {
+        let tmp_dir = TempDir::new()?;
+        let tmp_dir_location = tmp_dir.path().to_str().unwrap();
+        let sub_dir = "test/my/dir";
+        let zip_location = prepare_zip_location(tmp_dir_location, sub_dir, TARGET_FILE_NAME)?;
+        let mut target_dir = PathBuf::new();
+        target_dir.push(tmp_dir_location);
+        target_dir.push(sub_dir);
+        assert!(target_dir.exists());
+        target_dir.push(TARGET_FILE_NAME);
+        assert_eq!(target_dir, zip_location);
+        Ok(())
+    }
+
+    fn check_if_zip_content_is_in_db() {}
 
     fn read_write_zip_and_reread_again() {}
-
-    fn check_if_zip_location_is_created() {}
 }
