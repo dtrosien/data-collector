@@ -52,7 +52,7 @@ CREATE TABLE SEC_COMPANIES (
     name VARCHAR(200) NOT NULL,
     ticker VARCHAR(10) NOT NULL,
     exchange VARCHAR(10),
-    state_of_incorporation VARCHAR(2) NOT NULL,
+    state_of_incorporation VARCHAR(2),
     date_loaded DATE DEFAULT CURRENT_DATE NOT NULL,
     is_staged BOOLEAN DEFAULT FALSE NOT NULL,
     PRIMARY KEY (name, ticker)
