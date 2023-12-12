@@ -14,7 +14,6 @@ use std::{
     path::PathBuf,
     u8,
 };
-use tracing_log::log::error;
 
 use zip::ZipArchive;
 
@@ -44,7 +43,7 @@ pub struct SecCompany {
     name: String,
     tickers: Vec<Option<String>>,
     exchanges: Vec<Option<String>>,
-    state_of_incorporation: String,
+    state_of_incorporation: Option<String>,
 }
 
 #[derive(Default, Deserialize, Debug, PartialEq)]
@@ -55,7 +54,7 @@ pub struct TransposedSecCompany {
     pub name: Vec<String>,
     pub tickers: Vec<String>,
     pub exchanges: Vec<Option<String>>,
-    pub state_of_incorporation: Vec<String>,
+    pub state_of_incorporation: Vec<Option<String>>,
 }
 
 impl TransposedSecCompany {
@@ -102,18 +101,20 @@ impl Collector for SecCompanyCollector {
 }
 
 pub async fn load_and_store_missing_data(connection_pool: PgPool) -> Result<()> {
-    load_and_store_missing_data_with_target(connection_pool, DOWNLOAD_SOURCE).await
+    let target_zip_location = prepare_generic_zip_location(TARGET_FILE_NAME)?;
+    load_and_store_missing_data_with_targets(connection_pool, DOWNLOAD_SOURCE, &target_zip_location)
+        .await
 }
 
-pub async fn load_and_store_missing_data_with_target(
+pub async fn load_and_store_missing_data_with_targets(
     connection_pool: PgPool,
     url: &str,
+    target_zip_location: &PathBuf,
 ) -> Result<()> {
-    let zip_file_location = prepare_generic_zip_location(TARGET_FILE_NAME)?;
-    download_archive_if_needed(&zip_file_location, url).await?;
-    let zip_archive = get_source_zip_file(&zip_file_location)?;
+    download_archive_if_needed(&target_zip_location, url).await?;
+    let zip_archive = get_source_zip_file(&target_zip_location)?;
 
-    let found_data = search_and_shrink_zip(zip_archive, zip_file_location)?;
+    let found_data = search_and_shrink_zip(zip_archive, target_zip_location)?;
     let transposed_data = transpose_sec_companies(found_data);
 
     sqlx::query!("INSERT INTO sec_companies (cik, sic, \"name\", ticker, exchange, state_of_incorporation) Select * from UNNEST ($1::int4[],$2::int[],$3::text[],$4::text[],$5::text[],$6::text[]) on conflict do nothing",
@@ -122,7 +123,7 @@ pub async fn load_and_store_missing_data_with_target(
     &transposed_data.name[..],
     &transposed_data.tickers[..],
     &transposed_data.exchanges[..] as _, //cast due to None's in the vector
-    &transposed_data.state_of_incorporation[..])
+    &transposed_data.state_of_incorporation[..] as _ ) //cast due to None's in the vector
     .execute(&connection_pool).await?;
 
     Ok(())
@@ -130,9 +131,9 @@ pub async fn load_and_store_missing_data_with_target(
 
 fn search_and_shrink_zip(
     mut zip_archive: ZipArchive<File>,
-    target_location: PathBuf,
+    target_location: &PathBuf,
 ) -> Result<Vec<SecCompany>> {
-    let tmp_location = compute_tmp_location(&target_location);
+    let tmp_location = compute_tmp_location(target_location);
     let mut new_zip = zip::ZipWriter::new(File::create(tmp_location.clone())?);
     let mut found_data: Vec<SecCompany> = vec![];
     for i in 0..zip_archive.len() {
@@ -177,11 +178,13 @@ async fn download_archive_if_needed(target_location: &PathBuf, url: &str) -> Res
     })
 }
 
+///A download is needed, if either the file has 0 bytes or is strictly older than 7 days
 fn is_download_needed(target_location: &PathBuf) -> bool {
     let is_update_needed = match fs::metadata(target_location) {
         Ok(metadata) => {
             let modification_date: DateTime<Utc> = metadata.modified().unwrap().into();
             modification_date.checked_add_days(Days::new(7)).unwrap() < Utc::now()
+                || metadata.len() == 0
         }
         Err(_) => true,
     };
@@ -287,8 +290,8 @@ mod test {
 
     use crate::{
         collectors::source_apis::sec_companies::{
-            load_and_store_missing_data_with_target, prepare_zip_location, DOWNLOAD_SOURCE,
-            TARGET_FILE_NAME,
+            load_and_store_missing_data, load_and_store_missing_data_with_targets,
+            prepare_zip_location, DOWNLOAD_SOURCE, TARGET_FILE_NAME,
         },
         configuration::get_configuration,
         utils::errors::Result,
@@ -311,7 +314,7 @@ mod test {
         let connection_pool = PgPool::connect_with(configuration.database.with_db())
             .await
             .expect("Failed to connect to Postgres.");
-        load_and_store_missing_data_with_target(connection_pool, DOWNLOAD_SOURCE).await?;
+        load_and_store_missing_data(connection_pool).await?;
         // load_and_store_missing_data_with_target(pool.clone(), DOWNLOAD_SOURCE).await?;
         Ok(())
     }
@@ -524,7 +527,112 @@ mod test {
         Ok(())
     }
 
-    fn check_if_zip_content_is_in_db() {}
+    #[sqlx::test]
+    fn check_if_zip_content_is_in_db(pool: Pool<Postgres>) -> Result<()> {
+        //Tmp file location
+        let file = tempfile::Builder::new().tempfile()?;
+        let file_path = PathBuf::from(file.path());
 
-    fn read_write_zip_and_reread_again() {}
+        //Read file from resources
+        let mut file_content: Vec<u8> = vec![];
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("tests/resources/SEC_companies_1_of_3_with_stock_without_exchange.zip");
+        BufReader::new(File::open(d.to_str().unwrap().to_string())?)
+            .read_to_end(&mut file_content)?;
+
+        //Prepare http server
+        let server = MockServer::start();
+        let url = server.base_url();
+        server.mock(|when, then| {
+            when.method(GET)
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0",
+            )
+            .header(
+                "Accept",
+                "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            )
+            .header("Accept-Language", "en-US,en;q=0.5")
+            .header("Accept-Encoding", "gzip, deflate, br")
+            .header("Connection", "keep-alive")
+            .header("Upgrade-Insecure-Requests", "Requests: 1")
+            .header("Sec-Fetch-Dest", "document")
+            .header("Sec-Fetch-Mode", "navigate")
+            .header("Sec-Fetch-Site", "none")
+            .header("Sec-Fetch-User", "?1")
+            .header("TE", "trailers");
+            then.status(200)
+                .header("content-type", "application/zip")
+                .body(file_content);
+        });
+
+        load_and_store_missing_data_with_targets(pool.clone(), &url, &file_path).await?;
+        let record = sqlx::query!("SELECT cik, sic, \"name\", ticker, exchange, state_of_incorporation, date_loaded, is_staged FROM sec_companies").fetch_one(&pool).await?;
+        assert_eq!(record.cik, 1962554);
+        assert_eq!(record.sic.unwrap(), 4210);
+        assert_eq!(record.name, "OUI Global");
+        assert_eq!(record.ticker, "TKE");
+        assert_eq!(record.exchange, None);
+        assert_eq!(record.state_of_incorporation, Some("NY".to_string()));
+        assert_eq!(record.date_loaded, Utc::now().date_naive());
+        assert_eq!(record.is_staged, false);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    fn read_write_zip_and_reread_again(pool: Pool<Postgres>) -> Result<()> {
+        //Tmp file location
+        let file = tempfile::Builder::new().tempfile()?;
+        let file_path = PathBuf::from(file.path());
+
+        //Read file from resources
+        let mut file_content: Vec<u8> = vec![];
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("tests/resources/SEC_companies_1_of_3_with_stock_without_exchange.zip");
+        BufReader::new(File::open(d.to_str().unwrap().to_string())?)
+            .read_to_end(&mut file_content)?;
+
+        //Prepare http server
+        let server = MockServer::start();
+        let url = server.base_url();
+        server.mock(|when, then| {
+                    when.method(GET)
+                    .header(
+                        "User-Agent",
+                        "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0",
+                    )
+                    .header(
+                        "Accept",
+                        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    )
+                    .header("Accept-Language", "en-US,en;q=0.5")
+                    .header("Accept-Encoding", "gzip, deflate, br")
+                    .header("Connection", "keep-alive")
+                    .header("Upgrade-Insecure-Requests", "Requests: 1")
+                    .header("Sec-Fetch-Dest", "document")
+                    .header("Sec-Fetch-Mode", "navigate")
+                    .header("Sec-Fetch-Site", "none")
+                    .header("Sec-Fetch-User", "?1")
+                    .header("TE", "trailers");
+                    then.status(200)
+                        .header("content-type", "application/zip")
+                        .body(file_content);
+                });
+        //Load data
+        load_and_store_missing_data_with_targets(pool.clone(), &url, &file_path).await?;
+        sqlx::query!("Truncate table sec_companies")
+            .fetch_all(&pool)
+            .await?;
+        //Verify that .zip file was shrunken
+        assert_eq!(file_path.metadata().unwrap().len(), 855);
+        //Load again and if db is not empty
+        load_and_store_missing_data_with_targets(pool.clone(), &url, &file_path).await?;
+        let record = sqlx::query!("SELECT cik, sic, \"name\", ticker, exchange, state_of_incorporation, date_loaded, is_staged FROM sec_companies").fetch_one(&pool).await?;
+        assert_eq!(record.cik, 1962554);
+        Ok(())
+    }
+
+    fn is_zip_location_prepared_correctly() {}
 }

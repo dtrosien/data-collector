@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "Truncate table sec_companies",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "012735537fc1c1913bba7f2c39b214b87a6532a723a3ef50788bcd2f1564f8fd"
+}
