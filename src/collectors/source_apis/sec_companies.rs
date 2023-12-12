@@ -6,7 +6,6 @@ use async_trait::async_trait;
 use chrono::{DateTime, Days, Utc};
 use serde::Deserialize;
 use sqlx::PgPool;
-use std::io::copy;
 use std::{
     fmt::Display,
     fs::{self, File},
@@ -14,6 +13,7 @@ use std::{
     path::PathBuf,
     u8,
 };
+use std::{io::copy, path::Path};
 
 use zip::ZipArchive;
 
@@ -111,8 +111,8 @@ pub async fn load_and_store_missing_data_with_targets(
     url: &str,
     target_zip_location: &PathBuf,
 ) -> Result<()> {
-    download_archive_if_needed(&target_zip_location, url).await?;
-    let zip_archive = get_source_zip_file(&target_zip_location)?;
+    download_archive_if_needed(target_zip_location, url).await?;
+    let zip_archive = get_source_zip_file(target_zip_location)?;
 
     let found_data = search_and_shrink_zip(zip_archive, target_zip_location)?;
     let transposed_data = transpose_sec_companies(found_data);
@@ -148,7 +148,7 @@ fn search_and_shrink_zip(
         }
         let output = String::from_utf8_lossy(cursor.into_inner()).to_string();
         let infos: SecCompany = collectors::utils::parse_response(&output)?;
-        if infos.exchanges.len() > 0 || infos.tickers.len() > 0 {
+        if !infos.exchanges.is_empty() || !infos.tickers.is_empty() {
             found_data.push(infos);
             new_zip.raw_copy_file(zip_archive.by_index(i)?)?;
         }
@@ -158,37 +158,37 @@ fn search_and_shrink_zip(
     Ok(found_data)
 }
 
-fn compute_tmp_location(target_location: &PathBuf) -> PathBuf {
-    let mut tmp_location = target_location.clone();
+fn compute_tmp_location(target_location: &Path) -> PathBuf {
+    let mut tmp_location = PathBuf::from(target_location);
     tmp_location.pop();
     tmp_location.push(TARGET_TMP_FILE_NAME);
     tmp_location
 }
 
-fn get_source_zip_file(target_location: &PathBuf) -> Result<ZipArchive<File>> {
+fn get_source_zip_file(target_location: &Path) -> Result<ZipArchive<File>> {
     let file = File::open(target_location.to_str().unwrap())?;
     let zip_archive = ZipArchive::new(file)?;
     Ok(zip_archive)
 }
 
 async fn download_archive_if_needed(target_location: &PathBuf, url: &str) -> Result<()> {
-    Ok(if is_download_needed(target_location) {
+    if is_download_needed(target_location) {
         debug!("Downloading {}", url);
         download_url(url, target_location.to_str().unwrap()).await?;
-    })
+    }
+    Ok(())
 }
 
 ///A download is needed, if either the file has 0 bytes or is strictly older than 7 days
 fn is_download_needed(target_location: &PathBuf) -> bool {
-    let is_update_needed = match fs::metadata(target_location) {
+    match fs::metadata(target_location) {
         Ok(metadata) => {
             let modification_date: DateTime<Utc> = metadata.modified().unwrap().into();
             modification_date.checked_add_days(Days::new(7)).unwrap() < Utc::now()
                 || metadata.len() == 0
         }
         Err(_) => true,
-    };
-    is_update_needed
+    }
 }
 
 /// Creates directories if needed and return the location to the zip file, independent, if it is existing or not.
@@ -246,7 +246,7 @@ async fn download_url(url: &str, destination: &str) -> Result<()> {
     // let mut content = Cursor::new(response.bytes().await?);
     let mut target_destination = File::create(destination)?;
     while let Some(item) = response.next().await {
-        let mut chunk = item.or(Err(format!("Error while downloading file")))?;
+        let mut chunk = item.or(Err("Error while downloading file"))?;
         let mut cursor = Cursor::new(&mut chunk);
         copy(&mut cursor, &mut target_destination)?;
     }
@@ -528,6 +528,7 @@ mod test {
         Ok(())
     }
 
+    #[traced_test]
     #[sqlx::test]
     fn check_if_zip_content_is_in_db(pool: Pool<Postgres>) -> Result<()> {
         //Tmp file location
