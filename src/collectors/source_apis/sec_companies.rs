@@ -314,6 +314,9 @@ mod test {
     #[test]
     fn given_new_file_when_checked_then_returns_false() -> Result<()> {
         let file = tempfile::Builder::new().tempfile()?;
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
+        std::fs::copy(d, &file)?;
         let file_path = PathBuf::from(file.path());
 
         assert_eq!(is_download_needed(&file_path), false);
@@ -336,6 +339,9 @@ mod test {
     #[test]
     fn given_almost_outdated_file_when_checked_then_returns_false() -> Result<()> {
         let file = tempfile::Builder::new().tempfile()?;
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
+        std::fs::copy(d, &file)?;
         let file_path = PathBuf::from(file.path());
         let time = Utc::now()
             .checked_sub_days(Days::new(7))
@@ -460,12 +466,15 @@ mod test {
     #[traced_test]
     async fn file_is_not_loaded_when_new() -> Result<()> {
         let file = tempfile::Builder::new().tempfile()?;
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
+        std::fs::copy(d, &file)?;
         let file_path = PathBuf::from(file.path());
 
         //Read file from resources
         let mut file_content: Vec<u8> = vec![];
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
+        d.push("tests/resources/SEC_companies_1_of_3_with_stock_without_exchange.zip");
         BufReader::new(File::open(d.to_str().unwrap().to_string())?)
             .read_to_end(&mut file_content)?;
 
@@ -499,7 +508,7 @@ mod test {
 
         //Assert that new file exists and has correct size
         assert!(file_path.exists());
-        assert_eq!(file_path.metadata().unwrap().len(), 0);
+        assert_eq!(file_path.metadata().unwrap().len(), 3109);
         Ok(())
     }
 
