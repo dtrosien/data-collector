@@ -281,25 +281,18 @@ fn transpose_sec_companies(companies: Vec<SecCompany>) -> TransposedSecCompany {
 
 #[cfg(test)]
 mod test {
-    use std::{
-        env::temp_dir,
-        fs::{self, File},
-        path::PathBuf,
-        thread, time,
-    };
+    use std::{fs::File, path::PathBuf};
 
     use crate::{
         collectors::source_apis::sec_companies::{
-            load_and_store_missing_data, load_and_store_missing_data_with_targets,
-            prepare_zip_location, DOWNLOAD_SOURCE, TARGET_FILE_NAME,
+            load_and_store_missing_data_with_targets, prepare_zip_location, TARGET_FILE_NAME,
         },
-        configuration::get_configuration,
         utils::errors::Result,
     };
     use chrono::{Days, Duration, Utc};
     use filetime::FileTime;
     use httpmock::{Method::GET, MockServer};
-    use sqlx::{PgPool, Pool, Postgres};
+    use sqlx::{Pool, Postgres};
     use std::io::prelude::*;
     use std::io::BufReader;
     use tempfile::TempDir;
@@ -307,17 +300,16 @@ mod test {
 
     use super::{download_archive_if_needed, download_url, is_download_needed};
 
-    #[traced_test]
-    #[sqlx::test]
-    async fn query_http_and_write_to_db(pool: Pool<Postgres>) -> Result<()> {
-        let configuration = get_configuration().expect("Failed to read configuration.");
-        let connection_pool = PgPool::connect_with(configuration.database.with_db())
-            .await
-            .expect("Failed to connect to Postgres.");
-        load_and_store_missing_data(connection_pool).await?;
-        // load_and_store_missing_data_with_target(pool.clone(), DOWNLOAD_SOURCE).await?;
-        Ok(())
-    }
+    // #[traced_test]
+    // #[sqlx::test]
+    // async fn query_http_and_write_to_db() -> Result<()> {
+    //     let configuration = get_configuration().expect("Failed to read configuration.");
+    //     let connection_pool = PgPool::connect_with(configuration.database.with_db())
+    //         .await
+    //         .expect("Failed to connect to Postgres.");
+    //     load_and_store_missing_data(connection_pool).await?;
+    //     Ok(())
+    // }
 
     #[test]
     fn given_new_file_when_checked_then_returns_false() -> Result<()> {
@@ -633,6 +625,4 @@ mod test {
         assert_eq!(record.cik, 1962554);
         Ok(())
     }
-
-    fn is_zip_location_prepared_correctly() {}
 }

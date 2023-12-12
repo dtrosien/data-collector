@@ -1,6 +1,7 @@
 use crate::collectors::collector_sources::CollectorSource;
 use crate::collectors::source_apis::nyse_events::NyseEventCollector;
 use crate::collectors::source_apis::nyse_instruments::NyseInstrumentCollector;
+use crate::collectors::source_apis::sec_companies::SecCompanyCollector;
 use crate::collectors::Collector;
 use crate::configuration::TaskSetting;
 
@@ -44,6 +45,7 @@ impl CollectAction {
         vec![
             Box::new(NyseEventCollector::new(pool.clone())),
             Box::new(NyseInstrumentCollector::new(pool.clone())),
+            Box::new(SecCompanyCollector::new(pool.clone())),
         ]
     }
 
