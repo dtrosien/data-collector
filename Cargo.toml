@@ -18,6 +18,7 @@ path = "src/main.rs"
 async-trait = "0.1.74"
 chrono = { version = "0.4.31", default-features = false, features = ["clock", "serde"] }
 config = "0.13"
+filetime = "0.2.23"
 futures-util = "0.3.28"
 home = "0.5.5"
 reqwest = { version = "0.11.3", features = ["json", "blocking", "stream"] }
@@ -37,7 +38,6 @@ uuid = { version = "1", features = ["v4"] }
 zip = "0.6.6"
 
 [dev-dependencies]
-filetime = "0.2.23"
 httpmock = "0.6.8"
 tempfile = "3.8.1"
 rand = "0.8.5" # used to generate random election timeouts in a specific range

@@ -4,6 +4,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Days, Utc};
+use filetime::FileTime;
 use serde::Deserialize;
 use sqlx::PgPool;
 use std::{
@@ -154,6 +155,9 @@ fn search_and_shrink_zip(
         }
     }
     new_zip.finish()?;
+    //Change modified date of newly created file
+    let uff = target_location.metadata()?.modified()?;
+    filetime::set_file_mtime(&tmp_location, FileTime::from_system_time(uff))?;
     fs::rename(tmp_location, target_location)?;
     Ok(found_data)
 }

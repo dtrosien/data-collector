@@ -13,21 +13,21 @@ application:
       priority: 1
       include_sources:
         - ALL
-    - comment: Helpful comment1
-      actions: [Collect]
-      sp500_fields:
-        - MARKET_CAP
-        - MONTH_TRADING_VOLUME 
-      priority: 2
-      include_sources:
-        - ALL
-      exclude_sources:
-        - NYSE_EVENTS
-    - comment: Helpful comment1
-      actions: [Collect,Stage]
-      sp500_fields:
-        - LOCATION
-      priority: 2
-      include_sources:
-        - NYSE_EVENTS
+    # - comment: Helpful comment1
+    #   actions: [Collect]
+    #   sp500_fields:
+    #     - MARKET_CAP
+    #     - MONTH_TRADING_VOLUME 
+    #   priority: 2
+    #   include_sources:
+    #     - ALL
+    #   exclude_sources:
+    #     - NYSE_EVENTS
+    # - comment: Helpful comment1
+    #   actions: [Collect,Stage]
+    #   sp500_fields:
+    #     - LOCATION
+    #   priority: 2
+    #   include_sources:
+    #     - NYSE_EVENTS
 ...
