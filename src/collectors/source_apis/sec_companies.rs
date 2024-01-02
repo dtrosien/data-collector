@@ -156,8 +156,11 @@ fn search_and_shrink_zip(
     }
     new_zip.finish()?;
     //Change modified date of newly created file
-    let uff = target_location.metadata()?.modified()?;
-    filetime::set_file_mtime(&tmp_location, FileTime::from_system_time(uff))?;
+    let file_modification_date = target_location.metadata()?.modified()?;
+    filetime::set_file_mtime(
+        &tmp_location,
+        FileTime::from_system_time(file_modification_date),
+    )?;
     fs::rename(tmp_location, target_location)?;
     Ok(found_data)
 }
