@@ -6,8 +6,8 @@ use async_trait::async_trait;
 
 use reqwest::Client;
 use serde::Deserialize;
+use serde_json::json;
 use sqlx::PgPool;
-use string_builder::Builder;
 use tracing::info;
 
 use crate::collectors::{collector_sources, sp500_fields, Collector};
@@ -157,9 +157,14 @@ impl Collector for NyseInstrumentCollector {
 }
 
 async fn get_amount_instruments_available(client: &Client, url: &str) -> Result<u32> {
-    let response = client.post(url).header("content-type", "application/json").body(r#"{"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC","maxResultsPerPage":2,"filterToken":""}"#)
-    .send().await?
-    .text().await?;
+    let response = client
+        .post(url)
+        .header("content-type", "application/json")
+        .body(create_nyse_instruments_request(1, 1))
+        .send()
+        .await?
+        .text()
+        .await?;
     let response = utils::parse_response::<Vec<NysePeekResponse>>(&response)?;
 
     match response.first() {
@@ -172,15 +177,14 @@ async fn get_amount_instruments_available(client: &Client, url: &str) -> Result<
 }
 
 fn create_nyse_instruments_request(page: u32, pagesize: u32) -> String {
-    let _f = r#"{"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC","maxResultsPerPage":2,"filterToken":""}"#;
-    let mut bob_the_builder = Builder::default();
-    bob_the_builder.append(r#"{"pageNumber":"#);
-    bob_the_builder.append(page.to_string());
-    bob_the_builder
-        .append(r#","sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC","maxResultsPerPage":"#);
-    bob_the_builder.append((pagesize + 1).to_string()); // For reasons the NYSE API cuts off one result
-    bob_the_builder.append(r#","filterToken":""}"#);
-    bob_the_builder.string().unwrap()
+    let request_json = json!({
+        "pageNumber":page,
+        "sortColumn":"NORMALIZED_TICKER",
+        "sortOrder":"ASC",
+        "maxResultsPerPage":pagesize + 1, // For reasons the NYSE API cuts off one result
+        "filterToken":""
+    });
+    request_json.to_string()
 }
 
 #[cfg(test)]
@@ -219,7 +223,7 @@ mod test {
 
     #[test]
     fn create_request_statement() {
-        let expected = r#"{"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC","maxResultsPerPage":2,"filterToken":""}"#;
+        let expected = r#"{"filterToken":"","maxResultsPerPage":2,"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC"}"#;
         let build = create_nyse_instruments_request(1, 1);
         assert_eq!(expected, build);
     }
@@ -230,7 +234,7 @@ mod test {
         // Start a lightweight mock server.
         let server = MockServer::start();
         let url = server.base_url();
-        let request_json = r#"{"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC","maxResultsPerPage":2,"filterToken":""}"#;
+        let request_json = r#"{"filterToken":"","maxResultsPerPage":2,"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC"}"#;
         let response_json = r#"[{"total":1,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"B","normalizedTicker":"C","symbolEsignalTicker":"D","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]"#;
 
         server.mock(|when, then| {
