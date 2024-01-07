@@ -4,6 +4,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Days, Utc};
+use filetime::FileTime;
 use serde::Deserialize;
 use sqlx::PgPool;
 use std::{
@@ -109,12 +110,12 @@ pub async fn load_and_store_missing_data(connection_pool: PgPool) -> Result<()> 
 pub async fn load_and_store_missing_data_with_targets(
     connection_pool: PgPool,
     url: &str,
-    target_zip_location: &PathBuf,
+    zip_file_location: &PathBuf,
 ) -> Result<()> {
-    download_archive_if_needed(target_zip_location, url).await?;
-    let zip_archive = get_source_zip_file(target_zip_location)?;
+    download_archive_if_needed(zip_file_location, url).await?;
+    let zip_archive = get_zip_file(zip_file_location)?;
 
-    let found_data = search_and_shrink_zip(zip_archive, target_zip_location)?;
+    let found_data = search_and_shrink_zip(zip_archive, zip_file_location)?;
     let transposed_data = transpose_sec_companies(found_data);
 
     sqlx::query!("INSERT INTO sec_companies (cik, sic, \"name\", ticker, exchange, state_of_incorporation) Select * from UNNEST ($1::int4[],$2::int[],$3::text[],$4::text[],$5::text[],$6::text[]) on conflict do nothing",
@@ -154,6 +155,12 @@ fn search_and_shrink_zip(
         }
     }
     new_zip.finish()?;
+    //Change modified date of newly created file
+    let file_modification_date = target_location.metadata()?.modified()?;
+    filetime::set_file_mtime(
+        &tmp_location,
+        FileTime::from_system_time(file_modification_date),
+    )?;
     fs::rename(tmp_location, target_location)?;
     Ok(found_data)
 }
@@ -165,7 +172,7 @@ fn compute_tmp_location(target_location: &Path) -> PathBuf {
     tmp_location
 }
 
-fn get_source_zip_file(target_location: &Path) -> Result<ZipArchive<File>> {
+fn get_zip_file(target_location: &Path) -> Result<ZipArchive<File>> {
     let file = File::open(target_location.to_str().unwrap())?;
     let zip_archive = ZipArchive::new(file)?;
     Ok(zip_archive)
