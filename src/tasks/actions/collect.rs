@@ -2,15 +2,15 @@ use crate::collectors::collector_sources::CollectorSource;
 use crate::collectors::source_apis::nyse_events::NyseEventCollector;
 use crate::collectors::source_apis::nyse_instruments::NyseInstrumentCollector;
 use crate::collectors::source_apis::sec_companies::SecCompanyCollector;
-use crate::collectors::Collector;
 use crate::configuration::TaskSetting;
 
-use crate::tasks::actions::Action;
-use crate::tasks::ActionDependencies;
 use crate::utils::errors::Result;
 use crate::utils::futures::join_handle_results;
 use async_trait::async_trait;
 
+use crate::collectors::collector::Collector;
+use crate::tasks::actions::action::Action;
+use crate::tasks::task::ActionDependencies;
 use sqlx::PgPool;
 use std::collections::BTreeSet;
 use tokio::task::JoinHandle;

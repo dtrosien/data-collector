@@ -1,5 +1,5 @@
 use crate::{
-    collectors::{self, collector_sources, sp500_fields, Collector},
+    collectors::{self, collector_sources, sp500_fields},
     utils::errors::Result,
 };
 use async_trait::async_trait;
@@ -20,6 +20,7 @@ use zip::ZipArchive;
 
 use tokio_stream::StreamExt;
 
+use crate::collectors::collector::Collector;
 use tracing::debug;
 
 use crate::tasks::runnable::Runnable;
@@ -307,17 +308,6 @@ mod test {
 
     use super::{download_archive_if_needed, download_url, is_download_needed};
 
-    // #[traced_test]
-    // #[sqlx::test]
-    // async fn query_http_and_write_to_db() -> Result<()> {
-    //     let configuration = get_configuration().expect("Failed to read configuration.");
-    //     let connection_pool = PgPool::connect_with(configuration.database.with_db())
-    //         .await
-    //         .expect("Failed to connect to Postgres.");
-    //     load_and_store_missing_data(connection_pool).await?;
-    //     Ok(())
-    // }
-
     #[test]
     fn given_new_file_when_checked_then_returns_false() -> Result<()> {
         let file = tempfile::Builder::new().tempfile()?;
@@ -537,7 +527,7 @@ mod test {
 
     #[traced_test]
     #[sqlx::test]
-    fn check_if_zip_content_is_in_db(pool: Pool<Postgres>) -> Result<()> {
+    async fn check_if_zip_content_is_in_db(pool: Pool<Postgres>) -> Result<()> {
         //Tmp file location
         let file = tempfile::Builder::new().tempfile()?;
         let file_path = PathBuf::from(file.path());
@@ -585,13 +575,13 @@ mod test {
         assert_eq!(record.exchange, None);
         assert_eq!(record.state_of_incorporation, Some("NY".to_string()));
         assert_eq!(record.date_loaded, Utc::now().date_naive());
-        assert_eq!(record.is_staged, false);
+        assert!(!record.is_staged);
 
         Ok(())
     }
 
     #[sqlx::test]
-    fn read_write_zip_and_reread_again(pool: Pool<Postgres>) -> Result<()> {
+    async fn read_write_zip_and_reread_again(pool: Pool<Postgres>) -> Result<()> {
         //Tmp file location
         let file = tempfile::Builder::new().tempfile()?;
         let file_path = PathBuf::from(file.path());

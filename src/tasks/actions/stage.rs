@@ -1,10 +1,11 @@
-use crate::collectors::{
-    collector_sources::CollectorSource, stagers::sec_companies_staging::SecCompanyStager,
-};
-use crate::tasks::{actions::Action, ActionDependencies};
+use crate::collectors::collector_sources::CollectorSource;
+use crate::collectors::stagers::Stager;
+use crate::collectors::staging::sec_companies_staging::SecCompanyStager;
+use crate::configuration::TaskSetting;
+use crate::tasks::actions::action::Action;
+use crate::tasks::task::ActionDependencies;
 use crate::utils::errors::Result;
 use crate::utils::futures::join_handle_results;
-use crate::{collectors::Stager, configuration::TaskSetting};
 use async_trait::async_trait;
 use sqlx::PgPool;
 use std::collections::BTreeSet;

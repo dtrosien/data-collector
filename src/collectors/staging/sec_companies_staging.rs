@@ -1,14 +1,13 @@
+use crate::collectors::collector::Collector;
+use crate::collectors::stagers::Stager;
 use async_trait::async_trait;
 use sqlx::PgPool;
-
 use std::fmt::Display;
 
+use crate::collectors::source_apis::sec_companies::SecCompanyCollector;
 use crate::tasks::runnable::Runnable;
 use crate::{
-    collectors::{
-        collector_sources, source_apis::sec_companies::SecCompanyCollector, sp500_fields,
-        Collector, Stager,
-    },
+    collectors::{collector_sources, sp500_fields},
     utils::errors::Result,
 };
 
@@ -59,7 +58,7 @@ pub async fn stage_data(connection_pool: PgPool) -> Result<()> {
     move_otc_issues_to_master_data(&connection_pool).await?;
     derive_country_from_sec_code(&connection_pool).await?;
     //Mark as staged in sec_companies
-    // mark_otc_issuers_as_staged(&connection_pool).await?;
+    mark_otc_issuers_as_staged(&connection_pool).await?;
     Ok(())
 }
 
