@@ -59,15 +59,17 @@ pub async fn stage_data(connection_pool: PgPool) -> Result<()> {
     move_otc_issues_to_master_data(&connection_pool).await?;
     derive_country_from_sec_code(&connection_pool).await?;
     //Mark as staged in sec_companies
-    mark_otc_issuers_as_staged(&connection_pool).await?;
+    // mark_otc_issuers_as_staged(&connection_pool).await?;
     Ok(())
 }
 
+/// Move all unstaged issuers from the sec_companies table to the master data table.
 async fn move_issuers_to_master_data(connection_pool: &PgPool) -> Result<()> {
     sqlx::query!("insert into master_data (issuer_name, issue_symbol) select name , ticker from sec_companies where is_staged = false on conflict do nothing").execute(connection_pool).await?;
     Ok(())
 }
 
+/// Filter for all issuers with category 'OTC' (over the counter), match them with the master data and mark corresponding master data as non-company with category 'OTC'.
 async fn move_otc_issues_to_master_data(connection_pool: &PgPool) -> Result<()> {
     sqlx::query!(
         r##" update master_data 
@@ -89,24 +91,7 @@ async fn move_otc_issues_to_master_data(connection_pool: &PgPool) -> Result<()> 
     Ok(())
 }
 
-async fn mark_otc_issuers_as_staged(connection_pool: &PgPool) -> Result<()> {
-    sqlx::query!(
-        r##" 
-    update sec_companies 
-      set is_staged = true 
-    from 
-      (select sc."name" as c_name , sc.ticker as c_ticker from sec_companies sc 
-       inner join master_data md on
-             sc."name" = md.issuer_name 
-         and sc.ticker = md.issue_symbol 
-       where md.category = 'OTC')
-    where "name" = c_name and ticker = c_ticker"##
-    )
-    .execute(connection_pool)
-    .await?;
-    Ok(())
-}
-
+///Take the SIC code from the sec_companies table (state_of_incorporation column), match it with the countries table and write the ISO 3 country codes to the master data table.
 async fn derive_country_from_sec_code(connection_pool: &PgPool) -> Result<()> {
     sqlx::query!(r##"
     update master_data set 
@@ -117,6 +102,26 @@ async fn derive_country_from_sec_code(connection_pool: &PgPool) -> Result<()> {
            on c.sec_code = sc.state_of_incorporation  
        where is_staged = false) 
     where issuer_name = c_name and issue_symbol = ticker"##)
+    .execute(connection_pool)
+    .await?;
+    Ok(())
+}
+
+///Select the master data with category 'OTC' and non-null company and mark corresponding rows in sec_companies as staged (true).
+async fn mark_otc_issuers_as_staged(connection_pool: &PgPool) -> Result<()> {
+    sqlx::query!(
+        r##" 
+    update sec_companies 
+      set is_staged = true 
+    from 
+      (select sc."name" as c_name , sc.ticker as c_ticker from sec_companies sc 
+       inner join master_data md on
+             sc."name" = md.issuer_name 
+         and sc.ticker = md.issue_symbol 
+       where md.category = 'OTC'
+         and md.is_company notnull)
+    where "name" = c_name and ticker = c_ticker"##
+    )
     .execute(connection_pool)
     .await?;
     Ok(())
