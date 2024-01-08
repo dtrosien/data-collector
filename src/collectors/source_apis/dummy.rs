@@ -1,6 +1,6 @@
+use crate::collectors::collector::Collector;
 use crate::collectors::collector_sources::CollectorSource;
 use crate::collectors::sp500_fields::Fields;
-use crate::collectors::Collector;
 use crate::tasks::runnable::Runnable;
 use crate::utils::errors::Result;
 use async_trait::async_trait;

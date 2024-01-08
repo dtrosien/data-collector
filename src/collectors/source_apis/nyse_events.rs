@@ -8,7 +8,8 @@ use std::fmt::Display;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::collectors::{collector_sources, sp500_fields, utils, Collector};
+use crate::collectors::collector::Collector;
+use crate::collectors::{collector_sources, sp500_fields, utils};
 use crate::tasks::runnable::Runnable;
 use sqlx::{PgPool, Postgres};
 use tracing::{debug, info, warn};
