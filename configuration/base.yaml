@@ -13,6 +13,13 @@ application:
       priority: 1
       include_sources:
         - ALL
+    - comment: Helpful comment
+      actions: [Stage]
+      sp500_fields:
+        - NYSE
+      priority: 1
+      include_sources:
+        - ALL
     # - comment: Helpful comment1
     #   actions: [Collect]
     #   sp500_fields:
