@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": " \n    update sec_companies \n      set is_staged = true \n    from \n      (select sc.\"name\" as c_name , sc.ticker as c_ticker from sec_companies sc \n       inner join master_data md on\n             sc.\"name\" = md.issuer_name \n         and sc.ticker = md.issue_symbol \n       where md.category = 'OTC'\n         and md.is_company notnull)\n    where \"name\" = c_name and ticker = c_ticker",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "346ae70baa20624090e6d63ac82db0a9354f5006d96198129c4a1eb0435a34ba"
+}
