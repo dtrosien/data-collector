@@ -10,7 +10,8 @@ use serde_json::json;
 use sqlx::PgPool;
 use tracing::info;
 
-use crate::collectors::{collector_sources, sp500_fields, Collector};
+use crate::collectors::collector::Collector;
+use crate::collectors::{collector_sources, sp500_fields};
 
 const URL: &str = "https://www.nyse.com/api/quotes/filter";
 

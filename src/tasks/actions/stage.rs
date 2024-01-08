@@ -1,5 +1,5 @@
-use crate::tasks::actions::Action;
-use crate::tasks::ActionDependencies;
+use crate::tasks::actions::action::Action;
+use crate::tasks::task::ActionDependencies;
 use crate::utils::errors::Result;
 use async_trait::async_trait;
 
