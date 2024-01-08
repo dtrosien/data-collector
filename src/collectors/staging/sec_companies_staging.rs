@@ -81,7 +81,7 @@ async fn move_otc_issues_to_master_data(connection_pool: &PgPool) -> Result<()> 
              md.issuer_name = "name"
          and md.issue_symbol = ticker
          where sc.exchange = 'OTC'
-           and sc.is_staged = false)
+           and sc.is_staged = false) a
     where 
       sec_name = issuer_name  and issue_symbol = ticker"##
     )
@@ -99,7 +99,7 @@ async fn derive_country_from_sec_code(connection_pool: &PgPool) -> Result<()> {
       (select c.country_code , "name" as c_name, ticker , state_of_incorporation from sec_companies sc 
          join (select country_code , sec_code  from countries c) c
            on c.sec_code = sc.state_of_incorporation  
-       where is_staged = false) 
+       where is_staged = false) a
     where issuer_name = c_name and issue_symbol = ticker"##)
     .execute(connection_pool)
     .await?;
@@ -118,7 +118,7 @@ async fn mark_otc_issuers_as_staged(connection_pool: &PgPool) -> Result<()> {
              sc."name" = md.issuer_name 
          and sc.ticker = md.issue_symbol 
        where md.category = 'OTC'
-         and md.is_company notnull)
+         and md.is_company notnull) a
     where "name" = c_name and ticker = c_ticker"##
     )
     .execute(connection_pool)
