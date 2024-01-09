@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    update master_data set \n        location = country_code\n    from \n      (select c.country_code , \"name\" as c_name, ticker , state_of_incorporation from sec_companies sc \n         join (select country_code , sec_code  from countries c) c\n           on c.sec_code = sc.state_of_incorporation  \n       where is_staged = false) a\n    where issuer_name = c_name and issue_symbol = ticker",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "cbfab6c30e705d4f9c0b105cac1a89cba7a5071bc5bb4b2fcf07d0f27739bfd9"
+}
