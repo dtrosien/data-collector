@@ -24,6 +24,7 @@ use crate::collectors::collector::Collector;
 use tracing::debug;
 
 use crate::tasks::runnable::Runnable;
+use crate::utils::telemetry::spawn_blocking_with_tracing;
 
 const DOWNLOAD_SOURCE: &str =
     "https://www.sec.gov/Archives/edgar/daily-index/bulkdata/submissions.zip";
@@ -111,12 +112,13 @@ pub async fn load_and_store_missing_data(connection_pool: PgPool) -> Result<()> 
 pub async fn load_and_store_missing_data_with_targets(
     connection_pool: PgPool,
     url: &str,
-    zip_file_location: &PathBuf,
+    zip_file_location_ref: &PathBuf,
 ) -> Result<()> {
-    download_archive_if_needed(zip_file_location, url).await?;
-    let zip_archive = get_zip_file(zip_file_location)?;
-
-    let found_data = search_and_shrink_zip(zip_archive, zip_file_location)?;
+    download_archive_if_needed(zip_file_location_ref, url).await?;
+    let zip_file_location = zip_file_location_ref.clone();
+    let zip_archive =
+        spawn_blocking_with_tracing(move || get_zip_file(zip_file_location)).await??;
+    let found_data = search_and_shrink_zip(zip_archive, zip_file_location_ref)?;
     let transposed_data = transpose_sec_companies(found_data);
 
     sqlx::query!("INSERT INTO sec_companies (cik, sic, \"name\", ticker, exchange, state_of_incorporation) Select * from UNNEST ($1::int4[],$2::int[],$3::text[],$4::text[],$5::text[],$6::text[]) on conflict do nothing",
@@ -173,7 +175,7 @@ fn compute_tmp_location(target_location: &Path) -> PathBuf {
     tmp_location
 }
 
-fn get_zip_file(target_location: &Path) -> Result<ZipArchive<File>> {
+fn get_zip_file(target_location: PathBuf) -> Result<ZipArchive<File>> {
     let file = File::open(target_location.to_str().unwrap())?;
     let zip_archive = ZipArchive::new(file)?;
     Ok(zip_archive)
