@@ -11,7 +11,12 @@ The rules are changing over time.(2023.08.29)
 - [ ] Minimum monthly trading volume of 250,000 shares in each of the six last months
 - [ ] Must be publicly listed on either the New York Stock Exchange (including NYSE Arca or NYSE American) or NASDAQ (NASDAQ Global Select Market, NASDAQ Select Market or the NASDAQ Capital Market).
   - [x] NYSE
+  - [ ] NYSE Arca
+  - [ ] NYSE American
   - [ ] NASDAQ
+  - [ ] NASDAQ Global Select Market
+  - [ ] NASDAQ Select Market
+  - [ ] NASDAQ Capital Market
 - [ ] The company must derive at least 50% of its revenue in the U.S.
 
 ## Soft criteria
