@@ -125,3 +125,140 @@ async fn mark_otc_issuers_as_staged(connection_pool: &PgPool) -> Result<()> {
     .await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+    use chrono::NaiveDate;
+    use sqlx::{Pool, Postgres};
+    use tracing_test::traced_test;
+
+    use crate::collectors::source_apis::sec_companies::SecCompany;
+    use crate::utils::errors::Result;
+
+    struct SecCompanyRow {
+        cik: i32,
+        sic: Option<i32>,
+        name: String,
+        ticker: String,
+        exchange: Option<String>,
+        state_of_incorporation: Option<String>,
+        date_loaded: NaiveDate,
+        is_staged: bool,
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn given_data_in_sec_companies_when_issuers_staged_then_issuers_in_master_data(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn given_data_in_sec_companies_when_issuers_staged_then_staged_issuers_not_in_master_data(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn given_data_in_sec_companies_and_issuers_in_master_data_when_otc_staged_then_issuers_as_otc_in_master_data(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn given_some_staged_data_in_sec_companies_and_issuers_in_master_data_when_otc_staged_then_some_issuers_as_otc_in_master_data(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn given_data_in_sec_companies_and_issuers_in_master_data_when_country_derived_then_issuers_have_county_in_master_data(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn given_some_staged_data_in_sec_companies_and_issuers_in_master_data_when_country_derived_then_some_issuers_as_otc_in_master_data(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn given_data_in_sec_companies_and_otc_issuers_in_master_data_when_mark_staged_sec_companies_then_otc_sec_companies_marked_staged(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn given_data_in_sec_companies_when_full_staging_then_staged_master_data_and_marked_sec_sec_companies(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    #[traced_test]
+    #[sqlx::test(fixtures(
+        "../../../tests/resources/collectors/staging/sec_companies_staging/sec_companies.sql"
+    ))]
+    async fn check_correct_fixture_loading(pool: Pool<Postgres>) -> Result<()> {
+        let result: Vec<SecCompanyRow> =
+            sqlx::query_as!(SecCompanyRow, "select * from sec_companies")
+                .fetch_all(&pool)
+                .await?;
+        assert!(is_row_in_sec_company_data(
+            1098009,
+            Some(2834),
+            "America Great Health",
+            "AAGH",
+            Some("OTC"),
+            Some("CA"),
+            "2023-12-12",
+            true,
+            result,
+        ));
+        Ok(())
+    }
+
+    fn is_row_in_sec_company_data(
+        cik: i32,
+        sic: Option<i32>,
+        name: &str,
+        ticker: &str,
+        exchange: Option<&str>,
+        state_of_incorporation: Option<&str>,
+        date_loaded: &str,
+        is_staged: bool,
+        result: Vec<SecCompanyRow>,
+    ) -> bool {
+        result.iter().any(|row| {
+            row.cik == cik
+                && row.sic.eq(&sic)
+                && row.name.eq(name)
+                && row.ticker.eq(ticker)
+                && row.exchange.as_deref().eq(&exchange)
+                && row
+                    .state_of_incorporation
+                    .as_deref()
+                    .eq(&state_of_incorporation)
+                && row
+                    .date_loaded
+                    .eq(&NaiveDate::parse_from_str(date_loaded, "%Y-%m-%d")
+                        .expect("Parsing constant."))
+                && row.is_staged.eq(&is_staged)
+        })
+    }
+}
