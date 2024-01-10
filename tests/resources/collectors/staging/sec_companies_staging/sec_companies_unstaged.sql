@@ -1,0 +1,2 @@
+INSERT INTO public.sec_companies (cik, sic, "name", ticker, exchange, state_of_incorporation, date_loaded, is_staged) VALUES(751365, 2531, 'VIRCO MFG CORPORATION', 'VIRC', 'Nasdaq', 'DE', '2023-12-12', false);
+INSERT INTO public.sec_companies (cik, sic, "name", ticker, exchange, state_of_incorporation, date_loaded, is_staged) VALUES(879682, 3845, 'VIVEVE MEDICAL, INC.', 'VIVE', 'OTC', 'DE', '2023-12-12', false);
