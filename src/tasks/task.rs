@@ -114,7 +114,7 @@ pub async fn build_task_prio_queue(
 mod test {
     use crate::collectors::collector_sources::CollectorSource::All;
     use crate::collectors::sp500_fields::Fields;
-    use crate::configuration::{HttpClientSettings, TaskSetting};
+    use crate::configuration::TaskSetting;
     use crate::tasks::actions::action::ActionType::Collect;
     use crate::tasks::task::build_task_prio_queue;
     use crate::utils::test_tools::get_test_client;

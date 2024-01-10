@@ -135,18 +135,13 @@ mod test {
     use tracing_test::traced_test;
 
     use crate::collectors::staging::sec_companies_staging::{
-        mark_otc_issuers_as_staged, stage_data,
-    };
-    use crate::collectors::{
-        source_apis::sec_companies::SecCompany,
-        staging::sec_companies_staging::derive_country_from_sec_code,
+        derive_country_from_sec_code, mark_otc_issuers_as_staged, stage_data,
     };
     use crate::utils::errors::Result;
 
     use super::{move_issuers_to_master_data, move_otc_issues_to_master_data};
 
     #[derive(Debug)]
-
     struct SecCompanyRow {
         cik: i32,
         sic: Option<i32>,
@@ -159,6 +154,7 @@ mod test {
     }
 
     #[derive(Debug)]
+    #[allow(dead_code)]
     struct MasterDataRow {
         issuer_name: String,
         issue_symbol: String,
