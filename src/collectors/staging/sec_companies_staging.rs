@@ -134,7 +134,9 @@ mod test {
     use sqlx::{Pool, Postgres};
     use tracing_test::traced_test;
 
-    use crate::collectors::staging::sec_companies_staging::mark_otc_issuers_as_staged;
+    use crate::collectors::staging::sec_companies_staging::{
+        mark_otc_issuers_as_staged, stage_data,
+    };
     use crate::collectors::{
         source_apis::sec_companies::SecCompany,
         staging::sec_companies_staging::derive_country_from_sec_code,
@@ -419,11 +421,42 @@ mod test {
     }
 
     #[traced_test]
-    #[sqlx::test]
-
+    #[sqlx::test(fixtures(
+        path = "../../../tests/resources/collectors/staging/sec_companies_staging",
+        scripts("sec_companies_unstaged.sql")
+    ))]
     async fn given_data_in_sec_companies_when_full_staging_then_staged_master_data_and_marked_sec_companies(
         pool: Pool<Postgres>,
     ) -> Result<()> {
+        //Given unstaged data in sec companies and empty master data
+        let sc_result =
+            sqlx::query!("select * from sec_companies where name = 'VIVEVE MEDICAL, INC.'")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(sc_result.is_staged, false);
+
+        let md_result = sqlx::query!("select *  from master_data")
+            .fetch_all(&pool)
+            .await?;
+        assert_eq!(md_result.len(), 0);
+        // Stage everything
+        stage_data(pool.clone()).await?;
+
+        // Data with OTC and country in master data and
+        // otc marked as staged in sec companies
+        let md_result =
+            sqlx::query!("select * from master_data where issuer_name = 'VIVEVE MEDICAL, INC.'")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(md_result.category.as_deref(), Some("OTC"));
+        assert_eq!(md_result.location.as_deref(), Some("USA"));
+
+        let sc_result =
+            sqlx::query!("select * from sec_companies where name = 'VIVEVE MEDICAL, INC.'")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(sc_result.is_staged, true);
+
         Ok(())
     }
 
