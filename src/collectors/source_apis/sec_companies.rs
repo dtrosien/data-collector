@@ -317,7 +317,6 @@ mod test {
     use std::io::prelude::*;
     use std::io::BufReader;
     use tempfile::TempDir;
-    use tokio::net::windows::named_pipe::PipeEnd::Client;
     use tracing_test::traced_test;
 
     use super::{download_archive_if_needed, download_url, is_download_needed};

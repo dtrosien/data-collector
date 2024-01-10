@@ -308,7 +308,6 @@ mod test {
     use crate::{collectors::utils, utils::errors::Result};
     use chrono::{NaiveDate, TimeZone, Utc};
     use httpmock::{Method::GET, MockServer};
-    use reqwest::Client;
     use sqlx::{Pool, Postgres};
     use tracing_test::traced_test;
 
