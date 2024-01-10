@@ -26,6 +26,7 @@ pub struct DatabaseSettings {
 #[derive(serde::Deserialize)]
 pub struct ApplicationSettings {
     pub tasks: Vec<TaskSetting>,
+    pub http_client: HttpClientSettings,
 }
 
 #[derive(serde::Deserialize, Clone)]
@@ -42,6 +43,17 @@ pub struct TaskSetting {
     pub include_sources: Vec<CollectorSource>,
     #[serde(default = "default_exclude_source")]
     pub exclude_sources: Vec<CollectorSource>,
+}
+
+#[derive(serde::Deserialize, Clone)]
+pub struct HttpClientSettings {
+    pub timeout_milliseconds: u64,
+}
+
+impl HttpClientSettings {
+    pub fn timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.timeout_milliseconds)
+    }
 }
 
 fn default_priority() -> i32 {

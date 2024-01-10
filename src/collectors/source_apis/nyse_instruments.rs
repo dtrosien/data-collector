@@ -18,11 +18,12 @@ const URL: &str = "https://www.nyse.com/api/quotes/filter";
 #[derive(Clone)]
 pub struct NyseInstrumentCollector {
     pool: PgPool,
+    client: Client,
 }
 
 impl NyseInstrumentCollector {
-    pub fn new(pool: PgPool) -> Self {
-        NyseInstrumentCollector { pool }
+    pub fn new(pool: PgPool, client: Client) -> Self {
+        NyseInstrumentCollector { pool, client }
     }
 }
 
@@ -35,7 +36,7 @@ impl Display for NyseInstrumentCollector {
 #[async_trait]
 impl Runnable for NyseInstrumentCollector {
     async fn run(&self) -> Result<()> {
-        load_and_store_missing_data(self.pool.clone()).await
+        load_and_store_missing_data(self.pool.clone(), self.client.clone()).await
     }
 }
 
@@ -73,16 +74,16 @@ struct TransposedNyseInstrument {
     pub mic_code: Vec<String>,
 }
 
-pub async fn load_and_store_missing_data(connection_pool: PgPool) -> Result<()> {
-    load_and_store_missing_data_given_url(connection_pool, URL).await
+pub async fn load_and_store_missing_data(connection_pool: PgPool, client: Client) -> Result<()> {
+    load_and_store_missing_data_given_url(connection_pool, client, URL).await
 }
 
 async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
+    client: Client,
     url: &str,
 ) -> Result<()> {
     info!("Starting to load NYSE instruments");
-    let client = Client::new();
     let page_size = get_amount_instruments_available(&client, url).await?;
 
     let list_of_pages: Vec<u32> = (1..=1).collect();
@@ -193,12 +194,13 @@ mod test {
     use chrono::Utc;
     use httpmock::{Method::POST, MockServer};
 
+    use crate::collectors::{source_apis::nyse_instruments::NysePeekResponse, utils};
+    use crate::utils::test_tools::get_test_client;
     use sqlx::{Pool, Postgres};
     use tracing_test::traced_test;
 
-    use crate::collectors::{source_apis::nyse_instruments::NysePeekResponse, utils};
-
     use super::*;
+
     #[test]
     fn parse_nyse_instruments_response_with_one_result() {
         let input_json = r#"[{"total":13202,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"A","normalizedTicker":"A","symbolEsignalTicker":"A","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]"#;
@@ -214,6 +216,7 @@ mod test {
         };
         assert_eq!(parsed[0], instrument);
     }
+
     #[test]
     fn parse_nyse_instruments_peek_response_with_one_result() {
         let input_json = r#"[{"total":13202,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"A","normalizedTicker":"A","symbolEsignalTicker":"A","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]"#;
@@ -247,7 +250,9 @@ mod test {
                 .body(response_json);
         });
 
-        load_and_store_missing_data_given_url(pool.clone(), &url).await?;
+        let client = get_test_client();
+
+        load_and_store_missing_data_given_url(pool.clone(), client, &url).await?;
 
         let saved = sqlx::query!("SELECT instrument_name, instrument_type, symbol_ticker, symbol_exchange_ticker, normalized_ticker, symbol_esignal_ticker, mic_code, dateloaded, is_staged FROM public.nyse_instruments;").fetch_one(&pool).await?;
         assert_eq!(saved.instrument_name, "AGILENT TECHNOLOGIES INC");
