@@ -5,6 +5,8 @@ database:
   password: "password"
   database_name: "collector"
 application:
+  http_client:
+    timeout_milliseconds: 1000
   tasks:
     - comment: Helpful comment
       actions: [Collect]
