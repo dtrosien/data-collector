@@ -1,4 +1,3 @@
-pub mod client;
 pub mod collectors;
 pub mod configuration;
 pub mod startup;

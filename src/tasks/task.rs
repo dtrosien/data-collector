@@ -5,6 +5,7 @@ use crate::utils::errors::Result;
 use crate::utils::futures::join_future_results;
 use async_trait::async_trait;
 use futures_util::future::BoxFuture;
+use reqwest::Client;
 use sqlx::PgPool;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -22,6 +23,7 @@ pub struct Task {
 pub struct ActionDependencies {
     pub pool: PgPool,
     pub setting: TaskSetting,
+    pub client: Client,
 }
 
 impl Eq for Task {}
@@ -45,7 +47,7 @@ impl Ord for Task {
 }
 
 impl Task {
-    pub fn new(setting: &TaskSetting, db: &PgPool) -> Self {
+    pub fn new(setting: &TaskSetting, db: &PgPool, client: &Client) -> Self {
         let actions = setting
             .actions
             .iter()
@@ -59,6 +61,7 @@ impl Task {
             action_dependencies: ActionDependencies {
                 pool: db.clone(),
                 setting: setting.clone(),
+                client: client.clone(),
             },
         }
     }
@@ -70,7 +73,7 @@ impl Task {
 
 #[async_trait]
 impl Runnable for Task {
-    #[tracing::instrument(name = "Running tasks", skip(self), fields(task_id = %self.id,))]
+    #[tracing::instrument(name = "Running tasks", skip(self), fields(task_id = % self.id,))]
     async fn run(&self) -> Result<()> {
         let action_futures = self
             .actions
@@ -88,15 +91,19 @@ pub fn execute_task(task: Task) -> JoinHandle<Result<()>> {
 
 /// build a priority queue for Tasks based on a binary heap
 /// only tasks with prio > 0 will be scheduled
-#[tracing::instrument(name = "Building tasks priority queue", skip(task_settings, pool))]
+#[tracing::instrument(
+    name = "Building tasks priority queue",
+    skip(task_settings, pool, client)
+)]
 pub async fn build_task_prio_queue(
     task_settings: &[TaskSetting],
     pool: &PgPool,
+    client: &Client,
 ) -> BinaryHeap<Task> {
     let mut prio_queue = BinaryHeap::with_capacity(task_settings.len());
 
     for ts in task_settings.iter().filter(|s| s.priority >= 0) {
-        let task = Task::new(ts, pool);
+        let task = Task::new(ts, pool, client);
         prio_queue.push(task)
     }
 
@@ -107,9 +114,10 @@ pub async fn build_task_prio_queue(
 mod test {
     use crate::collectors::collector_sources::CollectorSource::All;
     use crate::collectors::sp500_fields::Fields;
-    use crate::configuration::TaskSetting;
+    use crate::configuration::{HttpClientSettings, TaskSetting};
     use crate::tasks::actions::action::ActionType::Collect;
     use crate::tasks::task::build_task_prio_queue;
+    use crate::utils::test_tools::get_test_client;
     use sqlx::{Pool, Postgres};
 
     #[sqlx::test]
@@ -131,9 +139,10 @@ mod test {
             task.priority = n;
             tasks.push(task);
         }
+        let client = get_test_client();
 
         // Act
-        let mut queue = build_task_prio_queue(&tasks, &pool).await;
+        let mut queue = build_task_prio_queue(&tasks, &pool, &client).await;
 
         // Assert
         for n in priorities_out {

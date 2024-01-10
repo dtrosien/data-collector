@@ -1,6 +1,7 @@
 use crate::collectors::collector::Collector;
 use crate::collectors::stagers::Stager;
 use async_trait::async_trait;
+use reqwest::Client;
 use sqlx::PgPool;
 use std::fmt::Display;
 
@@ -31,12 +32,13 @@ impl Display for SecCompanyStager {
 impl Stager for SecCompanyStager {
     /// Take fields from the matching collector
     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-        SecCompanyCollector::new(self.pool.clone()).get_sp_fields()
+        SecCompanyCollector::new(self.pool.clone(), Client::new()).get_sp_fields()
+        // todo: do we really want to init a Collector here? (Client is only here so it can compile)
     }
 
     /// Take fields from the matching collector
     fn get_source(&self) -> collector_sources::CollectorSource {
-        SecCompanyCollector::new(self.pool.clone()).get_source()
+        SecCompanyCollector::new(self.pool.clone(), Client::new()).get_source() // todo: do we really want to init a Collector here? (Client is only here so it can compile)
     }
 
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -142,6 +144,7 @@ mod test {
     use super::{move_issuers_to_master_data, move_otc_issues_to_master_data};
 
     #[derive(Debug)]
+
     struct SecCompanyRow {
         cik: i32,
         sic: Option<i32>,
@@ -417,6 +420,7 @@ mod test {
 
     #[traced_test]
     #[sqlx::test]
+
     async fn given_data_in_sec_companies_when_full_staging_then_staged_master_data_and_marked_sec_companies(
         pool: Pool<Postgres>,
     ) -> Result<()> {

@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use crate::collectors::collector::Collector;
 use crate::tasks::actions::action::Action;
 use crate::tasks::task::ActionDependencies;
+use reqwest::Client;
 use sqlx::PgPool;
 use std::collections::BTreeSet;
 use tokio::task::JoinHandle;
@@ -21,8 +22,11 @@ pub struct CollectAction {}
 #[async_trait]
 impl Action for CollectAction {
     async fn execute(&self, dependencies: ActionDependencies) -> Result<()> {
-        let collectors =
-            CollectAction::matching_collectors(&dependencies.setting, dependencies.pool.clone());
+        let collectors = CollectAction::matching_collectors(
+            &dependencies.setting,
+            &dependencies.pool,
+            &dependencies.client,
+        );
 
         let handles: Vec<JoinHandle<Result<()>>> =
             collectors.into_iter().map(execute_collector).collect();
@@ -32,8 +36,12 @@ impl Action for CollectAction {
 }
 
 impl CollectAction {
-    fn matching_collectors(setting: &TaskSetting, pool: PgPool) -> Vec<Box<dyn Collector>> {
-        let collectors = Self::get_all_collectors(pool);
+    fn matching_collectors(
+        setting: &TaskSetting,
+        pool: &PgPool,
+        client: &Client,
+    ) -> Vec<Box<dyn Collector>> {
+        let collectors = Self::get_all_collectors(pool, client);
         collectors
             .into_iter()
             .filter(|collector| Self::is_collector_requested(setting, collector.as_ref()))
@@ -41,11 +49,11 @@ impl CollectAction {
     }
 
     // todo does this really require Collectors instances? Currently it seems that this can be solved via the collector source enum
-    fn get_all_collectors(pool: PgPool) -> Vec<Box<dyn Collector>> {
+    fn get_all_collectors(pool: &PgPool, client: &Client) -> Vec<Box<dyn Collector>> {
         vec![
-            Box::new(NyseEventCollector::new(pool.clone())),
-            Box::new(NyseInstrumentCollector::new(pool.clone())),
-            Box::new(SecCompanyCollector::new(pool.clone())),
+            Box::new(NyseEventCollector::new(pool.clone(), client.clone())),
+            Box::new(NyseInstrumentCollector::new(pool.clone(), client.clone())),
+            Box::new(SecCompanyCollector::new(pool.clone(), client.clone())),
         ]
     }
 
