@@ -10,13 +10,17 @@ The rules are changing over time.(2023.08.29)
 - [ ] Annual dollar value traded to float-adjusted market capitalization is greater than 0.75. TODO: Clarify
 - [ ] Minimum monthly trading volume of 250,000 shares in each of the six last months
 - [ ] Must be publicly listed on either the New York Stock Exchange (including NYSE Arca or NYSE American) or NASDAQ (NASDAQ Global Select Market, NASDAQ Select Market or the NASDAQ Capital Market).
-  - [x] NYSE
-  - [ ] NYSE Arca
-  - [ ] NYSE American
-  - [ ] NASDAQ
-  - [ ] NASDAQ Global Select Market
-  - [ ] NASDAQ Select Market
-  - [ ] NASDAQ Capital Market
+  - [x] NYSE (Mic: XNYS)
+  - [x] NYSE Arca  (Mic: ARCX)
+  - [x] NYSE American renamed to LLC (Mic: XASE)
+  - [x] NASDAQ (Mic: XNAS)
+  - [x] NASDAQ Global Select Market (Mic: XNGS)
+  - [x] NASDAQ Select Market (Mic: XNMS?)
+  - [x] NASDAQ Capital Market (Mic: XNCM)
+  - [x] Cboe BZX   (Mic: BATS, XCBO)
+  - [x] Cboe BYX   (Mic: BATY, XCBO)
+  - [x] Cboe EDGA  (Mic: EDGA, XCBO)
+  - [x] Cboe EDGX  (Mic: EDGX, XCBO)
 - [ ] The company must derive at least 50% of its revenue in the U.S.
 
 ## Soft criteria
