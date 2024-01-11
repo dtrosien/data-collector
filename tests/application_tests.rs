@@ -1,6 +1,11 @@
-use chrono::Utc;
+use data_collector::collectors::collector_sources::CollectorSource;
+
+use data_collector::collectors::sp500_fields::Fields;
 use data_collector::configuration::{get_configuration, DatabaseSettings, TaskSetting};
-use data_collector::telemetry::{get_subscriber, init_subscriber};
+use data_collector::startup::Application;
+use data_collector::tasks::actions::action::ActionType::Collect;
+use data_collector::utils::telemetry::{get_subscriber, init_subscriber};
+use rand::Rng;
 use sqlx::types::Uuid;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::sync::OnceLock;
@@ -25,22 +30,14 @@ fn init_tracing() {
     });
 }
 
-pub struct TestApp {
-    pub db_pool: PgPool,
-}
-
-// Launch the application in the background
-async fn spawn_app() -> TestApp {
+async fn spawn_app_with_test_tasks(tasks: Vec<TaskSetting>) -> Application {
     init_tracing();
 
     let mut configuration = get_configuration().expect("Failed to read configuration.");
     configuration.database.database_name = Uuid::new_v4().to_string();
-
-    let connection_pool = configure_database(&configuration.database).await;
-
-    TestApp {
-        db_pool: connection_pool,
-    }
+    configuration.application.tasks = tasks;
+    configure_database(&configuration.database).await;
+    Application::build(configuration).await
 }
 
 pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
@@ -66,62 +63,51 @@ pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
 }
 
 #[tokio::test]
-async fn write_to_db() {
-    // Arrange
-    let app = spawn_app().await;
-
-    let id = Uuid::new_v4();
-    let email = "test";
-    let name = "test";
-    let created_at = Utc::now();
-    // Act
-    sqlx::query!(
-        r#"INSERT INTO example (id,email,name,created_at) VALUES ($1,$2,$3,$4)"#,
-        id,
-        email,
-        name,
-        created_at
-    )
-    .execute(&app.db_pool)
-    .await
-    .expect("Failed to write to DB.");
-
-    // Assert
-    let saved = sqlx::query!("SELECT email, name FROM example",)
-        .fetch_one(&app.db_pool)
-        .await
-        .expect("Failed to fetch saved data.");
-
-    assert_eq!(saved.email, email);
-    assert_eq!(saved.name, name);
-}
-
-#[tokio::test]
 async fn start_task() {
     // Arrange
-    let app = spawn_app().await;
-
-    let task_setting = TaskSetting {
+    let tasks = vec![TaskSetting {
         comment: None,
+        actions: vec![],
         sp500_fields: vec![],
-        priority: None,
-        include_sources: vec!["testurl".to_string()],
-        exclude_sources: None,
-    };
+        priority: 500,
+        include_sources: vec![CollectorSource::Dummy],
+        exclude_sources: vec![],
+    }];
+
+    let app = spawn_app_with_test_tasks(tasks).await;
 
     // Act
-    let runner = data_collector::runner::run(app.db_pool, vec![task_setting]);
+    let runner = app.run();
 
     // Assert
     assert!(runner.await.is_ok())
 }
 
 #[tokio::test]
-async fn partition_pruning_enabled() {
-    let app = spawn_app().await;
-    let saved = sqlx::query!("SHOW enable_partition_pruning")
-        .fetch_one(&app.db_pool)
-        .await
-        .expect("Failed to fetch config of database.");
-    assert_eq!("on", saved.enable_partition_pruning.unwrap());
+async fn running_collect_action_on_dummmy_source() {
+    // Arrange
+    let num_tasks = 20;
+    let base_task = TaskSetting {
+        comment: None,
+        actions: vec![Collect],
+        sp500_fields: vec![Fields::Nyse],
+        priority: 0,
+        include_sources: vec![CollectorSource::Dummy],
+        exclude_sources: vec![],
+    };
+    let mut tasks = vec![];
+    let mut rng = rand::thread_rng();
+    for _n in 0..num_tasks {
+        let mut task = base_task.clone();
+        task.priority = rng.gen();
+        tasks.push(task);
+    }
+
+    let app = spawn_app_with_test_tasks(tasks).await;
+
+    // Act
+    let runner = app.run();
+
+    // Assert
+    assert!(runner.await.is_ok())
 }

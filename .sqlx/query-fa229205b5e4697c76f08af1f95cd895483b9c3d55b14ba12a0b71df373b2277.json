@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select max(action_date) as max_date from nyse_events",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "max_date",
+        "type_info": "Date"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "fa229205b5e4697c76f08af1f95cd895483b9c3d55b14ba12a0b71df373b2277"
+}

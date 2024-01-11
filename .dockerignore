@@ -1,0 +1,8 @@
+.env
+.dockerignore
+digital_ocean_spec.yaml
+target/
+tests/
+Dockerfile
+scripts/
+migrations/

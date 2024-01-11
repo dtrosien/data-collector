@@ -1,9 +1,7 @@
-pub mod client;
+pub mod collectors;
 pub mod configuration;
-pub mod db;
-pub mod runner;
-pub mod source_apis;
-pub mod task;
-pub mod telemetry;
+pub mod startup;
+pub mod tasks;
+pub mod utils;
 
-extern crate core;
+extern crate alloc;

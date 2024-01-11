@@ -3,28 +3,40 @@ database:
   port: 6543
   username: "postgres"
   password: "password"
-  database_name: "newsletter"
+  database_name: "collector"
 application:
+  http_client:
+    timeout_milliseconds: 1000
   tasks:
     - comment: Helpful comment
+      actions: [Collect]
       sp500_fields:
         - NYSE
       priority: 1
       include_sources:
-        - all
-    - comment: Helpful comment1
+        - ALL
+    - comment: Helpful comment
+      actions: [Stage]
       sp500_fields:
-        - MARKET_CAP
-        - MONTH_TRADING_VOLUME
-      priority: 2
+        - NYSE
+      priority: 1
       include_sources:
-        - all
-      exclude_sources:
-        - just_a_bit_brocken_API_1.com
-    - comment: Helpful comment1
-      sp500_fields:
-        - LOCATION
-      priority: 2
-      include_sources:
-        - just_a_bit_brocken_API_1.com
+        - ALL
+    # - comment: Helpful comment1
+    #   actions: [Collect]
+    #   sp500_fields:
+    #     - MARKET_CAP
+    #     - MONTH_TRADING_VOLUME 
+    #   priority: 2
+    #   include_sources:
+    #     - ALL
+    #   exclude_sources:
+    #     - NYSE_EVENTS
+    # - comment: Helpful comment1
+    #   actions: [Collect,Stage]
+    #   sp500_fields:
+    #     - LOCATION
+    #   priority: 2
+    #   include_sources:
+    #     - NYSE_EVENTS
 ...

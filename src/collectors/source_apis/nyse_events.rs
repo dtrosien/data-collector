@@ -1,15 +1,55 @@
-use std::error;
-
+use crate::utils::errors::Result;
+use async_trait::async_trait;
 use chrono::prelude::*;
 use chrono::{Days, NaiveDate};
+use std::error::Error;
+use std::fmt::Display;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use sqlx::Postgres;
+use crate::collectors::collector::Collector;
+use crate::collectors::{collector_sources, sp500_fields, utils};
+use crate::tasks::runnable::Runnable;
+use sqlx::{PgPool, Postgres};
 use tracing::{debug, info, warn};
 
 const NYSE_EVENT_URL: &str = "https://listingmanager.nyse.com/api/corpax/";
+
+#[derive(Clone)]
+pub struct NyseEventCollector {
+    pool: PgPool,
+    client: Client,
+}
+
+impl NyseEventCollector {
+    pub fn new(pool: PgPool, client: Client) -> Self {
+        NyseEventCollector { pool, client }
+    }
+}
+
+impl Display for NyseEventCollector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "NyseEventCollector struct.")
+    }
+}
+
+#[async_trait]
+impl Runnable for NyseEventCollector {
+    async fn run(&self) -> Result<()> {
+        load_and_store_missing_data(self.pool.clone(), self.client.clone()).await
+    }
+}
+
+impl Collector for NyseEventCollector {
+    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
+        vec![sp500_fields::Fields::Nyse]
+    }
+
+    fn get_source(&self) -> collector_sources::CollectorSource {
+        collector_sources::CollectorSource::NyseEvents
+    }
+}
 
 #[derive(Default, Deserialize, Serialize, Debug)]
 struct NyseRequest {
@@ -23,7 +63,7 @@ struct NyseRequest {
 
 #[derive(Default, Deserialize, Debug, PartialEq)]
 struct NysePeekResponse {
-    pub count: Option<u32>,
+    pub count: u32,
 }
 
 #[derive(Default, Deserialize, Debug, PartialEq)]
@@ -74,16 +114,27 @@ impl NyseRequest {
     }
 }
 
-pub async fn load_and_store_missing_data(
-    connection_pool: &sqlx::Pool<Postgres>,
-) -> Result<(), Box<dyn error::Error>> {
+pub async fn load_and_store_missing_data(connection_pool: PgPool, client: Client) -> Result<()> {
+    load_and_store_missing_data_given_url(
+        connection_pool,
+        client,
+        NYSE_EVENT_URL,
+        Utc::now().date_naive(),
+    )
+    .await
+}
+
+async fn load_and_store_missing_data_given_url(
+    connection_pool: PgPool,
+    client: Client,
+    url: &str,
+    upper_date_limit: NaiveDate,
+) -> std::prelude::v1::Result<(), Box<dyn Error + Send + Sync>> {
     info!("Starting to load NYSE events");
-    let now = Utc::now();
-    let mut latest_date = latest_date_available(connection_pool).await;
-    let client = Client::new();
-    while latest_date <= now.date_naive() {
+    let mut latest_date = latest_date_available(&connection_pool).await;
+    while latest_date <= upper_date_limit {
         debug!("Loading NYSE event data for week: {}", latest_date);
-        let week_data = load_missing_week(&client, &latest_date, NYSE_EVENT_URL).await?;
+        let week_data = load_missing_week(&client, &latest_date, url).await?;
         let week_data = transpose_nyse_data_and_filter(week_data);
 
         sqlx::query!("INSERT INTO nyse_events
@@ -96,8 +147,8 @@ pub async fn load_and_store_missing_data(
         &week_data.issuer_name[..],
         &week_data.updated_at[..],
         &week_data.market_event[..],
-    ).execute(connection_pool)
-    .await?;
+    ).execute(&connection_pool)
+            .await?;
 
         latest_date = latest_date
             .checked_add_days(Days::new(7))
@@ -108,8 +159,6 @@ pub async fn load_and_store_missing_data(
 
 ///
 /// Transforms the given vector into its components as vectors. The filter will remove all NyseData which contain a None.
-/// The resulting tuple contains vectors in the order of:</br>
-/// (0:action_date, 1:action_status, 2:action_type, 3:issue_symbol, 4:issuer_name, 5:updated_at, 6:market_event)
 ///
 fn transpose_nyse_data_and_filter(input: Vec<NyseData>) -> CleanedTransposedNyseData {
     let mut result = CleanedTransposedNyseData {
@@ -175,18 +224,16 @@ pub async fn load_missing_week(
     client: &Client,
     date: &NaiveDate,
     url: &str,
-) -> Result<Vec<NyseData>, Box<dyn error::Error>> {
+) -> Result<Vec<NyseData>> {
     let max_page_size = 100; //API does not allow more entries.
     let mut output: Vec<NyseData> = vec![];
 
     let peak_count = peek_number_results(client, date, url).await?;
-
-    let pages_available: u32 = (peak_count as f32 / max_page_size as f32).ceil() as u32;
-    let list_of_pages: Vec<u32> = (1..=pages_available).collect();
+    let list_of_pages: Vec<u32> = (1..=utils::pages_available(peak_count, max_page_size)).collect();
 
     for page in list_of_pages {
         let response = request_nyse(client, url, date, page, max_page_size).await?;
-        let mut response: NyseResponse = parse_nyse_response(&response)?;
+        let mut response = utils::parse_response::<NyseResponse>(&response)?;
 
         output.append(&mut response.results);
     }
@@ -194,15 +241,11 @@ pub async fn load_missing_week(
     Ok(output)
 }
 
-async fn peek_number_results(
-    client: &Client,
-    date: &NaiveDate,
-    url: &str,
-) -> Result<u32, Box<dyn error::Error>> {
+async fn peek_number_results(client: &Client, date: &NaiveDate, url: &str) -> Result<u32> {
     let peak_response = request_nyse(client, url, date, 1, 1).await?;
-    let peek_response = parse_nyse_peek_response(&peak_response)?;
+    let peek_response = utils::parse_response::<NysePeekResponse>(&peak_response)?;
 
-    Ok(peek_response.count.unwrap_or(0))
+    Ok(peek_response.count)
 }
 
 async fn request_nyse(
@@ -211,7 +254,7 @@ async fn request_nyse(
     date: &NaiveDate,
     page: u32,
     max_page_size: u32,
-) -> Result<String, Box<dyn error::Error>> {
+) -> Result<String> {
     let response = match client
         .get(url)
         .query(&NyseRequest::new(*date, 7, page, max_page_size))
@@ -233,30 +276,6 @@ async fn request_nyse(
     .text()
     .await?;
     Ok(response)
-}
-
-fn parse_nyse_peek_response(
-    peak_response: &str,
-) -> Result<NysePeekResponse, Box<serde_json::Error>> {
-    let peak_response = match serde_json::from_str(peak_response) {
-        Ok(ok) => ok,
-        Err(error) => {
-            tracing::error!("Failed to parse response: {}", peak_response);
-            return Err(Box::new(error));
-        }
-    };
-    Ok(peak_response)
-}
-
-fn parse_nyse_response(peak_response: &str) -> Result<NyseResponse, Box<serde_json::Error>> {
-    let peak_response = match serde_json::from_str(peak_response) {
-        Ok(ok) => ok,
-        Err(error) => {
-            tracing::error!("Failed to parse response: {}", peak_response);
-            return Err(Box::new(error));
-        }
-    };
-    Ok(peak_response)
 }
 
 /// Function will query DB and check for the newest date available and return that. If the date is not available, the earliest possible date for the NYSE API is returned. If the date is in the future, the current date will be returned; since this indicates an error in data mangement.
@@ -286,17 +305,17 @@ async fn latest_date_available(connection_pool: &sqlx::Pool<Postgres>) -> NaiveD
 
 #[cfg(test)]
 mod test {
-    use chrono::{TimeZone, Utc};
+    use crate::{collectors::utils, utils::errors::Result};
+    use chrono::{NaiveDate, TimeZone, Utc};
     use httpmock::{Method::GET, MockServer};
-    use reqwest::Client;
-    use sqlx::Pool;
+    use sqlx::{Pool, Postgres};
+    use tracing_test::traced_test;
 
-    use crate::source_apis::nyse::*;
+    use crate::collectors::source_apis::nyse_events::*;
+    use crate::utils::test_tools::get_test_client;
 
     #[sqlx::test]
-    fn empty_database_returns_initial_date(
-        pool: Pool<Postgres>,
-    ) -> Result<(), Box<dyn error::Error>> {
+    async fn empty_database_returns_initial_date(pool: Pool<Postgres>) -> Result<()> {
         let earliest_data_date =
             NaiveDate::parse_from_str("2015-12-07", "%Y-%m-%d").expect("Parsing constant.");
         assert!(earliest_data_date <= latest_date_available(&pool).await);
@@ -304,9 +323,7 @@ mod test {
     }
 
     #[sqlx::test]
-    fn two_entry_database_returns_later_date(
-        pool: Pool<Postgres>,
-    ) -> Result<(), Box<dyn error::Error>> {
+    async fn two_entry_database_returns_later_date(pool: Pool<Postgres>) -> Result<()> {
         sqlx::query!(
             r#"INSERT INTO nyse_events (action_date, action_status, action_type, issue_symbol, issuer_name, updated_at, market_event, is_staged) VALUES('2023-10-30', 'Pending before the Open', 'Suspend', 'TRCA U', 'Twin Ridge Capital Acquisition Corp.', '2023-10-25T12:00:46.392605-04:00', 'b2d6f0ae-480c-4f77-b955-6bee917c7b30', false), ('2023-11-01', 'Pending before the Open', 'Suspend', 'TRCA U', 'Twin Ridge Capital Acquisition Corp.', '2023-10-25T12:00:46.392605-04:00', 'b2d6f0ae-480c-4f77-b955-6bee917c7b30', false);"#
         ).execute(&pool).await?;
@@ -320,14 +337,14 @@ mod test {
     #[test]
     fn parse_nyse_peek_response_with_one_result() {
         let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":null,"action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
-        let nyse_peek_response = parse_nyse_peek_response(input_json).unwrap();
-        assert_eq!(1, nyse_peek_response.count.unwrap());
+        let nyse_peek_response = utils::parse_response::<NysePeekResponse>(input_json).unwrap();
+        assert_eq!(1, nyse_peek_response.count);
     }
 
     #[test]
     fn parse_nyse_response_with_one_result_and_missing_date() {
         let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":null,"action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
-        let nyse_response = parse_nyse_response(input_json).unwrap();
+        let nyse_response = utils::parse_response::<NyseResponse>(input_json).unwrap();
         let data = NyseData {
             action_date: Option::None,
             action_status: Some("Pending before the Open".to_string()),
@@ -350,7 +367,7 @@ mod test {
     #[test]
     fn parse_nyse_response_with_one_result_and_missing_action_status() {
         let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":"2015-10-03","action_status":null,"action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
-        let nyse_response = parse_nyse_response(input_json).unwrap();
+        let nyse_response = utils::parse_response::<NyseResponse>(input_json).unwrap();
         let data = NyseData {
             action_date: Some("2015-10-03".to_string()),
             action_status: None,
@@ -373,7 +390,7 @@ mod test {
     #[test]
     fn parse_nyse_response_with_one_result_and_missing_issuer_symbol() {
         let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":null,"action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":null,"issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
-        let nyse_response = parse_nyse_response(input_json).unwrap();
+        let nyse_response = utils::parse_response::<NyseResponse>(input_json).unwrap();
         let data = NyseData {
             action_date: Option::None,
             action_status: Some("Pending before the Open".to_string()),
@@ -396,7 +413,7 @@ mod test {
     #[test]
     fn parse_nyse_response_with_one_result_and_missing_issuer_name() {
         let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":null,"action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":null,"updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
-        let nyse_response = parse_nyse_response(input_json).unwrap();
+        let nyse_response = utils::parse_response::<NyseResponse>(input_json).unwrap();
         let data = NyseData {
             action_date: Option::None,
             action_status: Some("Pending before the Open".to_string()),
@@ -419,7 +436,7 @@ mod test {
     #[test]
     fn parse_nyse_response_with_one_result_and_given_date() {
         let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":"2016-12-05","action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
-        let nyse_response = parse_nyse_response(input_json).unwrap();
+        let nyse_response = utils::parse_response::<NyseResponse>(input_json).unwrap();
         let data = NyseData {
             action_date: Some("2016-12-05".to_string()),
             action_status: Some("Pending before the Open".to_string()),
@@ -444,7 +461,7 @@ mod test {
         // Start a lightweight mock server.
         let server = MockServer::start();
         let url = server.base_url();
-        let client = Client::new();
+        let client = get_test_client();
 
         let date = Utc
             .with_ymd_and_hms(2023, 10, 24, 0, 0, 0)
@@ -460,7 +477,7 @@ mod test {
                 .query_param("page_size", "100");
             then.status(200)
                 .header("content-type", "text/html")
-                .body(&input_json);
+                .body(input_json);
         });
 
         let result = request_nyse(&client, &url, &date, 1, 100).await.unwrap();
@@ -474,7 +491,7 @@ mod test {
         // Start a lightweight mock server.
         let server = MockServer::start();
         let url = server.base_url();
-        let client = Client::new();
+        let client = get_test_client();
 
         let date = Utc
             .with_ymd_and_hms(2023, 10, 24, 0, 0, 0)
@@ -490,14 +507,65 @@ mod test {
                 .query_param("page_size", "100");
             then.status(200)
                 .header("content-type", "text/html")
-                .body(&input_json);
+                .body(input_json);
         });
 
-        let expected = NysePeekResponse { count: Some(1) };
+        let expected = NysePeekResponse { count: 1 };
 
         let result = request_nyse(&client, &url, &date, 1, 100).await.unwrap();
-        let result = parse_nyse_peek_response(&result).unwrap();
+        let result = utils::parse_response::<NysePeekResponse>(&result).unwrap();
         hello_mock.assert();
         assert_eq!(expected, result);
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn query_http_and_write_to_db(pool: PgPool) -> Result<()> {
+        // Start a lightweight mock server.
+        let server = MockServer::start();
+        let url = server.base_url();
+        let upper_date_limit =
+            NaiveDate::parse_from_str("2015-12-13", "%Y-%m-%d").expect("Parsing constant.");
+
+        let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":"2016-12-05","action_status":"Pending before the Open","action_type":"Suspend","issue_symbol":"SQNS","issuer_name":"Sequans Communications S.A.","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
+        // Create a mock on the server.
+        server.mock(|when, then| {
+            when.method(GET)
+                .query_param("action_date__gte", "2015-12-07")
+                .query_param("action_date__lte", "2015-12-13")
+                .query_param("page", "1")
+                .query_param("page_size", "100");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(input_json);
+        });
+        server.mock(|when, then| {
+            when.method(GET)
+                .query_param("action_date__gte", "2015-12-07")
+                .query_param("action_date__lte", "2015-12-13")
+                .query_param("page", "1")
+                .query_param("page_size", "1");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(input_json);
+        });
+        // build test client
+        let client = get_test_client();
+
+        load_and_store_missing_data_given_url(pool.clone(), client, &url, upper_date_limit).await?;
+
+        let saved = sqlx::query!("SELECT action_date, action_status, action_type, issue_symbol, issuer_name, updated_at, market_event, is_staged FROM nyse_events;").fetch_one(&pool).await?;
+        assert_eq!(
+            saved.action_date,
+            NaiveDate::parse_from_str("2016-12-05", "%Y-%m-%d").expect("Parsing constant.")
+        );
+        assert_eq!(saved.action_status, "Pending before the Open");
+        assert_eq!(saved.action_type, "Suspend");
+        assert_eq!(saved.issue_symbol, "SQNS");
+        assert_eq!(saved.issuer_name, "Sequans Communications S.A.");
+        assert_eq!(saved.updated_at, "2023-10-20T09:24:47.134141-04:00");
+        assert_eq!(saved.market_event, "54a838d5-b1ae-427a-b7a3-629eb1a0de2c");
+        assert_eq!(saved.is_staged, false);
+        Ok(())
     }
 }
