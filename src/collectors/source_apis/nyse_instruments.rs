@@ -195,7 +195,7 @@ mod test {
     use httpmock::{Method::POST, MockServer};
 
     use crate::collectors::{source_apis::nyse_instruments::NysePeekResponse, utils};
-    use crate::utils::test_tools::get_test_client;
+    use crate::utils::test_helpers::get_test_client;
     use sqlx::{Pool, Postgres};
     use tracing_test::traced_test;
 
