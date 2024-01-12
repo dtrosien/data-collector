@@ -187,7 +187,7 @@ fn compute_tmp_location(target_location: &Path) -> PathBuf {
     tmp_location
 }
 
-fn get_zip_file(target_location: &PathBuf) -> Result<ZipArchive<File>> {
+fn get_zip_file(target_location: &Path) -> Result<ZipArchive<File>> {
     let file = File::open(target_location.to_str().unwrap())?;
     let zip_archive = ZipArchive::new(file)?;
     Ok(zip_archive)
