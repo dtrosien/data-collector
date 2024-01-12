@@ -117,7 +117,7 @@ mod test {
     use crate::configuration::TaskSetting;
     use crate::tasks::actions::action::ActionType::Collect;
     use crate::tasks::task::build_task_prio_queue;
-    use crate::utils::test_tools::get_test_client;
+    use crate::utils::test_helpers::get_test_client;
     use sqlx::{Pool, Postgres};
 
     #[sqlx::test]

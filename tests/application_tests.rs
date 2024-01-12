@@ -10,8 +10,6 @@ use sqlx::types::Uuid;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::sync::OnceLock;
 
-mod common;
-
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
 // to enable logs in tests start test with "TEST_LOG=true cargo test"
 fn init_tracing() {

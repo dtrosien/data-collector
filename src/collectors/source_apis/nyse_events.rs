@@ -312,7 +312,7 @@ mod test {
     use tracing_test::traced_test;
 
     use crate::collectors::source_apis::nyse_events::*;
-    use crate::utils::test_tools::get_test_client;
+    use crate::utils::test_helpers::get_test_client;
 
     #[sqlx::test]
     async fn empty_database_returns_initial_date(pool: Pool<Postgres>) -> Result<()> {

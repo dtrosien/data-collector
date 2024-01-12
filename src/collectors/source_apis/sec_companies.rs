@@ -124,10 +124,12 @@ pub async fn load_and_store_missing_data_with_targets(
 ) -> Result<()> {
     download_archive_if_needed(client, zip_file_location_ref, url).await?;
     let zip_file_location = zip_file_location_ref.clone();
-    let zip_archive =
-        spawn_blocking_with_tracing(move || get_zip_file(zip_file_location)).await??;
-    let found_data = search_and_shrink_zip(zip_archive, zip_file_location_ref)?;
-    let transposed_data = transpose_sec_companies(found_data);
+    let transposed_data = spawn_blocking_with_tracing(move || -> Result<_> {
+        let zip_archive = get_zip_file(&zip_file_location)?;
+        let found_data = search_and_shrink_zip(zip_archive, &zip_file_location)?;
+        Ok(transpose_sec_companies(found_data))
+    })
+    .await??;
 
     sqlx::query!("INSERT INTO sec_companies (cik, sic, \"name\", ticker, exchange, state_of_incorporation) Select * from UNNEST ($1::int4[],$2::int[],$3::text[],$4::text[],$5::text[],$6::text[]) on conflict do nothing",
     &transposed_data.cik[..],
@@ -172,6 +174,8 @@ fn search_and_shrink_zip(
         &tmp_location,
         FileTime::from_system_time(file_modification_date),
     )?;
+    fs::remove_file(target_location)?;
+
     fs::rename(tmp_location, target_location)?;
     Ok(found_data)
 }
@@ -183,7 +187,7 @@ fn compute_tmp_location(target_location: &Path) -> PathBuf {
     tmp_location
 }
 
-fn get_zip_file(target_location: PathBuf) -> Result<ZipArchive<File>> {
+fn get_zip_file(target_location: &Path) -> Result<ZipArchive<File>> {
     let file = File::open(target_location.to_str().unwrap())?;
     let zip_archive = ZipArchive::new(file)?;
     Ok(zip_archive)
@@ -214,7 +218,7 @@ fn is_download_needed(target_location: &PathBuf) -> bool {
 }
 
 /// Creates directories if needed and return the location to the zip file, independent, if it is existing or not.
-fn prepare_generic_zip_location(filename: &str) -> Result<std::path::PathBuf> {
+fn prepare_generic_zip_location(filename: &str) -> Result<PathBuf> {
     prepare_zip_location(
         home::home_dir().unwrap().to_str().unwrap(),
         TARGET_SUBDIRECTORIES,
@@ -227,7 +231,7 @@ fn prepare_zip_location(
     root_path: &str,
     intermediate_path: &str,
     file_name: &str,
-) -> Result<std::path::PathBuf> {
+) -> Result<PathBuf> {
     let mut path_buf = PathBuf::from(root_path);
     path_buf.push(intermediate_path);
     fs::create_dir_all(
@@ -303,7 +307,7 @@ fn transpose_sec_companies(companies: Vec<SecCompany>) -> TransposedSecCompany {
 mod test {
     use std::{fs::File, path::PathBuf};
 
-    use crate::utils::test_tools::get_test_client;
+    use crate::utils::test_helpers::get_test_client;
     use crate::{
         collectors::source_apis::sec_companies::{
             load_and_store_missing_data_with_targets, prepare_zip_location, TARGET_FILE_NAME,
@@ -312,14 +316,44 @@ mod test {
     };
     use chrono::{Days, Duration, Utc};
     use filetime::FileTime;
-    use httpmock::{Method::GET, MockServer};
+    use httpmock::Method::GET;
+    use httpmock::MockServer;
     use sqlx::{Pool, Postgres};
     use std::io::prelude::*;
     use std::io::BufReader;
     use tempfile::TempDir;
-    use tracing_test::traced_test;
 
     use super::{download_archive_if_needed, download_url, is_download_needed};
+
+    pub fn get_test_server(file_content: Vec<u8>) -> (MockServer, String) {
+        let server = MockServer::start();
+        let url = server.base_url();
+        server.mock(|when, then| {
+            when.method(GET)
+                .header(
+                    "User-Agent",
+                    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0",
+                )
+                .header(
+                    "Accept",
+                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                )
+                .header("Accept-Language", "en-US,en;q=0.5")
+                .header("Accept-Encoding", "gzip, deflate, br")
+                .header("Connection", "keep-alive")
+                .header("Upgrade-Insecure-Requests", "Requests: 1")
+                .header("Sec-Fetch-Dest", "document")
+                .header("Sec-Fetch-Mode", "navigate")
+                .header("Sec-Fetch-Site", "none")
+                .header("Sec-Fetch-User", "?1")
+                .header("TE", "trailers");
+            then.status(200)
+                .header("content-type", "application/zip")
+                .body(file_content);
+        });
+
+        (server, url)
+    }
 
     #[test]
     fn given_new_file_when_checked_then_returns_false() -> Result<()> {
@@ -373,7 +407,6 @@ mod test {
     }
 
     #[tokio::test]
-    #[traced_test]
     async fn file_is_downloaded_successfully() -> Result<()> {
         //Read file from resources
         let mut file_content: Vec<u8> = vec![];
@@ -384,32 +417,7 @@ mod test {
 
         //Prepare http server and target location
         let target_file = tempfile::Builder::new().tempfile()?;
-
-        let server = MockServer::start();
-        let url = server.base_url();
-        server.mock(|when, then| {
-            when.method(GET)
-                .header(
-                    "User-Agent",
-                    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0",
-                )
-                .header(
-                    "Accept",
-                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                )
-                .header("Accept-Language", "en-US,en;q=0.5")
-                .header("Accept-Encoding", "gzip, deflate, br")
-                .header("Connection", "keep-alive")
-                .header("Upgrade-Insecure-Requests", "Requests: 1")
-                .header("Sec-Fetch-Dest", "document")
-                .header("Sec-Fetch-Mode", "navigate")
-                .header("Sec-Fetch-Site", "none")
-                .header("Sec-Fetch-User", "?1")
-                .header("TE", "trailers");
-            then.status(200)
-                .header("content-type", "application/zip")
-                .body(file_content);
-        });
+        let (_server, url) = get_test_server(file_content);
         let client = get_test_client();
 
         //Act
@@ -422,7 +430,6 @@ mod test {
     }
 
     #[tokio::test]
-    #[traced_test]
     async fn file_is_loaded_when_outdated() -> Result<()> {
         let file = tempfile::Builder::new().tempfile()?;
         let file_path = PathBuf::from(file.path());
@@ -440,31 +447,7 @@ mod test {
             .read_to_end(&mut file_content)?;
 
         //Prepare http server
-        let server = MockServer::start();
-        let url = server.base_url();
-        server.mock(|when, then| {
-            when.method(GET)
-                .header(
-                    "User-Agent",
-                    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0",
-                )
-                .header(
-                    "Accept",
-                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                )
-                .header("Accept-Language", "en-US,en;q=0.5")
-                .header("Accept-Encoding", "gzip, deflate, br")
-                .header("Connection", "keep-alive")
-                .header("Upgrade-Insecure-Requests", "Requests: 1")
-                .header("Sec-Fetch-Dest", "document")
-                .header("Sec-Fetch-Mode", "navigate")
-                .header("Sec-Fetch-Site", "none")
-                .header("Sec-Fetch-User", "?1")
-                .header("TE", "trailers");
-            then.status(200)
-                .header("content-type", "application/zip")
-                .body(file_content);
-        });
+        let (_server, url) = get_test_server(file_content);
         let client = get_test_client();
 
         download_archive_if_needed(client, &file_path, &url).await?;
@@ -476,7 +459,6 @@ mod test {
     }
 
     #[tokio::test]
-    #[traced_test]
     async fn file_is_not_loaded_when_new() -> Result<()> {
         let file = tempfile::Builder::new().tempfile()?;
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -492,31 +474,7 @@ mod test {
             .read_to_end(&mut file_content)?;
 
         //Prepare http server
-        let server = MockServer::start();
-        let url = server.base_url();
-        server.mock(|when, then| {
-            when.method(GET)
-                .header(
-                    "User-Agent",
-                    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0",
-                )
-                .header(
-                    "Accept",
-                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                )
-                .header("Accept-Language", "en-US,en;q=0.5")
-                .header("Accept-Encoding", "gzip, deflate, br")
-                .header("Connection", "keep-alive")
-                .header("Upgrade-Insecure-Requests", "Requests: 1")
-                .header("Sec-Fetch-Dest", "document")
-                .header("Sec-Fetch-Mode", "navigate")
-                .header("Sec-Fetch-Site", "none")
-                .header("Sec-Fetch-User", "?1")
-                .header("TE", "trailers");
-            then.status(200)
-                .header("content-type", "application/zip")
-                .body(file_content);
-        });
+        let (_server, url) = get_test_server(file_content);
         let client = get_test_client();
 
         download_archive_if_needed(client, &file_path, &url).await?;
@@ -527,7 +485,6 @@ mod test {
         Ok(())
     }
 
-    #[traced_test]
     #[test]
     fn check_if_zip_location_is_created() -> Result<()> {
         let tmp_dir = TempDir::new()?;
@@ -543,7 +500,6 @@ mod test {
         Ok(())
     }
 
-    #[traced_test]
     #[sqlx::test]
     async fn check_if_zip_content_is_in_db(pool: Pool<Postgres>) -> Result<()> {
         //Tmp file location
@@ -558,32 +514,7 @@ mod test {
             .read_to_end(&mut file_content)?;
 
         //Prepare http server
-        let server = MockServer::start();
-        let url = server.base_url();
-        server.mock(|when, then| {
-            when.method(GET)
-                .header(
-                    "User-Agent",
-                    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0",
-                )
-                .header(
-                    "Accept",
-                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                )
-                .header("Accept-Language", "en-US,en;q=0.5")
-                .header("Accept-Encoding", "gzip, deflate, br")
-                .header("Connection", "keep-alive")
-                .header("Upgrade-Insecure-Requests", "Requests: 1")
-                .header("Sec-Fetch-Dest", "document")
-                .header("Sec-Fetch-Mode", "navigate")
-                .header("Sec-Fetch-Site", "none")
-                .header("Sec-Fetch-User", "?1")
-                .header("TE", "trailers");
-            then.status(200)
-                .header("content-type", "application/zip")
-                .body(file_content);
-        });
-
+        let (_server, url) = get_test_server(file_content);
         let client = get_test_client();
 
         load_and_store_missing_data_with_targets(pool.clone(), client, &url, &file_path).await?;
@@ -610,35 +541,13 @@ mod test {
         let mut file_content: Vec<u8> = vec![];
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("tests/resources/SEC_companies_1_of_3_with_stock_without_exchange.zip");
-        BufReader::new(File::open(d.to_str().unwrap().to_string())?)
-            .read_to_end(&mut file_content)?;
+        println!("{}", d.to_str().unwrap());
+        BufReader::new(File::open(d.to_str().unwrap().to_string()).unwrap())
+            .read_to_end(&mut file_content)
+            .unwrap();
 
         //Prepare http server
-        let server = MockServer::start();
-        let url = server.base_url();
-        server.mock(|when, then| {
-            when.method(GET)
-                .header(
-                    "User-Agent",
-                    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0",
-                )
-                .header(
-                    "Accept",
-                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                )
-                .header("Accept-Language", "en-US,en;q=0.5")
-                .header("Accept-Encoding", "gzip, deflate, br")
-                .header("Connection", "keep-alive")
-                .header("Upgrade-Insecure-Requests", "Requests: 1")
-                .header("Sec-Fetch-Dest", "document")
-                .header("Sec-Fetch-Mode", "navigate")
-                .header("Sec-Fetch-Site", "none")
-                .header("Sec-Fetch-User", "?1")
-                .header("TE", "trailers");
-            then.status(200)
-                .header("content-type", "application/zip")
-                .body(file_content);
-        });
+        let (_server, url) = get_test_server(file_content);
         let client = get_test_client();
 
         //Load data
