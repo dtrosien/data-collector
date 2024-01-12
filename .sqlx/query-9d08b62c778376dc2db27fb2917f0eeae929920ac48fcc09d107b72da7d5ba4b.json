@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    update nyse_instruments \n    set \n        is_staged = true\n    where\n        instrument_type = 'TEST';",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "9d08b62c778376dc2db27fb2917f0eeae929920ac48fcc09d107b72da7d5ba4b"
+}

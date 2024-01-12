@@ -38,7 +38,8 @@ impl Stager for SecCompanyStager {
 
     /// Take fields from the matching collector
     fn get_source(&self) -> collector_sources::CollectorSource {
-        SecCompanyCollector::new(self.pool.clone(), Client::new()).get_source() // todo: do we really want to init a Collector here? (Client is only here so it can compile)
+        SecCompanyCollector::new(self.pool.clone(), Client::new()).get_source()
+        // todo: do we really want to init a Collector here? (Client is only here so it can compile)
     }
 
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {

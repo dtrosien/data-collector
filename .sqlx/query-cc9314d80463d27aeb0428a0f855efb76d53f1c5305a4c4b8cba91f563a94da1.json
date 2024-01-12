@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    update master_data \n    set \n        is_company = false\n    from (select replace(symbol_esignal_ticker,'/','-')  as symbol_esignal_ticker\n            from \n              nyse_instruments ni\n            where \n              instrument_type in (\n                'EXCHANGE_TRADED_FUND',\n                'EXCHANGE_TRADED_NOTE',\n                'INDEX',\n                'NOTE',\n                'PREFERRED_STOCK',\n                'RIGHT',\n                'TEST',\n                'TRUST',\n                'UNIT') and\n                is_staged = false) as r\n    where \n        r.symbol_esignal_ticker = issue_symbol",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "cc9314d80463d27aeb0428a0f855efb76d53f1c5305a4c4b8cba91f563a94da1"
+}
