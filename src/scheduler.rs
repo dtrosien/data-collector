@@ -4,8 +4,6 @@ use crate::utils::errors::Result;
 use crate::utils::futures::join_handle_results;
 use reqwest::Client;
 use sqlx::PgPool;
-use std::cmp::Reverse;
-use std::collections::BinaryHeap;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
@@ -19,10 +17,8 @@ impl ExecutionSequence {
     pub async fn run_all(&self) -> Vec<Result<()>> {
         let mut results = Vec::new();
         for task_group in &self.0 {
-            let batch: Vec<JoinHandle<Result<()>>> = task_group
-                .iter()
-                .map(|task| execute_task(task.clone()))
-                .collect();
+            let batch: Vec<JoinHandle<Result<()>>> =
+                task_group.iter().cloned().map(execute_task).collect();
             let batch_result = join_handle_results(batch).await;
 
             results.push(batch_result)
@@ -36,30 +32,30 @@ impl ExecutionSequence {
             let batch: Vec<JoinHandle<Result<()>>> = task_group
                 .iter()
                 .filter(|a| execution_sequence_position.contains(&a.execution_sequence_position))
-                .map(|task| execute_task(task.clone()))
+                .cloned()
+                .map(execute_task)
                 .collect();
-            let batch_result = join_handle_results(batch).await;
-
-            results.push(batch_result)
+            if !batch.is_empty() {
+                let batch_result = join_handle_results(batch).await;
+                results.push(batch_result)
+            }
         }
         results
     }
 }
 pub struct Scheduler {
-    tasks: TaskHeap,
+    tasks: OrderedTasks,
 }
-
-pub struct TaskHeap(BinaryHeap<Reverse<Arc<Task>>>);
 
 impl Scheduler {
     pub fn build(task_settings: &[TaskSetting], pool: &PgPool, client: &Client) -> Self {
         Scheduler {
-            tasks: create_tasks_heap(task_settings, pool, client),
+            tasks: build_ordered_tasks(task_settings, pool, client),
         }
     }
 
     pub fn get_ordered_tasks(&self) -> Vec<Arc<Task>> {
-        self.tasks.0.iter().map(|a| a.0.clone()).collect()
+        self.tasks.0.to_vec()
     }
     #[tracing::instrument(name = "Building execution sequence", skip(self))]
     pub fn build_execution_sequence(&self) -> ExecutionSequence {
@@ -69,7 +65,7 @@ impl Scheduler {
 
         // unwrap Reversed<Task> and c
         for task in &self.tasks.0 {
-            let task = task.clone().0;
+            let task = task.clone();
             match last_scheduled_position {
                 Some(pos) if pos == task.execution_sequence_position => current_group.push(task),
                 _ => {
@@ -92,47 +88,45 @@ impl Scheduler {
     }
 }
 
-/// build Tasks based on TaskSettings and push them in a binary min heap
-/// only tasks with a execution_sequence_position > 0 will be scheduled
-pub fn create_tasks_heap(
+struct OrderedTasks(Vec<Arc<Task>>);
+
+/// build Tasks based on TaskSettings and sort them ascending by their execution_sequence_position
+/// only tasks with a execution_sequence_position >= 0 will be scheduled
+fn build_ordered_tasks(
     task_settings: &[TaskSetting],
     pool: &PgPool,
     client: &Client,
-) -> TaskHeap {
-    let mut heap = BinaryHeap::with_capacity(task_settings.len());
+) -> OrderedTasks {
+    let mut tasks = Vec::new();
 
     for ts in task_settings
         .iter()
         .filter(|s| s.execution_sequence_position >= 0)
     {
         let task = Arc::new(Task::new(ts, pool, client));
-        // used Reverse to have a min heap
-        heap.push(Reverse(task))
+        tasks.push(task)
     }
-    TaskHeap(heap)
+    tasks.sort();
+    OrderedTasks(tasks)
 }
 
 #[cfg(test)]
 mod test {
-    use crate::collectors::collector_sources::CollectorSource::All;
+    use crate::collectors::collector_sources::CollectorSource::Dummy;
     use crate::collectors::sp500_fields::Fields;
     use crate::configuration::TaskSetting;
-    use crate::scheduler::create_tasks_heap;
+    use crate::scheduler::{build_ordered_tasks, Scheduler};
     use crate::tasks::actions::action::ActionType::Collect;
     use crate::utils::test_helpers::get_test_client;
-    use sqlx::{Pool, Postgres};
+    use sqlx::PgPool;
 
-    #[sqlx::test]
-    async fn create_task_heap_and_filter_out_sequences_le_zero(pool: Pool<Postgres>) {
-        // Arrange
-        let sequence_position_in = vec![1, 500, 300, 1000, -2, 90, -20];
-        let sequence_position_out = vec![1, 90, 300, 500, 1000];
+    fn build_test_task_settings(sequence_position_in: Vec<i32>) -> Vec<TaskSetting> {
         let base_task = TaskSetting {
             comment: None,
             actions: vec![Collect],
             sp500_fields: vec![Fields::Nyse],
             execution_sequence_position: 0,
-            include_sources: vec![All],
+            include_sources: vec![Dummy],
             exclude_sources: vec![],
         };
         let mut tasks = vec![];
@@ -141,42 +135,79 @@ mod test {
             task.execution_sequence_position = n;
             tasks.push(task);
         }
+
+        tasks
+    }
+
+    #[sqlx::test]
+    async fn create_task_heap_and_filter_out_sequences_lesser_zero(pool: PgPool) {
+        // Arrange
+        let sequence_position_in = vec![1, 500, 0, 300, 1000, -2, 90, -20];
+        let tasks = build_test_task_settings(sequence_position_in);
         let client = get_test_client();
 
         // Act
-        let mut heap = create_tasks_heap(&tasks, &pool, &client);
+        let ordered_tasks = build_ordered_tasks(&tasks, &pool, &client);
 
         // Assert
-        for n in sequence_position_out {
-            assert_eq!(heap.0.pop().unwrap().0.get_execution_sequence_position(), n)
+        let sequence_position_out = vec![(0, 0), (1, 1), (2, 90), (3, 300), (4, 500), (5, 1000)];
+        for (index, position) in sequence_position_out {
+            assert_eq!(
+                ordered_tasks
+                    .0
+                    .get(index)
+                    .unwrap()
+                    .get_execution_sequence_position(),
+                position
+            )
         }
     }
 
     #[sqlx::test]
-    async fn build_execution_sequence(pool: Pool<Postgres>) {
+    async fn scheduler_builds_execution_sequence(pool: PgPool) {
         // Arrange
+        let sequence_position_in = vec![8, 1, 0, 0, 0, 100, 8, -1];
+        let task_settings = build_test_task_settings(sequence_position_in);
+        let client = get_test_client();
 
-        todo!()
         // Act
+        let scheduler = Scheduler::build(&task_settings, &pool, &client);
+        let sequence = scheduler.build_execution_sequence();
 
-        // Assert
+        // Assert - expect 3x Position 0, 1x position 1, 2x position 8 and 1x position 100
+        assert_eq!(sequence.0.get(0).unwrap().len(), 3);
+        assert_eq!(sequence.0.get(1).unwrap().len(), 1);
+        assert_eq!(sequence.0.get(2).unwrap().len(), 2);
+        assert_eq!(sequence.0.get(3).unwrap().len(), 1);
     }
 
     #[sqlx::test]
-    async fn runs_execution_sequence(pool: Pool<Postgres>) {
+    async fn scheduler_runs_execution_sequence(pool: PgPool) {
         // Arrange
-        todo!()
-        // Act
+        let sequence_position_in = vec![8, 1, 0, 0, 0, 8, -1];
+        let task_settings = build_test_task_settings(sequence_position_in);
+        let client = get_test_client();
 
-        // Assert
+        // Act
+        let scheduler = Scheduler::build(&task_settings, &pool, &client);
+        let sequence = scheduler.build_execution_sequence();
+        let results = sequence.run_all().await;
+        // Assert - expected 3 since the single task results are merged into one for each group
+        assert_eq!(results.len(), 3);
     }
 
     #[sqlx::test]
-    async fn runs_execution_sequence_with_filter(pool: Pool<Postgres>) {
+    async fn scheduler_runs_execution_sequence_with_filter(pool: PgPool) {
         // Arrange
-        todo!()
-        // Act
+        let sequence_position_in = vec![8, 1, 0, 0, 0, 8, -1];
+        let task_settings = build_test_task_settings(sequence_position_in);
+        let client = get_test_client();
 
-        // Assert
+        // Act
+        let scheduler = Scheduler::build(&task_settings, &pool, &client);
+        let sequence = scheduler.build_execution_sequence();
+        let results = sequence.run_specific(vec![0, 1]).await;
+        // Assert - expected 2 since the single task results are merged into one for each group
+        assert_eq!(results.len(), 2);
     }
 }
