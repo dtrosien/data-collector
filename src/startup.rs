@@ -1,13 +1,11 @@
 use reqwest::Client;
 
 use crate::configuration::{DatabaseSettings, HttpClientSettings, Settings, TaskSetting};
-use crate::scheduler::schedule_tasks;
-use crate::tasks::task::execute_task;
+
+use crate::scheduler::Scheduler;
 use crate::utils::errors::Result;
-use crate::utils::futures::join_handle_results;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
-use tokio::task::JoinHandle;
 
 pub struct Application {
     pool: PgPool,
@@ -27,23 +25,10 @@ impl Application {
         }
     }
 
-    /// runs groups of tasks.
-    /// while groups are processed in sequence, all tasks inside a group are running concurrently
-    ///
-    /// if one tasks failed, all other tasks will still processed, but overall the function will return an error
     #[tracing::instrument(name = "Start running tasks", skip(self))]
     pub async fn run(&self) -> Result<()> {
-        let schedule = schedule_tasks(&self.task_settings, &self.pool, &self.client);
-
-        let mut results = Vec::new();
-        for task_group in schedule {
-            let batch: Vec<JoinHandle<Result<()>>> =
-                task_group.into_iter().map(execute_task).collect();
-            let batch_result = join_handle_results(batch).await;
-
-            results.push(batch_result)
-        }
-
+        let scheduler = Scheduler::build(&self.task_settings, &self.pool, &self.client);
+        let results = scheduler.build_execution_sequence().run_all().await;
         // todo handle and log errors etc
         results.into_iter().try_for_each(|r| r)?;
         Ok(())

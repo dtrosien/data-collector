@@ -8,14 +8,15 @@ use futures_util::future::BoxFuture;
 use reqwest::Client;
 use sqlx::PgPool;
 use std::cmp::Ordering;
+use std::sync::Arc;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 pub struct Task {
-    id: Uuid,
+    pub id: Uuid,
     pub execution_sequence_position: i32,
-    actions: Vec<BoxedAction>,
-    action_dependencies: ActionDependencies, // maybe use Arc<Mutex> to reduce mem overhead -> however more blocking of threads
+    pub actions: Vec<BoxedAction>,
+    pub action_dependencies: ActionDependencies, // maybe use Arc<Mutex> to reduce mem overhead -> however more blocking of threads
 }
 
 #[derive(Clone)]
@@ -67,7 +68,7 @@ impl Task {
         }
     }
 
-    pub fn get_priority(&self) -> i32 {
+    pub fn get_execution_sequence_position(&self) -> i32 {
         self.execution_sequence_position
     }
 }
@@ -86,6 +87,6 @@ impl Runnable for Task {
     }
 }
 
-pub fn execute_task(task: Task) -> JoinHandle<Result<()>> {
+pub fn execute_task(task: Arc<Task>) -> JoinHandle<Result<()>> {
     tokio::spawn(async move { task.run().await })
 }
