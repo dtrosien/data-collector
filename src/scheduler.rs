@@ -1,7 +1,6 @@
 use crate::configuration::TaskSetting;
-use crate::tasks::task::{execute_task, Task};
-use crate::utils::errors::Result;
-use crate::utils::futures::join_handle_results;
+use crate::tasks::task::{execute_task, Task, TaskError};
+use crate::utils::futures::join_task_handle_results;
 use reqwest::Client;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -14,29 +13,32 @@ impl ExecutionSequence {
     /// while groups are processed in sequence, all tasks inside a group are running concurrently
     ///
     /// if one tasks failed, all other tasks will still processed, but overall the function will return an error
-    pub async fn run_all(&self) -> Vec<Result<()>> {
+    pub async fn run_all(&self) -> Vec<Result<(), TaskError>> {
         let mut results = Vec::new();
         for task_group in &self.0 {
-            let batch: Vec<JoinHandle<Result<()>>> =
+            let batch: Vec<JoinHandle<Result<(), TaskError>>> =
                 task_group.iter().cloned().map(execute_task).collect();
-            let batch_result = join_handle_results(batch).await;
+            let batch_result = join_task_handle_results(batch).await;
 
             results.push(batch_result)
         }
         results
     }
     /// like run_all() but runs only tasks with a specific execution_sequence_positions
-    pub async fn run_specific(&self, execution_sequence_position: Vec<i32>) -> Vec<Result<()>> {
+    pub async fn run_specific(
+        &self,
+        execution_sequence_position: Vec<i32>,
+    ) -> Vec<Result<(), TaskError>> {
         let mut results = Vec::new();
         for task_group in &self.0 {
-            let batch: Vec<JoinHandle<Result<()>>> = task_group
+            let batch: Vec<JoinHandle<Result<(), TaskError>>> = task_group
                 .iter()
                 .filter(|a| execution_sequence_position.contains(&a.execution_sequence_position))
                 .cloned()
                 .map(execute_task)
                 .collect();
             if !batch.is_empty() {
-                let batch_result = join_handle_results(batch).await;
+                let batch_result = join_task_handle_results(batch).await;
                 results.push(batch_result)
             }
         }

@@ -1,8 +1,7 @@
-use crate::utils::errors::Result;
 use async_trait::async_trait;
 use chrono::prelude::*;
 use chrono::{Days, NaiveDate};
-use std::error::Error;
+use futures_util::TryFutureExt;
 use std::fmt::Display;
 
 use reqwest::Client;
@@ -11,7 +10,8 @@ use serde::{Deserialize, Serialize};
 use crate::collectors::collector::Collector;
 use crate::collectors::{collector_sources, sp500_fields, utils};
 use crate::tasks::runnable::Runnable;
-use sqlx::{PgPool, Postgres};
+use crate::tasks::task::TaskError;
+use sqlx::PgPool;
 use tracing::{debug, info, warn};
 
 const NYSE_EVENT_URL: &str = "https://listingmanager.nyse.com/api/corpax/";
@@ -36,8 +36,10 @@ impl Display for NyseEventCollector {
 
 #[async_trait]
 impl Runnable for NyseEventCollector {
-    async fn run(&self) -> Result<()> {
-        load_and_store_missing_data(self.pool.clone(), self.client.clone()).await
+    async fn run(&self) -> Result<(), TaskError> {
+        load_and_store_missing_data(self.pool.clone(), self.client.clone())
+            .map_err(TaskError::UnexpectedError)
+            .await
     }
 }
 
@@ -114,7 +116,10 @@ impl NyseRequest {
     }
 }
 
-pub async fn load_and_store_missing_data(connection_pool: PgPool, client: Client) -> Result<()> {
+pub async fn load_and_store_missing_data(
+    connection_pool: PgPool,
+    client: Client,
+) -> Result<(), anyhow::Error> {
     load_and_store_missing_data_given_url(
         connection_pool,
         client,
@@ -129,7 +134,7 @@ async fn load_and_store_missing_data_given_url(
     client: Client,
     url: &str,
     upper_date_limit: NaiveDate,
-) -> std::prelude::v1::Result<(), Box<dyn Error + Send + Sync>> {
+) -> Result<(), anyhow::Error> {
     info!("Starting to load NYSE events");
     let mut latest_date = latest_date_available(&connection_pool).await;
     while latest_date <= upper_date_limit {
@@ -224,7 +229,7 @@ pub async fn load_missing_week(
     client: &Client,
     date: &NaiveDate,
     url: &str,
-) -> Result<Vec<NyseData>> {
+) -> Result<Vec<NyseData>, anyhow::Error> {
     let max_page_size = 100; //API does not allow more entries.
     let mut output: Vec<NyseData> = vec![];
 
@@ -241,7 +246,11 @@ pub async fn load_missing_week(
     Ok(output)
 }
 
-async fn peek_number_results(client: &Client, date: &NaiveDate, url: &str) -> Result<u32> {
+async fn peek_number_results(
+    client: &Client,
+    date: &NaiveDate,
+    url: &str,
+) -> Result<u32, anyhow::Error> {
     let peak_response = request_nyse(client, url, date, 1, 1).await?;
     let peek_response = utils::parse_response::<NysePeekResponse>(&peak_response)?;
 
@@ -254,32 +263,33 @@ async fn request_nyse(
     date: &NaiveDate,
     page: u32,
     max_page_size: u32,
-) -> Result<String> {
+) -> Result<String, TaskError> {
     let response = match client
         .get(url)
         .query(&NyseRequest::new(*date, 7, page, max_page_size))
         .send()
         .await
     {
-        Ok(ok) => {
-            debug!("Requested URL for NYSE events: {}", ok.url());
-            ok
+        Ok(response) => {
+            debug!("Requested URL for NYSE events: {}", response.url());
+            response
         }
         Err(error) => {
             tracing::error!("Error while loading data from NYSE ({}).", url);
             if let Some(x) = error.url() {
                 tracing::error!("Error caused by query: {}", x);
             }
-            return Err(Box::new(error));
+            return Err(TaskError::ClientRequestError(error));
         }
     }
     .text()
-    .await?;
+    .await
+    .map_err(TaskError::ClientRequestError)?;
     Ok(response)
 }
 
 /// Function will query DB and check for the newest date available and return that. If the date is not available, the earliest possible date for the NYSE API is returned. If the date is in the future, the current date will be returned; since this indicates an error in data mangement.
-async fn latest_date_available(connection_pool: &sqlx::Pool<Postgres>) -> NaiveDate {
+async fn latest_date_available(connection_pool: &PgPool) -> NaiveDate {
     let earliest_date =
         NaiveDate::parse_from_str("2015-12-07", "%Y-%m-%d").expect("Parsing constant.");
     let db_result = sqlx::query_as!(
@@ -305,7 +315,7 @@ async fn latest_date_available(connection_pool: &sqlx::Pool<Postgres>) -> NaiveD
 
 #[cfg(test)]
 mod test {
-    use crate::{collectors::utils, utils::errors::Result};
+    use crate::collectors::utils;
     use chrono::{NaiveDate, TimeZone, Utc};
     use httpmock::{Method::GET, MockServer};
     use sqlx::{Pool, Postgres};
@@ -315,23 +325,21 @@ mod test {
     use crate::utils::test_helpers::get_test_client;
 
     #[sqlx::test]
-    async fn empty_database_returns_initial_date(pool: Pool<Postgres>) -> Result<()> {
+    async fn empty_database_returns_initial_date(pool: Pool<Postgres>) {
         let earliest_data_date =
             NaiveDate::parse_from_str("2015-12-07", "%Y-%m-%d").expect("Parsing constant.");
         assert!(earliest_data_date <= latest_date_available(&pool).await);
-        Ok(())
     }
 
     #[sqlx::test]
-    async fn two_entry_database_returns_later_date(pool: Pool<Postgres>) -> Result<()> {
+    async fn two_entry_database_returns_later_date(pool: Pool<Postgres>) {
         sqlx::query!(
             r#"INSERT INTO nyse_events (action_date, action_status, action_type, issue_symbol, issuer_name, updated_at, market_event, is_staged) VALUES('2023-10-30', 'Pending before the Open', 'Suspend', 'TRCA U', 'Twin Ridge Capital Acquisition Corp.', '2023-10-25T12:00:46.392605-04:00', 'b2d6f0ae-480c-4f77-b955-6bee917c7b30', false), ('2023-11-01', 'Pending before the Open', 'Suspend', 'TRCA U', 'Twin Ridge Capital Acquisition Corp.', '2023-10-25T12:00:46.392605-04:00', 'b2d6f0ae-480c-4f77-b955-6bee917c7b30', false);"#
-        ).execute(&pool).await?;
+        ).execute(&pool).await.unwrap();
 
         let latest_date =
             NaiveDate::parse_from_str("2023-11-01", "%Y-%m-%d").expect("Parsing constant.");
         assert!(latest_date <= latest_date_available(&pool).await);
-        Ok(())
     }
 
     #[test]
@@ -520,7 +528,7 @@ mod test {
 
     #[traced_test]
     #[sqlx::test]
-    async fn query_http_and_write_to_db(pool: PgPool) -> Result<()> {
+    async fn query_http_and_write_to_db(pool: PgPool) {
         // Start a lightweight mock server.
         let server = MockServer::start();
         let url = server.base_url();
@@ -552,9 +560,11 @@ mod test {
         // build test client
         let client = get_test_client();
 
-        load_and_store_missing_data_given_url(pool.clone(), client, &url, upper_date_limit).await?;
+        load_and_store_missing_data_given_url(pool.clone(), client, &url, upper_date_limit)
+            .await
+            .unwrap();
 
-        let saved = sqlx::query!("SELECT action_date, action_status, action_type, issue_symbol, issuer_name, updated_at, market_event, is_staged FROM nyse_events;").fetch_one(&pool).await?;
+        let saved = sqlx::query!("SELECT action_date, action_status, action_type, issue_symbol, issuer_name, updated_at, market_event, is_staged FROM nyse_events;").fetch_one(&pool).await.unwrap();
         assert_eq!(
             saved.action_date,
             NaiveDate::parse_from_str("2016-12-05", "%Y-%m-%d").expect("Parsing constant.")
@@ -566,6 +576,5 @@ mod test {
         assert_eq!(saved.updated_at, "2023-10-20T09:24:47.134141-04:00");
         assert_eq!(saved.market_event, "54a838d5-b1ae-427a-b7a3-629eb1a0de2c");
         assert_eq!(saved.is_staged, false);
-        Ok(())
     }
 }

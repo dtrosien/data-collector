@@ -1,16 +1,15 @@
 use crate::collectors::collector::Collector;
 use crate::collectors::stagers::Stager;
 use async_trait::async_trait;
+use futures_util::TryFutureExt;
 use reqwest::Client;
 use sqlx::PgPool;
 use std::fmt::Display;
 
 use crate::collectors::source_apis::sec_companies::SecCompanyCollector;
+use crate::collectors::{collector_sources, sp500_fields};
 use crate::tasks::runnable::Runnable;
-use crate::{
-    collectors::{collector_sources, sp500_fields},
-    utils::errors::Result,
-};
+use crate::tasks::task::TaskError;
 
 #[derive(Clone)]
 pub struct SecCompanyStager {
@@ -48,12 +47,14 @@ impl Stager for SecCompanyStager {
 
 #[async_trait]
 impl Runnable for SecCompanyStager {
-    async fn run(&self) -> Result<()> {
-        stage_data(self.pool.clone()).await
+    async fn run(&self) -> Result<(), TaskError> {
+        stage_data(self.pool.clone())
+            .map_err(TaskError::UnexpectedError)
+            .await
     }
 }
 
-pub async fn stage_data(connection_pool: PgPool) -> Result<()> {
+pub async fn stage_data(connection_pool: PgPool) -> Result<(), anyhow::Error> {
     println!("Staging entered");
     //Derive data
     move_issuers_to_master_data(&connection_pool).await?;
@@ -65,13 +66,13 @@ pub async fn stage_data(connection_pool: PgPool) -> Result<()> {
 }
 
 /// Move all unstaged issuers from the sec_companies table to the master data table.
-async fn move_issuers_to_master_data(connection_pool: &PgPool) -> Result<()> {
+async fn move_issuers_to_master_data(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     sqlx::query!("insert into master_data (issuer_name, issue_symbol) select name , ticker from sec_companies where is_staged = false on conflict do nothing").execute(connection_pool).await?;
     Ok(())
 }
 
 /// Filter for all issuers with category 'OTC' (over the counter), match them with the master data and mark corresponding master data as non-company with category 'OTC'.
-async fn move_otc_issues_to_master_data(connection_pool: &PgPool) -> Result<()> {
+async fn move_otc_issues_to_master_data(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##" update master_data 
     set
@@ -93,7 +94,7 @@ async fn move_otc_issues_to_master_data(connection_pool: &PgPool) -> Result<()> 
 }
 
 ///Take the SIC code from the sec_companies table (state_of_incorporation column), match it with the countries table and write the ISO 3 country codes to the master data table.
-async fn derive_country_from_sec_code(connection_pool: &PgPool) -> Result<()> {
+async fn derive_country_from_sec_code(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     sqlx::query!(r##"
     update master_data set 
         location = country_code
@@ -109,7 +110,7 @@ async fn derive_country_from_sec_code(connection_pool: &PgPool) -> Result<()> {
 }
 
 ///Select the master data with category 'OTC' and non-null company and mark corresponding rows in sec_companies as staged (true).
-async fn mark_otc_issuers_as_staged(connection_pool: &PgPool) -> Result<()> {
+async fn mark_otc_issuers_as_staged(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##" 
     update sec_companies 
@@ -137,7 +138,6 @@ mod test {
     use crate::collectors::staging::sec_companies_staging::{
         derive_country_from_sec_code, mark_otc_issuers_as_staged, stage_data,
     };
-    use crate::utils::errors::Result;
 
     use super::{move_issuers_to_master_data, move_otc_issues_to_master_data};
 
@@ -183,28 +183,29 @@ mod test {
     ))]
     async fn given_data_in_sec_companies_when_issuers_staged_then_issuers_in_master_data(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         //Entry should not be in master data table
         let db_result = sqlx::query_as!(MasterDataRow, "select * from master_data")
             .fetch_all(&pool)
-            .await?;
+            .await
+            .unwrap();
         assert_eq!(
             is_row_in_master_data("VIRCO MFG CORPORATION", "VIRC", None, None, None, db_result),
             false
         );
 
         // Staging
-        move_issuers_to_master_data(&pool).await?;
+        move_issuers_to_master_data(&pool).await.unwrap();
 
         //Entry should be in master data table
         let db_result = sqlx::query_as!(MasterDataRow, "select * from master_data")
             .fetch_all(&pool)
-            .await?;
+            .await
+            .unwrap();
         assert_eq!(
             is_row_in_master_data("VIRCO MFG CORPORATION", "VIRC", None, None, None, db_result),
             true
         );
-        Ok(())
     }
 
     #[traced_test]
@@ -214,14 +215,15 @@ mod test {
     ))]
     async fn given_data_in_sec_companies_when_issuers_staged_then_staged_issuers_not_in_master_data(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         //Given staged entry in sec_companies
         let sec_result: SecCompanyRow = sqlx::query_as!(
             SecCompanyRow,
             "select * from sec_companies where cik = 1098462"
         )
         .fetch_one(&pool)
-        .await?;
+        .await
+        .unwrap();
         assert!(sec_result.is_staged == true);
         //Given missing entry in master data
         let md_result: Vec<MasterDataRow> = sqlx::query_as!(
@@ -229,20 +231,20 @@ mod test {
             "select * from master_data where issuer_name = 'METALINK LTD'"
         )
         .fetch_all(&pool)
-        .await?;
+        .await
+        .unwrap();
         assert_eq!(md_result.len(), 0);
         //Stage sec_companies
-        move_issuers_to_master_data(&pool).await?;
+        move_issuers_to_master_data(&pool).await.unwrap();
         //Entry is still not in master data (Since already marked as staged in sec_companies)
         let md_result: Vec<MasterDataRow> = sqlx::query_as!(
             MasterDataRow,
             "select * from master_data where issuer_name = 'METALINK LTD'"
         )
         .fetch_all(&pool)
-        .await?;
+        .await
+        .unwrap();
         assert_eq!(md_result.len(), 0);
-
-        Ok(())
     }
 
     #[traced_test]
@@ -252,12 +254,13 @@ mod test {
     ))]
     async fn given_data_in_sec_companies_and_issuers_in_master_data_when_otc_staged_then_issuers_as_otc_in_master_data(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         //Given master data entry with NULL in category and 'is_company'
         let md_result: Vec<MasterDataRow> =
             sqlx::query_as!(MasterDataRow, "select * from master_data")
                 .fetch_all(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert_eq!(
             is_row_in_master_data(
                 "VIVEVE MEDICAL, INC.",
@@ -270,17 +273,17 @@ mod test {
             true
         );
         //Stage OTC info to master data
-        move_otc_issues_to_master_data(&pool).await?;
+        move_otc_issues_to_master_data(&pool).await.unwrap();
         //Master data entry now contains OTC category and is_company == false
         let md_result: MasterDataRow = sqlx::query_as!(
             MasterDataRow,
             "select * from master_data where issuer_name = 'VIVEVE MEDICAL, INC.'"
         )
         .fetch_one(&pool)
-        .await?;
+        .await
+        .unwrap();
         assert_eq!(md_result.category.as_deref(), Some("OTC"));
         assert_eq!(md_result.is_company, Some(false));
-        Ok(())
     }
 
     #[traced_test]
@@ -294,39 +297,42 @@ mod test {
     ))]
     async fn given_some_staged_data_in_sec_companies_and_issuers_in_master_data_when_otc_staged_then_some_issuers_as_otc_in_master_data(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         //Given staged OTC entry in sec companies, but missing OTC info in master data
         let sc_result = sqlx::query!("Select * from sec_companies where name = 'METALINK LTD'")
             .fetch_one(&pool)
-            .await?;
+            .await
+            .unwrap();
         assert_eq!(sc_result.is_staged, true);
         assert_eq!(sc_result.exchange.as_deref(), Some("OTC"));
 
         let md_result =
             sqlx::query!("select * from master_data where issuer_name = 'METALINK LTD'")
                 .fetch_one(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert_eq!(md_result.category, None);
         assert_eq!(md_result.is_company, None);
 
         //Staging OTC
-        move_otc_issues_to_master_data(&pool).await?;
+        move_otc_issues_to_master_data(&pool).await.unwrap();
 
         //Staged OTC sec company entry got not staged and master data entry contains no OTC
         let md_result =
             sqlx::query!("select * from master_data where issuer_name = 'METALINK LTD'")
                 .fetch_one(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert_eq!(md_result.category, None);
         assert_eq!(md_result.is_company, None);
         //Unstaged OTC sec company entry got staged and master data entry contains OTC
         let md_result =
             sqlx::query!("select * from master_data where issuer_name = 'VIVEVE MEDICAL, INC.'")
                 .fetch_one(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert_eq!(md_result.category.as_deref(), Some("OTC"));
         assert_eq!(md_result.is_company, Some(false));
-        Ok(())
     }
 
     #[traced_test]
@@ -336,24 +342,25 @@ mod test {
     ))]
     async fn given_data_in_sec_companies_and_issuers_in_master_data_when_country_derived_then_issuers_have_county_in_master_data(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         //Given entry with missing country in master data
         let md_result =
             sqlx::query!("select * from master_data where issuer_name = 'VIRCO MFG CORPORATION'")
                 .fetch_one(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert_eq!(md_result.location, None);
 
         //Staging country
-        derive_country_from_sec_code(&pool).await?;
+        derive_country_from_sec_code(&pool).await.unwrap();
 
         //Entry now contains country info
         let md_result =
             sqlx::query!("select * from master_data where issuer_name = 'VIRCO MFG CORPORATION'")
                 .fetch_one(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert_eq!(md_result.location.as_deref(), Some("USA"));
-        Ok(())
     }
 
     #[traced_test]
@@ -363,25 +370,26 @@ mod test {
     ))]
     async fn given_some_staged_data_in_sec_companies_and_issuers_in_master_data_when_country_derived_then_some_issuers_as_otc_in_master_data(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         //Given staged data + country info in sec companies (and exists in master data - tested in last part )
         let sc_result =
             sqlx::query!("select * from sec_companies where name = 'America Great Health'")
                 .fetch_one(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert_eq!(sc_result.state_of_incorporation.as_deref(), Some("CA"));
         assert_eq!(sc_result.is_staged, true);
 
         //Staging country
-        derive_country_from_sec_code(&pool).await?;
+        derive_country_from_sec_code(&pool).await.unwrap();
 
         //Entry exists and still contains no country data
         let md_result =
             sqlx::query!("select * from master_data where issuer_name = 'America Great Health'")
                 .fetch_one(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert_eq!(md_result.location, None);
-        Ok(())
     }
 
     #[traced_test]
@@ -391,29 +399,31 @@ mod test {
     ))]
     async fn given_data_in_sec_companies_and_otc_issuers_in_master_data_when_mark_staged_sec_companies_then_otc_sec_companies_marked_staged(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         //Master data contains entry with OTC category and sec_companys corresponding entry is unstaged
         let md_result =
             sqlx::query!("select * from master_data where issuer_name ='VIVEVE MEDICAL, INC.'")
                 .fetch_one(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert_eq!(md_result.category.as_deref(), Some("OTC"));
         let sc_result =
             sqlx::query!("select * from sec_companies where name = 'VIVEVE MEDICAL, INC.'")
                 .fetch_one(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert_eq!(sc_result.is_staged, false);
 
         //Marking sec companies with OTC staged
-        mark_otc_issuers_as_staged(&pool).await?;
+        mark_otc_issuers_as_staged(&pool).await.unwrap();
 
         //Sec company entry is now staged
         let sc_result =
             sqlx::query!("select * from sec_companies where name = 'VIVEVE MEDICAL, INC.'")
                 .fetch_one(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert_eq!(sc_result.is_staged, true);
-        Ok(())
     }
 
     #[traced_test]
@@ -423,37 +433,39 @@ mod test {
     ))]
     async fn given_data_in_sec_companies_when_full_staging_then_staged_master_data_and_marked_sec_companies(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         //Given unstaged data in sec companies and empty master data
         let sc_result =
             sqlx::query!("select * from sec_companies where name = 'VIVEVE MEDICAL, INC.'")
                 .fetch_one(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert_eq!(sc_result.is_staged, false);
 
         let md_result = sqlx::query!("select *  from master_data")
             .fetch_all(&pool)
-            .await?;
+            .await
+            .unwrap();
         assert_eq!(md_result.len(), 0);
         // Stage everything
-        stage_data(pool.clone()).await?;
+        stage_data(pool.clone()).await.unwrap();
 
         // Data with OTC and country in master data and
         // otc marked as staged in sec companies
         let md_result =
             sqlx::query!("select * from master_data where issuer_name = 'VIVEVE MEDICAL, INC.'")
                 .fetch_one(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert_eq!(md_result.category.as_deref(), Some("OTC"));
         assert_eq!(md_result.location.as_deref(), Some("USA"));
 
         let sc_result =
             sqlx::query!("select * from sec_companies where name = 'VIVEVE MEDICAL, INC.'")
                 .fetch_one(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert_eq!(sc_result.is_staged, true);
-
-        Ok(())
     }
 
     #[traced_test]
@@ -461,11 +473,12 @@ mod test {
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_staged.sql")
     ))]
-    async fn check_correct_fixture_loading(pool: Pool<Postgres>) -> Result<()> {
+    async fn check_correct_fixture_loading(pool: Pool<Postgres>) {
         let result: Vec<SecCompanyRow> =
             sqlx::query_as!(SecCompanyRow, "select * from sec_companies")
                 .fetch_all(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert!(is_row_in_sec_company_data(
             1098009,
             Some(2834),
@@ -477,7 +490,6 @@ mod test {
             true,
             result,
         ));
-        Ok(())
     }
 
     fn is_row_in_master_data(
