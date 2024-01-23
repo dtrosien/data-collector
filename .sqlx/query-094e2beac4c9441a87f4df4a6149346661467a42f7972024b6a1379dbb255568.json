@@ -1,0 +1,68 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select * from nyse_instruments where instrument_type = 'TEST'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "instrument_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "instrument_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "symbol_ticker",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "symbol_exchange_ticker",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "normalized_ticker",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "symbol_esignal_ticker",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "mic_code",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "dateloaded",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 8,
+        "name": "is_staged",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "094e2beac4c9441a87f4df4a6149346661467a42f7972024b6a1379dbb255568"
+}

@@ -6,9 +6,7 @@ use reqwest::Client;
 use sqlx::PgPool;
 use std::fmt::Display;
 use tracing::info;
-use tracing_log::log::log;
 
-use crate::collectors::source_apis::sec_companies::SecCompanyCollector;
 use crate::tasks::runnable::Runnable;
 use crate::{
     collectors::{collector_sources, sp500_fields},
@@ -246,371 +244,499 @@ async fn mark_already_staged_company_instruments_as_staged(connection_pool: &PgP
 
 #[cfg(test)]
 mod test {
-    // use chrono::NaiveDate;
-    // use sqlx::{Pool, Postgres};
-    // use tracing_test::traced_test;
+    use chrono::{NaiveDate, Utc};
+    use sqlx::{query, Pool, Postgres};
+    use tracing_test::traced_test;
 
-    // use crate::collectors::staging::sec_companies_staging::stage_data;
-    // use crate::utils::errors::Result;
+    use crate::collectors::staging::nyse_instruments_staging::{
+        mark_already_staged_company_instruments_as_staged,
+        mark_already_staged_non_company_instruments_as_staged, mark_companies_in_master_data,
+    };
+    use crate::collectors::staging::{
+        nyse_instruments_staging::mark_non_companies_in_master_data,
+        sec_companies_staging::stage_data,
+    };
+    use crate::utils::errors::Result;
 
-    // use super::{mark_stock_exchange_per_stock_as_current_date, mark_test_data_as_staged};
+    use super::{mark_stock_exchange_per_stock_as_current_date, mark_test_data_as_staged};
 
-    // #[derive(Debug)]
-    // struct SecCompanyRow {
-    //     cik: i32,
-    //     sic: Option<i32>,
-    //     name: String,
-    //     ticker: String,
-    //     exchange: Option<String>,
-    //     state_of_incorporation: Option<String>,
-    //     date_loaded: NaiveDate,
-    //     is_staged: bool,
-    // }
+    #[derive(Debug)]
+    struct NyseInsturmentsRow {
+        instrument_name: String,
+        instrument_type: String,
+        symbol_ticker: String,
+        symbol_exchange_ticker: Option<String>,
+        normalized_ticker: Option<String>,
+        symbol_esignal_ticker: Option<String>,
+        mic_code: String,
+        dateLoaded: Option<NaiveDate>,
+        is_staged: bool,
+    }
 
-    // #[derive(Debug)]
-    // #[allow(dead_code)]
-    // struct MasterDataRow {
-    //     issuer_name: String,
-    //     issue_symbol: String,
-    //     location: Option<String>,
-    //     start_nyse: Option<NaiveDate>,
-    //     start_nyse_arca: Option<NaiveDate>,
-    //     start_nyse_american: Option<NaiveDate>,
-    //     start_nasdaq: Option<NaiveDate>,
-    //     start_nasdaq_global_select_market: Option<NaiveDate>,
-    //     start_nasdaq_select_market: Option<NaiveDate>,
-    //     start_nasdaq_capital_market: Option<NaiveDate>,
-    //     start_cboe: Option<NaiveDate>,
-    //     is_company: Option<bool>,
-    //     category: Option<String>,
-    //     renamed_to_issuer_name: Option<String>,
-    //     renamed_to_issue_symbol: Option<String>,
-    //     renamed_at_date: Option<NaiveDate>,
-    //     current_name: Option<String>,
-    //     suspended: Option<bool>,
-    //     suspension_date: Option<NaiveDate>,
-    // }
+    #[derive(Debug)]
+    #[allow(dead_code)]
+    struct MasterDataRow {
+        issuer_name: String,
+        issue_symbol: String,
+        location: Option<String>,
+        start_nyse: Option<NaiveDate>,
+        start_nyse_arca: Option<NaiveDate>,
+        start_nyse_american: Option<NaiveDate>,
+        start_nasdaq: Option<NaiveDate>,
+        start_nasdaq_global_select_market: Option<NaiveDate>,
+        start_nasdaq_select_market: Option<NaiveDate>,
+        start_nasdaq_capital_market: Option<NaiveDate>,
+        start_cboe: Option<NaiveDate>,
+        is_company: Option<bool>,
+        category: Option<String>,
+        renamed_to_issuer_name: Option<String>,
+        renamed_to_issue_symbol: Option<String>,
+        renamed_at_date: Option<NaiveDate>,
+        current_name: Option<String>,
+        suspended: Option<bool>,
+        suspension_date: Option<NaiveDate>,
+    }
 
-    // #[traced_test]
-    // #[sqlx::test(fixtures(
-    //     path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-    //     scripts("sec_companies_unstaged.sql")
-    // ))]
-    // async fn given_data_in_sec_companies_when_issuers_staged_then_issuers_in_master_data(
-    //     pool: Pool<Postgres>,
-    // ) -> Result<()> {
-    //     //Entry should not be in master data table
-    //     let db_result = sqlx::query_as!(MasterDataRow, "select * from master_data")
-    //         .fetch_all(&pool)
-    //         .await?;
-    //     assert_eq!(
-    //         is_row_in_master_data("VIRCO MFG CORPORATION", "VIRC", None, None, None, db_result),
-    //         false
-    //     );
+    #[traced_test]
+    #[sqlx::test(fixtures(
+        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
+        scripts("nyse_instruments_unstaged.sql")
+    ))]
+    async fn given_unstaged_TEST_instrument_when_marked_staged_then_staged(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        //Entry should not be staged
+        let instruments_result =
+            sqlx::query!("select * from nyse_instruments where instrument_type = 'TEST'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(instruments_result.is_staged, false);
 
-    //     // Staging
-    //     mark_test_data_as_staged(&pool).await?;
+        // Staging
+        mark_test_data_as_staged(&pool).await.unwrap();
 
-    //     //Entry should be in master data table
-    //     let db_result = sqlx::query_as!(MasterDataRow, "select * from master_data")
-    //         .fetch_all(&pool)
-    //         .await?;
-    //     assert_eq!(
-    //         is_row_in_master_data("VIRCO MFG CORPORATION", "VIRC", None, None, None, db_result),
-    //         true
-    //     );
-    //     Ok(())
-    // }
+        //Entry should now be staged
+        let instruments_result =
+            sqlx::query!("select * from nyse_instruments where instrument_type = 'TEST'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(instruments_result.is_staged, true);
+        Ok(())
+    }
 
-    // #[traced_test]
-    // #[sqlx::test(fixtures(
-    //     path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-    //     scripts("sec_companies_unstaged.sql", "sec_companies_staged.sql")
-    // ))]
-    // async fn given_data_in_sec_companies_when_issuers_staged_then_staged_issuers_not_in_master_data(
-    //     pool: Pool<Postgres>,
-    // ) -> Result<()> {
-    //     //Given staged entry in sec_companies
-    //     let sec_result: SecCompanyRow = sqlx::query_as!(
-    //         SecCompanyRow,
-    //         "select * from sec_companies where cik = 1098462"
-    //     )
-    //     .fetch_one(&pool)
-    //     .await?;
-    //     assert!(sec_result.is_staged == true);
-    //     //Given missing entry in master data
-    //     let md_result: Vec<MasterDataRow> = sqlx::query_as!(
-    //         MasterDataRow,
-    //         "select * from master_data where issuer_name = 'METALINK LTD'"
-    //     )
-    //     .fetch_all(&pool)
-    //     .await?;
-    //     assert_eq!(md_result.len(), 0);
-    //     //Stage sec_companies
-    //     mark_test_data_as_staged(&pool).await?;
-    //     //Entry is still not in master data (Since already marked as staged in sec_companies)
-    //     let md_result: Vec<MasterDataRow> = sqlx::query_as!(
-    //         MasterDataRow,
-    //         "select * from master_data where issuer_name = 'METALINK LTD'"
-    //     )
-    //     .fetch_all(&pool)
-    //     .await?;
-    //     assert_eq!(md_result.len(), 0);
+    #[traced_test]
+    #[sqlx::test(fixtures(
+        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
+        scripts(
+            "nyse_instruments_unstaged.sql",
+            "master_data_without_company_and_date.sql"
+        )
+    ))]
 
-    //     Ok(())
-    // }
+    async fn given_master_data_without_dates_when_dates_staged_then_dates_in_correct_columns(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        //Given staged entry in sec_companies
+        let md_result = query!("select count(*) from master_data")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert!(md_result.count.unwrap() > 12);
 
-    // #[traced_test]
-    // #[sqlx::test(fixtures(
-    //     path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-    //     scripts("sec_companies_unstaged.sql", "master_data_without_otc_category.sql")
-    // ))]
-    // async fn given_data_in_sec_companies_and_issuers_in_master_data_when_otc_staged_then_issuers_as_otc_in_master_data(
-    //     pool: Pool<Postgres>,
-    // ) -> Result<()> {
-    //     //Given master data entry with NULL in category and 'is_company'
-    //     let md_result: Vec<MasterDataRow> =
-    //         sqlx::query_as!(MasterDataRow, "select * from master_data")
-    //             .fetch_all(&pool)
-    //             .await?;
-    //     assert_eq!(
-    //         is_row_in_master_data(
-    //             "VIVEVE MEDICAL, INC.",
-    //             "VIVE",
-    //             Some("USA"),
-    //             None,
-    //             None,
-    //             md_result
-    //         ),
-    //         true
-    //     );
-    //     //Stage OTC info to master data
-    //     mark_stock_exchange_per_stock_as_current_date(&pool).await?;
-    //     //Master data entry now contains OTC category and is_company == false
-    //     let md_result: MasterDataRow = sqlx::query_as!(
-    //         MasterDataRow,
-    //         "select * from master_data where issuer_name = 'VIVEVE MEDICAL, INC.'"
-    //     )
-    //     .fetch_one(&pool)
-    //     .await?;
-    //     assert_eq!(md_result.category.as_deref(), Some("OTC"));
-    //     assert_eq!(md_result.is_company, Some(false));
-    //     Ok(())
-    // }
+        let md_result: Vec<MasterDataRow> = sqlx::query_as!(
+            MasterDataRow,
+            "select * from master_data where 
+                Start_NYSE notnull or
+                Start_NYSE_Arca notnull or
+                Start_NYSE_American notnull or
+                Start_NASDAQ notnull or
+                Start_NASDAQ_Global_Select_Market notnull or
+                Start_NASDAQ_Select_Market notnull or
+                Start_NASDAQ_Capital_Market notnull or
+                Start_CBOE notnull"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert!(md_result.len() == 0);
 
-    // #[traced_test]
-    // #[sqlx::test(fixtures(
-    //     path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-    //     scripts(
-    //         "sec_companies_unstaged.sql",
-    //         "sec_companies_staged.sql",
-    //         "master_data_without_otc_category.sql"
-    //     )
-    // ))]
-    // async fn given_some_staged_data_in_sec_companies_and_issuers_in_master_data_when_otc_staged_then_some_issuers_as_otc_in_master_data(
-    //     pool: Pool<Postgres>,
-    // ) -> Result<()> {
-    //     //Given staged OTC entry in sec companies, but missing OTC info in master data
-    //     let sc_result = sqlx::query!("Select * from sec_companies where name = 'METALINK LTD'")
-    //         .fetch_one(&pool)
-    //         .await?;
-    //     assert_eq!(sc_result.is_staged, true);
-    //     assert_eq!(sc_result.exchange.as_deref(), Some("OTC"));
+        // Stage nyse instruments dates per stock exchange
+        mark_stock_exchange_per_stock_as_current_date(&pool).await?;
 
-    //     let md_result =
-    //         sqlx::query!("select * from master_data where issuer_name = 'METALINK LTD'")
-    //             .fetch_one(&pool)
-    //             .await?;
-    //     assert_eq!(md_result.category, None);
-    //     assert_eq!(md_result.is_company, None);
+        // Date is now in correct field
+        let current_date = Utc::now().date_naive();
+        let md_result: Vec<MasterDataRow> =
+            sqlx::query_as!(MasterDataRow, "select * from master_data")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert!(md_result.iter().any(|row| row
+            .issuer_name
+            .eq("MAIDEN HOLDINGS LTD 6.625% NTS 14/06/46 USD25")
+            && row.start_nyse.unwrap().eq(&current_date)));
+        assert!(md_result.iter().any(|row| row
+            .issuer_name
+            .eq("ETRACS 2X LEVERAGED MSCI US MOMENTUM FACTOR TR ETN")
+            && row.start_nyse_arca.unwrap().eq(&current_date)));
+        assert!(md_result
+            .iter()
+            .any(|row| row.issuer_name.eq("GENIUS GROUP LTD")
+                && row.start_nyse_american.unwrap().eq(&current_date)));
+        assert!(md_result.iter().any(|row| row.issuer_name.eq("YANDEX N.V.")
+            && row
+                .start_nasdaq_global_select_market
+                .unwrap()
+                .eq(&current_date)));
+        assert!(md_result
+            .iter()
+            .any(|row| row.issuer_name.eq("NEXT E GO N V")
+                && row.start_nasdaq_select_market.unwrap().eq(&current_date)));
+        assert!(md_result
+            .iter()
+            .any(|row| row.issuer_name.eq("KAROOOOO LTD")
+                && row.start_nasdaq_capital_market.unwrap().eq(&current_date)));
+        assert!(md_result
+            .iter()
+            .any(|row| row.issuer_name.eq("ISHARES INC")
+                && row.start_nasdaq.unwrap().eq(&current_date)));
+        assert!(md_result.iter().any(|row| row
+            .issuer_name
+            .eq("GOLDMAN SACHS PHYSICAL GOLD ETF SHARES")
+            && row.start_cboe.unwrap().eq(&current_date)));
+        assert!(md_result
+            .iter()
+            .any(|row| row.issuer_name.eq("S&P 100 INDEX")
+                && row.start_cboe.unwrap().eq(&current_date)));
+        assert!(md_result
+            .iter()
+            .any(|row| row.issuer_name.eq("S&P 101 INDEX")
+                && row.start_cboe.unwrap().eq(&current_date)));
+        assert!(md_result
+            .iter()
+            .any(|row| row.issuer_name.eq("S&P 102 INDEX")
+                && row.start_cboe.unwrap().eq(&current_date)));
+        assert!(md_result
+            .iter()
+            .any(|row| row.issuer_name.eq("S&P 103 INDEX")
+                && row.start_cboe.unwrap().eq(&current_date)));
+        Ok(())
+    }
 
-    //     //Staging OTC
-    //     mark_stock_exchange_per_stock_as_current_date(&pool).await?;
+    #[traced_test]
+    #[sqlx::test(fixtures(
+        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
+        scripts(
+            "nyse_instruments_staged.sql",
+            "master_data_without_company_and_date.sql"
+        )
+    ))]
+    async fn given_master_data_without_dates_and_staged_instruments_when_dates_staged_then_no_change_in_master_data(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        //Given master data entry with NULL in start_nyse (instrument is registered at NYSE)
+        let md_result = sqlx::query_as!(
+            MasterDataRow,
+            "select * from master_data where issuer_name = 'TEST Company'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(md_result.start_nyse, None);
 
-    //     //Staged OTC sec company entry got not staged and master data entry contains no OTC
-    //     let md_result =
-    //         sqlx::query!("select * from master_data where issuer_name = 'METALINK LTD'")
-    //             .fetch_one(&pool)
-    //             .await?;
-    //     assert_eq!(md_result.category, None);
-    //     assert_eq!(md_result.is_company, None);
-    //     //Unstaged OTC sec company entry got staged and master data entry contains OTC
-    //     let md_result =
-    //         sqlx::query!("select * from master_data where issuer_name = 'VIVEVE MEDICAL, INC.'")
-    //             .fetch_one(&pool)
-    //             .await?;
-    //     assert_eq!(md_result.category.as_deref(), Some("OTC"));
-    //     assert_eq!(md_result.is_company, Some(false));
-    //     Ok(())
-    // }
+        // Stage nyse instruments per stock exchange
+        mark_stock_exchange_per_stock_as_current_date(&pool).await?;
 
-    // #[traced_test]
-    // #[sqlx::test(fixtures(
-    //     path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-    //     scripts("sec_companies_unstaged.sql", "master_data_without_country_code.sql")
-    // ))]
-    // async fn given_data_in_sec_companies_and_issuers_in_master_data_when_country_derived_then_issuers_have_county_in_master_data(
-    //     pool: Pool<Postgres>,
-    // ) -> Result<()> {
-    //     //Given entry with missing country in master data
-    //     let md_result =
-    //         sqlx::query!("select * from master_data where issuer_name = 'VIRCO MFG CORPORATION'")
-    //             .fetch_one(&pool)
-    //             .await?;
-    //     assert_eq!(md_result.location, None);
+        //Master data date is still NULL for start_nyse, because source data is marked as staged
+        let md_result = sqlx::query_as!(
+            MasterDataRow,
+            "select * from master_data where issuer_name = 'TEST Company'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(md_result.start_nyse, None);
+        Ok(())
+    }
 
-    //     //Staging country
-    //     derive_country_from_sec_code(&pool).await?;
+    #[traced_test]
+    #[sqlx::test(fixtures(
+        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
+        scripts(
+            "nyse_instruments_unstaged.sql",
+            "master_data_without_company_and_date.sql"
+        )
+    ))]
+    async fn given_master_data_wihtout_company_info_when_non_company_instruments_staged_then_master_data_marked_as_non_company(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        // Given companies without company info
+        let md_result = query!("select count(*) from master_data")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert!(md_result.count.unwrap() > 10);
 
-    //     //Entry now contains country info
-    //     let md_result =
-    //         sqlx::query!("select * from master_data where issuer_name = 'VIRCO MFG CORPORATION'")
-    //             .fetch_one(&pool)
-    //             .await?;
-    //     assert_eq!(md_result.location.as_deref(), Some("USA"));
-    //     Ok(())
-    // }
+        let md_result: Vec<MasterDataRow> = sqlx::query_as!(
+            MasterDataRow,
+            "select * from master_data where 
+            is_company notnull"
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert!(md_result.len() == 0);
 
-    // #[traced_test]
-    // #[sqlx::test(fixtures(
-    //     path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-    //     scripts("sec_companies_staged.sql", "master_data_without_country_code.sql")
-    // ))]
-    // async fn given_some_staged_data_in_sec_companies_and_issuers_in_master_data_when_country_derived_then_some_issuers_as_otc_in_master_data(
-    //     pool: Pool<Postgres>,
-    // ) -> Result<()> {
-    //     //Given staged data + country info in sec companies (and exists in master data - tested in last part )
-    //     let sc_result =
-    //         sqlx::query!("select * from sec_companies where name = 'America Great Health'")
-    //             .fetch_one(&pool)
-    //             .await?;
-    //     assert_eq!(sc_result.state_of_incorporation.as_deref(), Some("CA"));
-    //     assert_eq!(sc_result.is_staged, true);
+        //Staging OTC
+        mark_non_companies_in_master_data(&pool).await.unwrap();
 
-    //     //Staging country
-    //     derive_country_from_sec_code(&pool).await?;
+        //Then
+        let md_result = sqlx::query!(
+            "select * from master_data where issue_symbol in ('$ESGE.IV', 'MTUL','$OEX','GNS','MHLA','IGZ','EGOX','ABCD')
+            and is_company notnull")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
 
-    //     //Entry exists and still contains no country data
-    //     let md_result =
-    //         sqlx::query!("select * from master_data where issuer_name = 'America Great Health'")
-    //             .fetch_one(&pool)
-    //             .await?;
-    //     assert_eq!(md_result.location, None);
-    //     Ok(())
-    // }
+        assert_eq!(md_result.len(), 8);
+        Ok(())
+    }
 
-    // #[traced_test]
-    // #[sqlx::test(fixtures(
-    //     path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-    //     scripts("sec_companies_unstaged.sql", "master_data_without_country_code.sql")
-    // ))]
-    // async fn given_data_in_sec_companies_and_otc_issuers_in_master_data_when_mark_staged_sec_companies_then_otc_sec_companies_marked_staged(
-    //     pool: Pool<Postgres>,
-    // ) -> Result<()> {
-    //     //Master data contains entry with OTC category and sec_companys corresponding entry is unstaged
-    //     let md_result =
-    //         sqlx::query!("select * from master_data where issuer_name ='VIVEVE MEDICAL, INC.'")
-    //             .fetch_one(&pool)
-    //             .await?;
-    //     assert_eq!(md_result.category.as_deref(), Some("OTC"));
-    //     let sc_result =
-    //         sqlx::query!("select * from sec_companies where name = 'VIVEVE MEDICAL, INC.'")
-    //             .fetch_one(&pool)
-    //             .await?;
-    //     assert_eq!(sc_result.is_staged, false);
+    #[traced_test]
+    #[sqlx::test(fixtures(
+        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
+        scripts(
+            "nyse_instruments_staged.sql",
+            "master_data_without_company_and_date.sql",
+        )
+    ))]
+    async fn given_master_data_without_company_info_when_staged_non_company_instruments_is_staged_again_then_no_change_in_master_data(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        // Given staged company in instruments
+        let sc_result =
+            sqlx::query!("Select * from nyse_instruments where instrument_name = 'TEST Company'")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(sc_result.is_staged, true);
 
-    //     //Marking sec companies with OTC staged
-    //     mark_otc_issuers_as_staged(&pool).await?;
+        //Staging OTC
+        mark_non_companies_in_master_data(&pool).await?;
 
-    //     //Sec company entry is now staged
-    //     let sc_result =
-    //         sqlx::query!("select * from sec_companies where name = 'VIVEVE MEDICAL, INC.'")
-    //             .fetch_one(&pool)
-    //             .await?;
-    //     assert_eq!(sc_result.is_staged, true);
-    //     Ok(())
-    // }
+        //Then no change for master data
+        let md_result =
+            sqlx::query!("Select * from master_data where issuer_name = 'TEST Company'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(md_result.is_company, None);
 
-    // #[traced_test]
-    // #[sqlx::test(fixtures(
-    //     path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-    //     scripts("sec_companies_unstaged.sql")
-    // ))]
-    // async fn given_data_in_sec_companies_when_full_staging_then_staged_master_data_and_marked_sec_companies(
-    //     pool: Pool<Postgres>,
-    // ) -> Result<()> {
-    //     //Given unstaged data in sec companies and empty master data
-    //     let sc_result =
-    //         sqlx::query!("select * from sec_companies where name = 'VIVEVE MEDICAL, INC.'")
-    //             .fetch_one(&pool)
-    //             .await?;
-    //     assert_eq!(sc_result.is_staged, false);
+        Ok(())
+    }
 
-    //     let md_result = sqlx::query!("select *  from master_data")
-    //         .fetch_all(&pool)
-    //         .await?;
-    //     assert_eq!(md_result.len(), 0);
-    //     // Stage everything
-    //     stage_data(pool.clone()).await?;
+    #[traced_test]
+    #[sqlx::test(fixtures(
+        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
+        scripts(
+            "nyse_instruments_unstaged.sql",
+            "master_data_without_company_and_date.sql"
+        )
+    ))]
+    async fn given_master_data_without_company_info_when_company_instruments_is_staged_then_company_in_master_data(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        // Given
+        let md_result = sqlx::query!("select * from master_data where issue_symbol in ('KARO', 'ABC1', 'ABC2') and is_company isnull").fetch_all(&pool).await.unwrap();
+        assert_eq!(md_result.len(), 3);
 
-    //     // Data with OTC and country in master data and
-    //     // otc marked as staged in sec companies
-    //     let md_result =
-    //         sqlx::query!("select * from master_data where issuer_name = 'VIVEVE MEDICAL, INC.'")
-    //             .fetch_one(&pool)
-    //             .await?;
-    //     assert_eq!(md_result.category.as_deref(), Some("OTC"));
-    //     assert_eq!(md_result.location.as_deref(), Some("USA"));
+        //Staging OTC
+        mark_companies_in_master_data(&pool).await.unwrap();
 
-    //     let sc_result =
-    //         sqlx::query!("select * from sec_companies where name = 'VIVEVE MEDICAL, INC.'")
-    //             .fetch_one(&pool)
-    //             .await?;
-    //     assert_eq!(sc_result.is_staged, true);
+        //Then is_company not null
+        let md_result = sqlx::query!("select * from master_data where issue_symbol in ('KARO', 'ABC1', 'ABC2') and is_company notnull").fetch_all(&pool).await.unwrap();
+        assert_eq!(md_result.len(), 3);
 
-    //     Ok(())
-    // }
+        Ok(())
+    }
 
-    // #[traced_test]
-    // #[sqlx::test(fixtures(
-    //     path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-    //     scripts("sec_companies_staged.sql")
-    // ))]
-    // async fn check_correct_fixture_loading(pool: Pool<Postgres>) -> Result<()> {
-    //     let result: Vec<SecCompanyRow> =
-    //         sqlx::query_as!(SecCompanyRow, "select * from sec_companies")
-    //             .fetch_all(&pool)
-    //             .await?;
-    //     assert!(is_row_in_sec_company_data(
-    //         1098009,
-    //         Some(2834),
-    //         "America Great Health",
-    //         "AAGH",
-    //         Some("OTC"),
-    //         Some("CA"),
-    //         "2023-12-12",
-    //         true,
-    //         result,
-    //     ));
-    //     Ok(())
-    // }
+    #[traced_test]
+    #[sqlx::test(fixtures(
+        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
+        scripts(
+            "nyse_instruments_staged.sql",
+            "master_data_without_company_and_date.sql",
+        )
+    ))]
+    async fn given_master_data_without_company_info_when_staged_company_instruments_is_staged_again_then_no_change_in_master_data(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        // Given staged entry in instruments
+        let instrument_result =
+            sqlx::query!("select * from nyse_instruments where symbol_esignal_ticker = 'KARO2'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(instrument_result.is_staged, true);
+        assert_eq!(instrument_result.instrument_type, "COMMON_STOCK");
 
-    // fn is_row_in_master_data(
-    //     issuer_name: &str,
-    //     issue_symbol: &str,
-    //     location: Option<&str>,
-    //     is_company: Option<bool>,
-    //     category: Option<&str>,
-    //     master_data: Vec<MasterDataRow>,
-    // ) -> bool {
-    //     master_data.iter().any(|row| {
-    //         row.issuer_name.eq(issuer_name)
-    //             && row.issue_symbol.eq(issue_symbol)
-    //             && row.location.as_deref().eq(&location)
-    //             && row.is_company.eq(&is_company)
-    //             && row.category.as_deref().eq(&category)
-    //     })
-    // }
+        //Staging OTC
+        mark_companies_in_master_data(&pool).await.unwrap();
+
+        //Then
+        let md_result = sqlx::query!("select * from master_data where issue_symbol = 'KARO2'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(md_result.is_company, None);
+
+        Ok(())
+    }
+
+    #[traced_test]
+    #[sqlx::test(fixtures(
+        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
+        scripts("nyse_instruments_unstaged.sql", "master_data_with_company.sql")
+    ))]
+    async fn given_master_data_with_non_company_info_when_mark_non_company_instruments_staged_then_instruments_marked_staged(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        // Given
+        let md_result = sqlx::query!("Select * from master_data where issue_symbol = 'ATAKR'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(md_result.is_company, Some(false));
+
+        //Staging OTC
+        mark_already_staged_non_company_instruments_as_staged(&pool)
+            .await
+            .unwrap();
+
+        //Then
+        let instruments_result =
+            sqlx::query!("select * from nyse_instruments where symbol_esignal_ticker = 'ATAKR'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(instruments_result.is_staged, true);
+        Ok(())
+    }
+
+    #[traced_test]
+    #[sqlx::test(fixtures(
+        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
+        scripts(
+            "nyse_instruments_unstaged.sql",
+            "master_data_without_company_and_date.sql"
+        )
+    ))]
+    async fn given_master_data_without_company_info_and_unstaged_instrument_when_mark_company_instruments_staged_then_unstaged_instrument_not_marked_staged(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        // Given
+        let md_result = sqlx::query!("select * from master_data where issue_symbol = 'KARO'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(md_result.is_company, None);
+
+        //Staging OTC
+        mark_already_staged_company_instruments_as_staged(&pool)
+            .await
+            .unwrap();
+
+        //Then
+        let instrument_result =
+            sqlx::query!("select * from nyse_instruments where symbol_esignal_ticker = 'KARO'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(instrument_result.is_staged, false);
+
+        Ok(())
+    }
+
+    #[traced_test]
+    #[sqlx::test(fixtures(
+        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
+        scripts("nyse_instruments_unstaged.sql", "master_data_with_company.sql")
+    ))]
+    async fn given_master_data_with_company_info_when_mark_instruments_staged_then_instruments_staged(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        // Given
+        let md_result = sqlx::query!("select * from master_data where issue_symbol = 'BOH'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(md_result.is_company, Some(true));
+
+        //Staging OTC
+        mark_already_staged_company_instruments_as_staged(&pool)
+            .await
+            .unwrap();
+
+        //Then
+        let instrument_result =
+            sqlx::query!("select * from nyse_instruments where symbol_esignal_ticker = 'BOH'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(instrument_result.is_staged, true);
+
+        Ok(())
+    }
+
+    #[traced_test]
+    #[sqlx::test(fixtures(
+        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
+        scripts(
+            "nyse_instruments_unstaged.sql",
+            "master_data_without_company_and_date.sql",
+        )
+    ))]
+    async fn given_master_data_without_company_info_and_unstaged_non_company_instrument_when_mark_instruments_staged_then_unstaged_instrument_not_marked_staged(
+        pool: Pool<Postgres>,
+    ) -> Result<()> {
+        let md_result = sqlx::query!("select * from master_data where issue_symbol = 'EGOX'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(md_result.is_company, None);
+
+        //Staging OTC
+        mark_already_staged_non_company_instruments_as_staged(&pool)
+            .await
+            .unwrap();
+
+        //Then
+        let instrument_result =
+            sqlx::query!("select * from nyse_instruments where symbol_esignal_ticker = 'EGOX' and instrument_type = 'TRUST'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(instrument_result.is_staged, false);
+        Ok(())
+    }
+
+    ///TODO - Check how this can be unified with the other one
+    fn is_row_in_master_data(
+        issuer_name: &str,
+        issue_symbol: &str,
+        location: Option<&str>,
+        is_company: Option<bool>,
+        category: Option<&str>,
+        master_data: Vec<MasterDataRow>,
+    ) -> bool {
+        master_data.iter().any(|row| {
+            row.issuer_name.eq(issuer_name)
+                && row.issue_symbol.eq(issue_symbol)
+                && row.location.as_deref().eq(&location)
+                && row.is_company.eq(&is_company)
+                && row.category.as_deref().eq(&category)
+        })
+    }
 
     // fn is_row_in_sec_company_data(
     //     cik: i32,
