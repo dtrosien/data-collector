@@ -12,7 +12,7 @@ application:
       actions: [Collect]
       sp500_fields:
         - NYSE
-      priority: 1
+      execution_sequence_position: 1
       include_sources:
         - ALL
     - comment: Helpful comment

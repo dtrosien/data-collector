@@ -10,8 +10,6 @@ use sqlx::types::Uuid;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::sync::OnceLock;
 
-mod common;
-
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
 // to enable logs in tests start test with "TEST_LOG=true cargo test"
 fn init_tracing() {
@@ -69,7 +67,7 @@ async fn start_task() {
         comment: None,
         actions: vec![],
         sp500_fields: vec![],
-        priority: 500,
+        execution_sequence_position: 500,
         include_sources: vec![CollectorSource::Dummy],
         exclude_sources: vec![],
     }];
@@ -91,7 +89,7 @@ async fn running_collect_action_on_dummmy_source() {
         comment: None,
         actions: vec![Collect],
         sp500_fields: vec![Fields::Nyse],
-        priority: 0,
+        execution_sequence_position: 0,
         include_sources: vec![CollectorSource::Dummy],
         exclude_sources: vec![],
     };
@@ -99,7 +97,7 @@ async fn running_collect_action_on_dummmy_source() {
     let mut rng = rand::thread_rng();
     for _n in 0..num_tasks {
         let mut task = base_task.clone();
-        task.priority = rng.gen();
+        task.execution_sequence_position = rng.gen();
         tasks.push(task);
     }
 
