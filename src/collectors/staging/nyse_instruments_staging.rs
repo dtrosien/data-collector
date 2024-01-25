@@ -3,8 +3,12 @@ use crate::collectors::source_apis::nyse_instruments::NyseInstrumentCollector;
 use crate::collectors::stagers::Stager;
 use async_trait::async_trait;
 use reqwest::Client;
+
+use serde::Deserialize;
 use sqlx::PgPool;
+
 use std::fmt::Display;
+use strum::{Display, EnumIter, IntoEnumIterator};
 use tracing::info;
 
 use crate::tasks::runnable::Runnable;
@@ -12,6 +16,46 @@ use crate::{
     collectors::{collector_sources, sp500_fields},
     utils::errors::Result,
 };
+
+#[derive(Debug, Deserialize, Display, EnumIter, PartialEq)]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
+enum NonCompanies {
+    ExchangeTradedFund,
+    ExchangeTradedNote,
+    Index,
+    Note,
+    PreferredStock,
+    Right,
+    Test,
+    Trust,
+    Unit,
+}
+
+impl NonCompanies {
+    // Return list of all enums as string
+    pub fn get_all() -> Vec<String> {
+        NonCompanies::iter()
+            .map(|non_comp| non_comp.to_string())
+            .collect()
+    }
+}
+
+#[derive(Debug, Deserialize, Display, EnumIter, PartialEq)]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
+enum Companies {
+    CommonStock,
+    Equity,
+    Reit,
+}
+
+impl Companies {
+    // Return list of all enums as string
+    pub fn get_all() -> Vec<String> {
+        Companies::iter()
+            .map(|non_comp| non_comp.to_string())
+            .collect()
+    }
+}
 
 #[derive(Clone)]
 pub struct NyseInstrumentStager {
@@ -65,7 +109,7 @@ pub async fn stage_data(connection_pool: PgPool) -> Result<()> {
     mark_non_companies_in_master_data(&connection_pool).await?;
     mark_companies_in_master_data(&connection_pool).await?;
 
-    //Mark as staged in sec_companies
+    //Mark as staged in nyse_instruments
     mark_already_staged_non_company_instruments_as_staged(&connection_pool).await?;
     mark_already_staged_company_instruments_as_staged(&connection_pool).await?;
 
@@ -76,19 +120,19 @@ pub async fn stage_data(connection_pool: PgPool) -> Result<()> {
 /// Mark all nyse instrument entries with instrument type 'TEST' as staged.
 async fn mark_test_data_as_staged(connection_pool: &PgPool) -> Result<()> {
     sqlx::query!(
-        "
+        r##"
     update nyse_instruments 
     set 
         is_staged = true
     where
-        instrument_type = 'TEST';"
+        instrument_type = 'TEST'"##
     )
     .execute(connection_pool)
     .await?;
     Ok(())
 }
 
-/// Set in master data the begin of trading date per stock exchange per stock as the current date, if possible. (Current date is picked, since there is no date information in NYSE instruments. Other source will be used for that information)
+/// Set in master data the begin of trading date per stock exchange per stock as the current date, if possible. (Current date is picked, since there is no date information in NYSE instruments. Other source - NYSE events - will be used for that information)
 /// Query design: Combine the tables nyse_instruments and master_data. The column symbol_esignal_ticker in nyse_instruments is almost the same as in master_data.issue_symbol; / and - must be exchanged.
 /// Join nyse_instruments and master_data by issuer_symbol, ignore already staged entries in nyse_instruments and keep the mic code (Id for stock exchanges).
 /// Update master_data depending on mic_code accordingly.
@@ -104,19 +148,19 @@ async fn mark_stock_exchange_per_stock_as_current_date(connection_pool: &PgPool)
                 start_nasdaq                       = case WHEN r.mic_code = 'XNAS' then current_date end,
                 start_cboe                         = case WHEN r.mic_code in ('BATS', 'XCBO', 'BATY', 'EDGA', 'EDGX') then current_date end  
             from 
-            (select ni.mic_code as mic_code, md.issuer_name as issuer_name, md.issue_symbol as issue_symbol  
-                from nyse_instruments ni 
-                join master_data md on 
-                replace(ni.symbol_esignal_ticker,'/', '-') = md.issue_symbol
-                where is_staged = false
-            ) as r
+                (select ni.mic_code as mic_code, md.issuer_name as issuer_name, md.issue_symbol as issue_symbol  
+                    from nyse_instruments ni 
+                    join master_data md on 
+                    replace(ni.symbol_esignal_ticker,'/', '-') = md.issue_symbol
+                    where is_staged = false
+                ) as r
             where master_data.issuer_name = r.issuer_name and master_data.issue_symbol = r.issue_symbol"##)
     .execute(connection_pool)
     .await?;
     Ok(())
 }
 
-///Take the instrument type from NYSE_instruments and mark master_data as non-company (not eligible for S&P500)
+/// Take the instrument type from NYSE_instruments and mark master_data as non-company (not eligible for S&P500)
 /// Query design: Combine the tables nyse_instruments and master_data. The column symbol_esignal_ticker in nyse_instruments is almost the same as in master_data.issue_symbol; / and - must be exchanged.
 /// Join nyse_instruments and master_data by issuer_symbol, ignore already staged entries in nyse_instruments and filter by non-eligible instrument types.
 /// Mark remaining result in master_data as non-company (not eligible for S&P500)
@@ -130,19 +174,12 @@ async fn mark_non_companies_in_master_data(connection_pool: &PgPool) -> Result<(
             from 
               nyse_instruments ni
             where 
-              instrument_type in (
-                'EXCHANGE_TRADED_FUND',
-                'EXCHANGE_TRADED_NOTE',
-                'INDEX',
-                'NOTE',
-                'PREFERRED_STOCK',
-                'RIGHT',
-                'TEST',
-                'TRUST',
-                'UNIT') and
-                is_staged = false) as r
+                    instrument_type in (Select unnest($1::text[]))
+                and is_staged = false
+            ) as r
     where 
-        r.symbol_esignal_ticker = issue_symbol"##
+        r.symbol_esignal_ticker = issue_symbol"##,
+        &NonCompanies::get_all()[..]
     )
     .execute(connection_pool)
     .await?;
@@ -159,17 +196,16 @@ async fn mark_companies_in_master_data(connection_pool: &PgPool) -> Result<()> {
         update master_data 
         set 
             is_company = true
-        from (select replace(symbol_esignal_ticker,'/','-')  as symbol_esignal_ticker
+        from    (select replace(symbol_esignal_ticker,'/','-')  as symbol_esignal_ticker
                 from 
                   nyse_instruments ni
                 where 
-                  instrument_type in (
-                    'COMMON_STOCK',
-                    'EQUITY',
-                    'REIT') and
-                    is_staged = false) as r
+                  instrument_type in (Select unnest($1::text[]))
+                    and is_staged = false
+                ) as r
         where 
-            r.symbol_esignal_ticker = issue_symbol"##
+            r.symbol_esignal_ticker = issue_symbol"##,
+        &Companies::get_all()[..]
     )
     .execute(connection_pool)
     .await?;
@@ -195,18 +231,10 @@ async fn mark_already_staged_non_company_instruments_as_staged(
                 on replace(md.issue_symbol,'-', '/') = ni.symbol_esignal_ticker
             where is_company = false) as r
         where 
-            instrument_type in (
-            'EXCHANGE_TRADED_FUND',
-            'EXCHANGE_TRADED_NOTE',
-            'INDEX',
-            'NOTE',
-            'PREFERRED_STOCK',
-            'RIGHT',
-            'TEST',
-            'TRUST',
-            'UNIT') and 
-            is_staged = false and
-            symbol_esignal_ticker = r.issue_symbol"##
+                instrument_type in (Select unnest($1::text[]))
+            and is_staged = false
+            and symbol_esignal_ticker = r.issue_symbol"##,
+        &NonCompanies::get_all()[..]
     )
     .execute(connection_pool)
     .await?;
@@ -230,12 +258,10 @@ async fn mark_already_staged_company_instruments_as_staged(connection_pool: &PgP
                 on replace(md.issue_symbol,'-', '/') = ni.symbol_esignal_ticker
             where is_company = true) as r
         where 
-            instrument_type in (
-            'COMMON_STOCK',
-            'EQUITY',
-            'REIT') and 
-            is_staged = false and
-            symbol_esignal_ticker = r.issue_symbol"##
+                instrument_type in (Select unnest($1::text[]))
+            and is_staged = false
+            and symbol_esignal_ticker = r.issue_symbol"##,
+        &Companies::get_all()[..]
     )
     .execute(connection_pool)
     .await?;
@@ -248,30 +274,14 @@ mod test {
     use sqlx::{query, Pool, Postgres};
     use tracing_test::traced_test;
 
+    use crate::collectors::staging::nyse_instruments_staging::mark_non_companies_in_master_data;
     use crate::collectors::staging::nyse_instruments_staging::{
         mark_already_staged_company_instruments_as_staged,
         mark_already_staged_non_company_instruments_as_staged, mark_companies_in_master_data,
     };
-    use crate::collectors::staging::{
-        nyse_instruments_staging::mark_non_companies_in_master_data,
-        sec_companies_staging::stage_data,
-    };
     use crate::utils::errors::Result;
 
     use super::{mark_stock_exchange_per_stock_as_current_date, mark_test_data_as_staged};
-
-    #[derive(Debug)]
-    struct NyseInsturmentsRow {
-        instrument_name: String,
-        instrument_type: String,
-        symbol_ticker: String,
-        symbol_exchange_ticker: Option<String>,
-        normalized_ticker: Option<String>,
-        symbol_esignal_ticker: Option<String>,
-        mic_code: String,
-        dateLoaded: Option<NaiveDate>,
-        is_staged: bool,
-    }
 
     #[derive(Debug)]
     #[allow(dead_code)]
@@ -302,7 +312,7 @@ mod test {
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts("nyse_instruments_unstaged.sql")
     ))]
-    async fn given_unstaged_TEST_instrument_when_marked_staged_then_staged(
+    async fn given_unstaged_test_instrument_when_marked_staged_then_staged(
         pool: Pool<Postgres>,
     ) -> Result<()> {
         //Entry should not be staged
@@ -719,51 +729,4 @@ mod test {
         assert_eq!(instrument_result.is_staged, false);
         Ok(())
     }
-
-    ///TODO - Check how this can be unified with the other one
-    fn is_row_in_master_data(
-        issuer_name: &str,
-        issue_symbol: &str,
-        location: Option<&str>,
-        is_company: Option<bool>,
-        category: Option<&str>,
-        master_data: Vec<MasterDataRow>,
-    ) -> bool {
-        master_data.iter().any(|row| {
-            row.issuer_name.eq(issuer_name)
-                && row.issue_symbol.eq(issue_symbol)
-                && row.location.as_deref().eq(&location)
-                && row.is_company.eq(&is_company)
-                && row.category.as_deref().eq(&category)
-        })
-    }
-
-    // fn is_row_in_sec_company_data(
-    //     cik: i32,
-    //     sic: Option<i32>,
-    //     name: &str,
-    //     ticker: &str,
-    //     exchange: Option<&str>,
-    //     state_of_incorporation: Option<&str>,
-    //     date_loaded: &str,
-    //     is_staged: bool,
-    //     result: Vec<SecCompanyRow>,
-    // ) -> bool {
-    //     result.iter().any(|row| {
-    //         row.cik == cik
-    //             && row.sic.eq(&sic)
-    //             && row.name.eq(name)
-    //             && row.ticker.eq(ticker)
-    //             && row.exchange.as_deref().eq(&exchange)
-    //             && row
-    //                 .state_of_incorporation
-    //                 .as_deref()
-    //                 .eq(&state_of_incorporation)
-    //             && row
-    //                 .date_loaded
-    //                 .eq(&NaiveDate::parse_from_str(date_loaded, "%Y-%m-%d")
-    //                     .expect("Parsing constant."))
-    //             && row.is_staged.eq(&is_staged)
-    //     })
-    // }
 }
