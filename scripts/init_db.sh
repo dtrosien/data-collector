@@ -30,23 +30,34 @@ DB_HOST="${POSTGRES_HOST:=localhost}"
 # Allow to skip Docker if a dockerized Postgres database is already running
 if [[ -z "${SKIP_DOCKER}" ]]
 then
-  docker run \
+CONTAINER_ID=`docker run \
       -e POSTGRES_USER=${DB_USER} \
       -e POSTGRES_PASSWORD=${DB_PASSWORD} \
       -e POSTGRES_DB=${DB_NAME} \
       -p "${DB_PORT}":5432 \
       -d postgres \
-      postgres -N 1000  # Increased maximum number of connections for testing purposes
+      postgres -N 1000`  # Increased maximum number of connections for testing purposes
 fi
-
 
 # Keep pinging Postgres until it's ready to accept commands
 export PGPASSWORD="${DB_PASSWORD}"
-until psql -h "${DB_HOST}" -U "${DB_USER}" -p "${DB_PORT}" -d "postgres" -c '\q'; do
+until psql -h "${DB_HOST}" -U "${DB_USER}" -p "${DB_PORT}" -d "postgres" -c '\q' 2> /dev/null; do
   >&2 echo "Postgres is still unavailable - sleeping"
   sleep 1
 done
 
+# Enable query tracking for metadata export
+psql -h "${DB_HOST}" -U "${DB_USER}" -p "${DB_PORT}" -d "postgres" -c 'ALTER SYSTEM SET shared_preload_libraries = "pg_stat_statements";'
+
+# Restart postgres/docker container and wait, since pg_stat_statements enableling requires restatart. https://www.postgresql.org/docs/9.4/pgstatstatements.html
+docker restart ${CONTAINER_ID}
+if [[ -z "${SKIP_DOCKER}" ]]
+then
+  until psql -h "${DB_HOST}" -U "${DB_USER}" -p "${DB_PORT}" -d "postgres" -c '\q' 2> /dev/null; do
+    >&2 echo "Postgres is still unavailable - sleeping"
+    sleep 1
+  done
+fi
 >&2 echo "Postgres is up and running on port ${DB_PORT} - running migration now!"
 
 DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
