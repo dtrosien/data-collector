@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select * from master_data where issuer_name = 'VIVEVE MEDICAL, INC.'",
+  "query": "select * from master_data where issue_symbol in ('$ESGE.IV', 'MTUL','$OEX','GNS','MHLA','IGZ','EGOX','ABCD')\n            and is_company notnull",
   "describe": {
     "columns": [
       {
@@ -124,5 +124,5 @@
       true
     ]
   },
-  "hash": "2c88a4724986274051767b8cf44be1e0fb73170a36c167463467844cc8140ef7"
+  "hash": "0be894cf670e10b9ddfd786d478dbb5bb342d2a62d06868ebca922275e4e10f5"
 }

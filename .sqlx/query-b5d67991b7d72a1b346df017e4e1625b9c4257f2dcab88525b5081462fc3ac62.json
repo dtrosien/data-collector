@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select * from master_data where issuer_name = 'VIVEVE MEDICAL, INC.'",
+  "query": "select * from master_data where issue_symbol = 'EGOX'",
   "describe": {
     "columns": [
       {
@@ -124,5 +124,5 @@
       true
     ]
   },
-  "hash": "2c88a4724986274051767b8cf44be1e0fb73170a36c167463467844cc8140ef7"
+  "hash": "b5d67991b7d72a1b346df017e4e1625b9c4257f2dcab88525b5081462fc3ac62"
 }

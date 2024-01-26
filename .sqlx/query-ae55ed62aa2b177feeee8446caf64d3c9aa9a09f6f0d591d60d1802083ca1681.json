@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select * from master_data where issuer_name = 'VIVEVE MEDICAL, INC.'",
+  "query": "select * from master_data where \n                Start_NYSE notnull or\n                Start_NYSE_Arca notnull or\n                Start_NYSE_American notnull or\n                Start_NASDAQ notnull or\n                Start_NASDAQ_Global_Select_Market notnull or\n                Start_NASDAQ_Select_Market notnull or\n                Start_NASDAQ_Capital_Market notnull or\n                Start_CBOE notnull",
   "describe": {
     "columns": [
       {
@@ -124,5 +124,5 @@
       true
     ]
   },
-  "hash": "2c88a4724986274051767b8cf44be1e0fb73170a36c167463467844cc8140ef7"
+  "hash": "ae55ed62aa2b177feeee8446caf64d3c9aa9a09f6f0d591d60d1802083ca1681"
 }
