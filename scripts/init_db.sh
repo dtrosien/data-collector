@@ -50,9 +50,9 @@ done
 psql -h "${DB_HOST}" -U "${DB_USER}" -p "${DB_PORT}" -d "postgres" -c 'ALTER SYSTEM SET shared_preload_libraries = "pg_stat_statements";'
 
 # Restart postgres/docker container and wait, since pg_stat_statements enableling requires restatart. https://www.postgresql.org/docs/9.4/pgstatstatements.html
-docker restart ${CONTAINER_ID}
 if [[ -z "${SKIP_DOCKER}" ]]
 then
+  docker restart ${CONTAINER_ID}
   until psql -h "${DB_HOST}" -U "${DB_USER}" -p "${DB_PORT}" -d "postgres" -c '\q' 2> /dev/null; do
     >&2 echo "Postgres is still unavailable - sleeping"
     sleep 1
