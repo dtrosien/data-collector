@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress
+Done and agreed on
 
 ## Context
 
