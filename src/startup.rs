@@ -1,9 +1,9 @@
 use reqwest::Client;
 
 use crate::configuration::{DatabaseSettings, HttpClientSettings, Settings, TaskSetting};
-use crate::tasks::task::{build_task_prio_queue, execute_task};
+
+use crate::scheduler::Scheduler;
 use crate::utils::errors::Result;
-use crate::utils::futures::join_handle_results;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 
@@ -25,17 +25,13 @@ impl Application {
         }
     }
 
-    /// runs all tasks concurrently and waits till all tasks finished,
-    /// if one tasks failed, all other tasks will still processed, but overall the function will return an error
     #[tracing::instrument(name = "Start running tasks", skip(self))]
     pub async fn run(&self) -> Result<()> {
-        let handles = build_task_prio_queue(&self.task_settings, &self.pool, &self.client)
-            .await
-            .into_iter()
-            .map(execute_task)
-            .collect();
-
-        join_handle_results(handles).await
+        let scheduler = Scheduler::build(&self.task_settings, &self.pool, &self.client);
+        let results = scheduler.build_execution_sequence().run_all().await;
+        // todo handle and log errors etc
+        results.into_iter().try_for_each(|r| r)?;
+        Ok(())
     }
 }
 

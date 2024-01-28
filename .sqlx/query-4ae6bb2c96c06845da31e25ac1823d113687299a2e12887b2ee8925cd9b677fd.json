@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select * from master_data where issuer_name = 'VIVEVE MEDICAL, INC.'",
+  "query": "select * from master_data where \n            is_company notnull",
   "describe": {
     "columns": [
       {
@@ -124,5 +124,5 @@
       true
     ]
   },
-  "hash": "2c88a4724986274051767b8cf44be1e0fb73170a36c167463467844cc8140ef7"
+  "hash": "4ae6bb2c96c06845da31e25ac1823d113687299a2e12887b2ee8925cd9b677fd"
 }

@@ -6,20 +6,20 @@ database:
   database_name: "collector"
 application:
   http_client:
-    timeout_milliseconds: 1000
+    timeout_milliseconds: 1000000
   tasks:
     - comment: Helpful comment
       actions: [Collect]
       sp500_fields:
         - NYSE
-      priority: 1
+      execution_sequence_position: 1
       include_sources:
         - ALL
     - comment: Helpful comment
       actions: [Stage]
       sp500_fields:
         - NYSE
-      priority: 1
+      priority: 2
       include_sources:
         - ALL
     # - comment: Helpful comment1
