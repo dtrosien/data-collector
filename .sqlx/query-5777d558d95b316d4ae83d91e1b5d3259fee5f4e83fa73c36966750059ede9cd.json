@@ -1,0 +1,128 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select *  from master_data",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "issuer_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "issue_symbol",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "location",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "start_nyse",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 4,
+        "name": "start_nyse_arca",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 5,
+        "name": "start_nyse_american",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 6,
+        "name": "start_nasdaq",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 7,
+        "name": "start_nasdaq_global_select_market",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 8,
+        "name": "start_nasdaq_select_market",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 9,
+        "name": "start_nasdaq_capital_market",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 10,
+        "name": "is_company",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 11,
+        "name": "category",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "renamed_to_issuer_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+        "name": "renamed_to_issue_symbol",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 14,
+        "name": "renamed_at_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 15,
+        "name": "current_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 16,
+        "name": "suspended",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 17,
+        "name": "suspension_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 18,
+        "name": "start_cboe",
+        "type_info": "Date"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "5777d558d95b316d4ae83d91e1b5d3259fee5f4e83fa73c36966750059ede9cd"
+}

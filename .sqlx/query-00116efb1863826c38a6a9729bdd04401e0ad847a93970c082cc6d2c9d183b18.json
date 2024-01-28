@@ -1,0 +1,62 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT action_date, action_status, action_type, issue_symbol, issuer_name, updated_at, market_event, is_staged FROM nyse_events;",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "action_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 1,
+        "name": "action_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "action_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "issue_symbol",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "issuer_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "updated_at",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "market_event",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "is_staged",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "00116efb1863826c38a6a9729bdd04401e0ad847a93970c082cc6d2c9d183b18"
+}
