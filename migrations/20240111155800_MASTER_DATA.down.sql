@@ -1,0 +1,10 @@
+-- noinspection SqlNoDataSourceInspectionForFile
+
+-- Add migration script here
+ALTER TABLE MASTER_DATA RENAME Start_NYSE TO Start_of_listing_NYSE;
+ALTER TABLE MASTER_DATA RENAME Start_NYSE_Arca TO Start_of_listing_NYSE_Arca;
+ALTER TABLE MASTER_DATA RENAME Start_NYSE_American TO Start_of_listing_NYSE_American;
+ALTER TABLE MASTER_DATA RENAME Start_NASDAQ TO Start_of_listing_NASDAQ;
+ALTER TABLE MASTER_DATA RENAME Start_NASDAQ_Global_Select_Market TO Start_of_listing_NASDAQ_Global_Select_Market;
+ALTER TABLE MASTER_DATA RENAME Start_NASDAQ_Select_Market TO Start_of_listing_NASDAQ_Select_Market;
+ALTER TABLE MASTER_DATA RENAME Start_NASDAQ_Capital_Market TO Start_of_listing_NASDAQ_Capital_Market;

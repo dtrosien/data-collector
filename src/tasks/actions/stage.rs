@@ -1,5 +1,6 @@
 use crate::collectors::collector_sources::CollectorSource;
 use crate::collectors::stagers::Stager;
+use crate::collectors::staging::nyse_instruments_staging::NyseInstrumentStager;
 use crate::collectors::staging::sec_companies_staging::SecCompanyStager;
 use crate::configuration::TaskSetting;
 use crate::tasks::actions::action::Action;
@@ -37,7 +38,10 @@ impl StageAction {
 
     // todo does this really require Stagers instances? Currently it seems that this can be solved via the stager source enum
     fn get_all_stagers(pool: PgPool) -> Vec<Box<dyn Stager>> {
-        vec![Box::new(SecCompanyStager::new(pool.clone()))]
+        vec![
+            Box::new(SecCompanyStager::new(pool.clone())),
+            Box::new(NyseInstrumentStager::new(pool.clone())),
+        ]
     }
 
     fn is_stager_requested(setting: &TaskSetting, stager: &dyn Stager) -> bool {

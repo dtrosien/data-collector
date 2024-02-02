@@ -37,7 +37,8 @@ impl Stager for SecCompanyStager {
 
     /// Take fields from the matching collector
     fn get_source(&self) -> collector_sources::CollectorSource {
-        SecCompanyCollector::new(self.pool.clone(), Client::new()).get_source() // todo: do we really want to init a Collector here? (Client is only here so it can compile)
+        SecCompanyCollector::new(self.pool.clone(), Client::new()).get_source()
+        // todo: do we really want to init a Collector here? (Client is only here so it can compile)
     }
 
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -159,13 +160,14 @@ mod test {
         issuer_name: String,
         issue_symbol: String,
         location: Option<String>,
-        start_of_listing_nyse: Option<NaiveDate>,
-        start_of_listing_nyse_arca: Option<NaiveDate>,
-        start_of_listing_nyse_american: Option<NaiveDate>,
-        start_of_listing_nasdaq: Option<NaiveDate>,
-        start_of_listing_nasdaq_global_select_market: Option<NaiveDate>,
-        start_of_listing_nasdaq_select_market: Option<NaiveDate>,
-        start_of_listing_nasdaq_capital_market: Option<NaiveDate>,
+        start_nyse: Option<NaiveDate>,
+        start_nyse_arca: Option<NaiveDate>,
+        start_nyse_american: Option<NaiveDate>,
+        start_nasdaq: Option<NaiveDate>,
+        start_nasdaq_global_select_market: Option<NaiveDate>,
+        start_nasdaq_select_market: Option<NaiveDate>,
+        start_nasdaq_capital_market: Option<NaiveDate>,
+        start_cboe: Option<NaiveDate>,
         is_company: Option<bool>,
         category: Option<String>,
         renamed_to_issuer_name: Option<String>,

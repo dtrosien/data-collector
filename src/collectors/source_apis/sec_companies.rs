@@ -323,7 +323,7 @@ mod test {
     use sqlx::{PgPool, Pool, Postgres};
     use std::io::prelude::*;
     use std::io::BufReader;
-    use tempfile::TempDir;
+    use tempfile::{Builder, NamedTempFile, TempDir};
 
     use super::{download_archive_if_needed, download_url, is_download_needed};
 
@@ -359,7 +359,7 @@ mod test {
 
     #[test]
     fn given_new_file_when_checked_then_returns_false() {
-        let file = tempfile::Builder::new().tempfile().unwrap();
+        let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
         std::fs::copy(d, &file).unwrap();
@@ -370,7 +370,7 @@ mod test {
 
     #[test]
     fn given_outdated_file_when_checked_then_returns_true() {
-        let file = tempfile::Builder::new().tempfile().unwrap();
+        let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let file_path = PathBuf::from(file.path());
         let time = Utc::now()
             .checked_sub_days(Days::new(8))
@@ -382,7 +382,7 @@ mod test {
 
     #[test]
     fn given_almost_outdated_file_when_checked_then_returns_false() {
-        let file = tempfile::Builder::new().tempfile().unwrap();
+        let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
         std::fs::copy(d, &file).unwrap();
@@ -415,7 +415,7 @@ mod test {
             .unwrap();
 
         //Prepare http server and target location
-        let target_file = tempfile::Builder::new().tempfile().unwrap();
+        let (target_file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let (_server, url) = get_test_server(file_content);
         let client = get_test_client();
 
@@ -431,7 +431,7 @@ mod test {
 
     #[tokio::test]
     async fn file_is_loaded_when_outdated() {
-        let file = tempfile::Builder::new().tempfile().unwrap();
+        let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let file_path = PathBuf::from(file.path());
         let time = Utc::now()
             .checked_sub_days(Days::new(8))
@@ -462,7 +462,7 @@ mod test {
 
     #[tokio::test]
     async fn file_is_not_loaded_when_new() {
-        let file = tempfile::Builder::new().tempfile().unwrap();
+        let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
         std::fs::copy(d, &file).unwrap();
@@ -505,9 +505,9 @@ mod test {
     }
 
     #[sqlx::test]
-    async fn check_if_zip_content_is_in_db(pool: Pool<Postgres>) {
+    async fn my_select_check_if_zip_content_is_in_db(pool: Pool<Postgres>) {
         //Tmp file location
-        let file = tempfile::Builder::new().tempfile().unwrap();
+        let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let file_path = PathBuf::from(file.path());
 
         //Read file from resources
@@ -524,7 +524,7 @@ mod test {
 
         load_and_store_missing_data_with_targets(pool.clone(), client, &url, &file_path)
             .await
-            .unwrap();
+            .unwrap(); // here error
         let record = sqlx::query!("SELECT cik, sic, \"name\", ticker, exchange, state_of_incorporation, date_loaded, is_staged FROM sec_companies").fetch_one(&pool).await.unwrap();
         assert_eq!(record.cik, 1962554);
         assert_eq!(record.sic.unwrap(), 4210);
@@ -537,9 +537,9 @@ mod test {
     }
 
     #[sqlx::test]
-    async fn read_write_zip_and_reread_again(pool: PgPool) {
+    async fn my_select_read_write_zip_and_reread_again(pool: PgPool) {
         //Tmp file location
-        let file = tempfile::Builder::new().tempfile().unwrap();
+        let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let file_path = PathBuf::from(file.path());
 
         //Read file from resources
@@ -558,7 +558,7 @@ mod test {
         //Load data
         load_and_store_missing_data_with_targets(pool.clone(), client.clone(), &url, &file_path)
             .await
-            .unwrap();
+            .unwrap(); //here error
         sqlx::query!("Truncate table sec_companies")
             .fetch_all(&pool)
             .await
@@ -571,5 +571,16 @@ mod test {
             .unwrap();
         let record = sqlx::query!("SELECT cik, sic, \"name\", ticker, exchange, state_of_incorporation, date_loaded, is_staged FROM sec_companies").fetch_one(&pool).await.unwrap();
         assert_eq!(record.cik, 1962554);
+    }
+
+    fn create_named_tmp_file_in_tmp_dir() -> (NamedTempFile, TempDir) {
+        let tmp_dir = Builder::new()
+            .prefix("data-collector_testDir")
+            .tempdir()
+            .unwrap();
+        (
+            tempfile::Builder::new().tempfile_in(&tmp_dir).unwrap(),
+            tmp_dir,
+        )
     }
 }
