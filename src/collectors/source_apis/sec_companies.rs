@@ -321,7 +321,7 @@ mod test {
     use sqlx::{Pool, Postgres};
     use std::io::prelude::*;
     use std::io::BufReader;
-    use tempfile::TempDir;
+    use tempfile::{Builder, NamedTempFile, TempDir};
 
     use super::{download_archive_if_needed, download_url, is_download_needed};
 
@@ -357,10 +357,10 @@ mod test {
 
     #[test]
     fn given_new_file_when_checked_then_returns_false() -> Result<()> {
-        let file = tempfile::Builder::new().tempfile()?;
+        let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
-        std::fs::copy(d, &file)?;
+        std::fs::copy(d, &file).unwrap();
         let file_path = PathBuf::from(file.path());
 
         assert_eq!(is_download_needed(&file_path), false);
@@ -369,23 +369,23 @@ mod test {
 
     #[test]
     fn given_outdated_file_when_checked_then_returns_true() -> Result<()> {
-        let file = tempfile::Builder::new().tempfile()?;
+        let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let file_path = PathBuf::from(file.path());
         let time = Utc::now()
             .checked_sub_days(Days::new(8))
             .unwrap()
             .timestamp();
-        filetime::set_file_mtime(&file_path, FileTime::from_unix_time(time, 0))?;
+        filetime::set_file_mtime(&file_path, FileTime::from_unix_time(time, 0)).unwrap();
         assert_eq!(is_download_needed(&file_path), true);
         Ok(())
     }
 
     #[test]
     fn given_almost_outdated_file_when_checked_then_returns_false() -> Result<()> {
-        let file = tempfile::Builder::new().tempfile()?;
+        let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
-        std::fs::copy(d, &file)?;
+        std::fs::copy(d, &file).unwrap();
         let file_path = PathBuf::from(file.path());
         let time = Utc::now()
             .checked_sub_days(Days::new(7))
@@ -393,7 +393,7 @@ mod test {
             .checked_add_signed(Duration::minutes(10))
             .unwrap()
             .timestamp();
-        filetime::set_file_mtime(&file_path, FileTime::from_unix_time(time, 0))?;
+        filetime::set_file_mtime(&file_path, FileTime::from_unix_time(time, 0)).unwrap();
         assert_eq!(is_download_needed(&file_path), false);
         Ok(())
     }
@@ -412,16 +412,19 @@ mod test {
         let mut file_content: Vec<u8> = vec![];
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
-        BufReader::new(File::open(d.to_str().unwrap().to_string())?)
-            .read_to_end(&mut file_content)?;
+        BufReader::new(File::open(d.to_str().unwrap().to_string()).unwrap())
+            .read_to_end(&mut file_content)
+            .unwrap();
 
         //Prepare http server and target location
-        let target_file = tempfile::Builder::new().tempfile()?;
+        let (target_file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let (_server, url) = get_test_server(file_content);
         let client = get_test_client();
 
         //Act
-        download_url(client, &url, target_file.path().to_str().unwrap()).await?;
+        download_url(client, &url, target_file.path().to_str().unwrap())
+            .await
+            .unwrap();
 
         //Assert that new file exists and has correct size
         assert!(target_file.path().exists());
@@ -431,26 +434,29 @@ mod test {
 
     #[tokio::test]
     async fn file_is_loaded_when_outdated() -> Result<()> {
-        let file = tempfile::Builder::new().tempfile()?;
+        let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let file_path = PathBuf::from(file.path());
         let time = Utc::now()
             .checked_sub_days(Days::new(8))
             .unwrap()
             .timestamp();
-        filetime::set_file_mtime(&file_path, FileTime::from_unix_time(time, 0))?;
+        filetime::set_file_mtime(&file_path, FileTime::from_unix_time(time, 0)).unwrap();
 
         //Read file from resources
         let mut file_content: Vec<u8> = vec![];
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
-        BufReader::new(File::open(d.to_str().unwrap().to_string())?)
-            .read_to_end(&mut file_content)?;
+        BufReader::new(File::open(d.to_str().unwrap().to_string()).unwrap())
+            .read_to_end(&mut file_content)
+            .unwrap();
 
         //Prepare http server
         let (_server, url) = get_test_server(file_content);
         let client = get_test_client();
 
-        download_archive_if_needed(client, &file_path, &url).await?;
+        download_archive_if_needed(client, &file_path, &url)
+            .await
+            .unwrap();
 
         //Assert that new file exists and has correct size
         assert!(file_path.exists());
@@ -460,24 +466,27 @@ mod test {
 
     #[tokio::test]
     async fn file_is_not_loaded_when_new() -> Result<()> {
-        let file = tempfile::Builder::new().tempfile()?;
+        let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
-        std::fs::copy(d, &file)?;
+        std::fs::copy(d, &file).unwrap();
         let file_path = PathBuf::from(file.path());
 
         //Read file from resources
         let mut file_content: Vec<u8> = vec![];
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("tests/resources/SEC_companies_1_of_3_with_stock_without_exchange.zip");
-        BufReader::new(File::open(d.to_str().unwrap().to_string())?)
-            .read_to_end(&mut file_content)?;
+        BufReader::new(File::open(d.to_str().unwrap().to_string()).unwrap())
+            .read_to_end(&mut file_content)
+            .unwrap();
 
         //Prepare http server
         let (_server, url) = get_test_server(file_content);
         let client = get_test_client();
 
-        download_archive_if_needed(client, &file_path, &url).await?;
+        download_archive_if_needed(client, &file_path, &url)
+            .await
+            .unwrap();
 
         //Assert that new file exists and has correct size
         assert!(file_path.exists());
@@ -487,10 +496,11 @@ mod test {
 
     #[test]
     fn check_if_zip_location_is_created() -> Result<()> {
-        let tmp_dir = TempDir::new()?;
+        let tmp_dir = TempDir::new().unwrap();
         let tmp_dir_location = tmp_dir.path().to_str().unwrap();
         let sub_dir = "test/my/dir";
-        let zip_location = prepare_zip_location(tmp_dir_location, sub_dir, TARGET_FILE_NAME)?;
+        let zip_location =
+            prepare_zip_location(tmp_dir_location, sub_dir, TARGET_FILE_NAME).unwrap();
         let mut target_dir = PathBuf::new();
         target_dir.push(tmp_dir_location);
         target_dir.push(sub_dir);
@@ -501,24 +511,27 @@ mod test {
     }
 
     #[sqlx::test]
-    async fn check_if_zip_content_is_in_db(pool: Pool<Postgres>) -> Result<()> {
+    async fn my_select_check_if_zip_content_is_in_db(pool: Pool<Postgres>) -> Result<()> {
         //Tmp file location
-        let file = tempfile::Builder::new().tempfile()?;
+        let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let file_path = PathBuf::from(file.path());
 
         //Read file from resources
         let mut file_content: Vec<u8> = vec![];
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("tests/resources/SEC_companies_1_of_3_with_stock_without_exchange.zip");
-        BufReader::new(File::open(d.to_str().unwrap().to_string())?)
-            .read_to_end(&mut file_content)?;
+        BufReader::new(File::open(d.to_str().unwrap().to_string()).unwrap())
+            .read_to_end(&mut file_content)
+            .unwrap();
 
         //Prepare http server
         let (_server, url) = get_test_server(file_content);
         let client = get_test_client();
 
-        load_and_store_missing_data_with_targets(pool.clone(), client, &url, &file_path).await?;
-        let record = sqlx::query!("SELECT cik, sic, \"name\", ticker, exchange, state_of_incorporation, date_loaded, is_staged FROM sec_companies").fetch_one(&pool).await?;
+        load_and_store_missing_data_with_targets(pool.clone(), client, &url, &file_path)
+            .await
+            .unwrap(); // here error
+        let record = sqlx::query!("SELECT cik, sic, \"name\", ticker, exchange, state_of_incorporation, date_loaded, is_staged FROM sec_companies").fetch_one(&pool).await.unwrap();
         assert_eq!(record.cik, 1962554);
         assert_eq!(record.sic.unwrap(), 4210);
         assert_eq!(record.name, "OUI Global");
@@ -527,14 +540,13 @@ mod test {
         assert_eq!(record.state_of_incorporation, Some("NY".to_string()));
         assert_eq!(record.date_loaded, Utc::now().date_naive());
         assert!(!record.is_staged);
-
         Ok(())
     }
 
     #[sqlx::test]
-    async fn read_write_zip_and_reread_again(pool: Pool<Postgres>) -> Result<()> {
+    async fn my_select_read_write_zip_and_reread_again(pool: Pool<Postgres>) -> Result<()> {
         //Tmp file location
-        let file = tempfile::Builder::new().tempfile()?;
+        let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
         let file_path = PathBuf::from(file.path());
 
         //Read file from resources
@@ -552,16 +564,31 @@ mod test {
 
         //Load data
         load_and_store_missing_data_with_targets(pool.clone(), client.clone(), &url, &file_path)
-            .await?;
+            .await
+            .unwrap(); //here error
         sqlx::query!("Truncate table sec_companies")
             .fetch_all(&pool)
-            .await?;
+            .await
+            .unwrap();
         //Verify that .zip file was shrunken
         assert_eq!(file_path.metadata().unwrap().len(), 855);
         //Load again and if db is not empty
-        load_and_store_missing_data_with_targets(pool.clone(), client, &url, &file_path).await?;
-        let record = sqlx::query!("SELECT cik, sic, \"name\", ticker, exchange, state_of_incorporation, date_loaded, is_staged FROM sec_companies").fetch_one(&pool).await?;
+        load_and_store_missing_data_with_targets(pool.clone(), client, &url, &file_path)
+            .await
+            .unwrap();
+        let record = sqlx::query!("SELECT cik, sic, \"name\", ticker, exchange, state_of_incorporation, date_loaded, is_staged FROM sec_companies").fetch_one(&pool).await.unwrap();
         assert_eq!(record.cik, 1962554);
         Ok(())
+    }
+
+    fn create_named_tmp_file_in_tmp_dir() -> (NamedTempFile, TempDir) {
+        let tmp_dir = Builder::new()
+            .prefix("data-collector_testDir")
+            .tempdir()
+            .unwrap();
+        (
+            tempfile::Builder::new().tempfile_in(&tmp_dir).unwrap(),
+            tmp_dir,
+        )
     }
 }
