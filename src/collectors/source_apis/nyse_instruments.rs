@@ -1,8 +1,10 @@
+use anyhow::anyhow;
 use std::fmt::Display;
 
-use crate::{collectors::utils, tasks::runnable::Runnable, utils::errors::Result};
+use crate::{collectors::utils, tasks::runnable::Runnable};
 
 use async_trait::async_trait;
+use futures_util::TryFutureExt;
 
 use reqwest::Client;
 use serde::Deserialize;
@@ -12,6 +14,7 @@ use tracing::info;
 
 use crate::collectors::collector::Collector;
 use crate::collectors::{collector_sources, sp500_fields};
+use crate::tasks::task::TaskError;
 
 const URL: &str = "https://www.nyse.com/api/quotes/filter";
 
@@ -35,8 +38,10 @@ impl Display for NyseInstrumentCollector {
 
 #[async_trait]
 impl Runnable for NyseInstrumentCollector {
-    async fn run(&self) -> Result<()> {
-        load_and_store_missing_data(self.pool.clone(), self.client.clone()).await
+    async fn run(&self) -> Result<(), TaskError> {
+        load_and_store_missing_data(self.pool.clone(), self.client.clone())
+            .map_err(TaskError::UnexpectedError)
+            .await
     }
 }
 
@@ -74,7 +79,10 @@ struct TransposedNyseInstrument {
     pub mic_code: Vec<String>,
 }
 
-pub async fn load_and_store_missing_data(connection_pool: PgPool, client: Client) -> Result<()> {
+pub async fn load_and_store_missing_data(
+    connection_pool: PgPool,
+    client: Client,
+) -> Result<(), anyhow::Error> {
     load_and_store_missing_data_given_url(connection_pool, client, URL).await
 }
 
@@ -82,7 +90,7 @@ async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
     client: Client,
     url: &str,
-) -> Result<()> {
+) -> Result<(), anyhow::Error> {
     info!("Starting to load NYSE instruments");
     let page_size = get_amount_instruments_available(&client, url).await?;
 
@@ -158,7 +166,10 @@ impl Collector for NyseInstrumentCollector {
     }
 }
 
-async fn get_amount_instruments_available(client: &Client, url: &str) -> Result<u32> {
+async fn get_amount_instruments_available(
+    client: &Client,
+    url: &str,
+) -> Result<u32, anyhow::Error> {
     let response = client
         .post(url)
         .header("content-type", "application/json")
@@ -171,10 +182,9 @@ async fn get_amount_instruments_available(client: &Client, url: &str) -> Result<
 
     match response.first() {
         Some(some) => Ok(some.total),
-        None => Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "Error while receiving amount of NYSE instruments. Option was None.",
-        ))),
+        None => Err(anyhow!(
+            "Error while receiving amount of NYSE instruments. Option was None."
+        )),
     }
 }
 
@@ -234,7 +244,7 @@ mod test {
 
     #[traced_test]
     #[sqlx::test]
-    async fn query_http_and_write_to_db(pool: Pool<Postgres>) -> Result<()> {
+    async fn query_http_and_write_to_db(pool: Pool<Postgres>) -> Result<(), anyhow::Error> {
         // Start a lightweight mock server.
         let server = MockServer::start();
         let url = server.base_url();

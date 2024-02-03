@@ -11,11 +11,9 @@ use std::fmt::Display;
 use strum::{Display, EnumIter, IntoEnumIterator};
 use tracing::info;
 
+use crate::collectors::{collector_sources, sp500_fields};
 use crate::tasks::runnable::Runnable;
-use crate::{
-    collectors::{collector_sources, sp500_fields},
-    utils::errors::Result,
-};
+use crate::tasks::task::TaskError;
 
 #[derive(Debug, Deserialize, Display, EnumIter, PartialEq)]
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
@@ -94,12 +92,14 @@ impl Stager for NyseInstrumentStager {
 
 #[async_trait]
 impl Runnable for NyseInstrumentStager {
-    async fn run(&self) -> Result<()> {
-        stage_data(self.pool.clone()).await
+    async fn run(&self) -> Result<(), TaskError> {
+        stage_data(self.pool.clone())
+            .await
+            .map_err(TaskError::UnexpectedError)
     }
 }
 
-pub async fn stage_data(connection_pool: PgPool) -> Result<()> {
+pub async fn stage_data(connection_pool: PgPool) -> Result<(), anyhow::Error> {
     info!("Start staging of Nyse Instrument");
     //Mark test data as staged
     mark_test_data_as_staged(&connection_pool).await?;
@@ -118,7 +118,7 @@ pub async fn stage_data(connection_pool: PgPool) -> Result<()> {
 }
 
 /// Mark all nyse instrument entries with instrument type 'TEST' as staged.
-async fn mark_test_data_as_staged(connection_pool: &PgPool) -> Result<()> {
+async fn mark_test_data_as_staged(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##"
     update nyse_instruments 
@@ -136,7 +136,9 @@ async fn mark_test_data_as_staged(connection_pool: &PgPool) -> Result<()> {
 /// Query design: Combine the tables nyse_instruments and master_data. The column symbol_esignal_ticker in nyse_instruments is almost the same as in master_data.issue_symbol; / and - must be exchanged.
 /// Join nyse_instruments and master_data by issuer_symbol, ignore already staged entries in nyse_instruments and keep the mic code (Id for stock exchanges).
 /// Update master_data depending on mic_code accordingly.
-async fn mark_stock_exchange_per_stock_as_current_date(connection_pool: &PgPool) -> Result<()> {
+async fn mark_stock_exchange_per_stock_as_current_date(
+    connection_pool: &PgPool,
+) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##"update master_data set 
                 start_nyse                         = case WHEN r.mic_code = 'XNYS' then current_date end,
@@ -164,7 +166,7 @@ async fn mark_stock_exchange_per_stock_as_current_date(connection_pool: &PgPool)
 /// Query design: Combine the tables nyse_instruments and master_data. The column symbol_esignal_ticker in nyse_instruments is almost the same as in master_data.issue_symbol; / and - must be exchanged.
 /// Join nyse_instruments and master_data by issuer_symbol, ignore already staged entries in nyse_instruments and filter by non-eligible instrument types.
 /// Mark remaining result in master_data as non-company (not eligible for S&P500)
-async fn mark_non_companies_in_master_data(connection_pool: &PgPool) -> Result<()> {
+async fn mark_non_companies_in_master_data(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##"
     update master_data 
@@ -190,7 +192,7 @@ async fn mark_non_companies_in_master_data(connection_pool: &PgPool) -> Result<(
 /// Query design: Combine the tables nyse_instruments and master_data. The column symbol_esignal_ticker in nyse_instruments is almost the same as in master_data.issue_symbol; / and - must be exchanged.
 /// Join nyse_instruments and master_data by issuer_symbol, ignore already staged entries in nyse_instruments and filter by eligible instrument types.
 /// Mark remaining result in master_data as company (eligible for S&P500)
-async fn mark_companies_in_master_data(connection_pool: &PgPool) -> Result<()> {
+async fn mark_companies_in_master_data(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##" 
         update master_data 
@@ -218,7 +220,7 @@ async fn mark_companies_in_master_data(connection_pool: &PgPool) -> Result<()> {
 /// Mark remaining result in NYSE instruments as staged
 async fn mark_already_staged_non_company_instruments_as_staged(
     connection_pool: &PgPool,
-) -> Result<()> {
+) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##" 
         update nyse_instruments 
@@ -245,7 +247,9 @@ async fn mark_already_staged_non_company_instruments_as_staged(
 /// Query design: Combine the tables nyse_instruments and master_data. The column symbol_esignal_ticker in nyse_instruments is almost the same as in master_data.issue_symbol; / and - must be exchanged.
 /// Join nyse_instruments and master_data by issuer_symbol, ignore already staged entries in nyse_instruments and filter by is_company = true.
 /// Mark remaining result in NYSE instruments as staged
-async fn mark_already_staged_company_instruments_as_staged(connection_pool: &PgPool) -> Result<()> {
+async fn mark_already_staged_company_instruments_as_staged(
+    connection_pool: &PgPool,
+) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##" 
         update nyse_instruments 
@@ -279,7 +283,6 @@ mod test {
         mark_already_staged_company_instruments_as_staged,
         mark_already_staged_non_company_instruments_as_staged, mark_companies_in_master_data,
     };
-    use crate::utils::errors::Result;
 
     use super::{mark_stock_exchange_per_stock_as_current_date, mark_test_data_as_staged};
 
@@ -312,9 +315,7 @@ mod test {
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts("nyse_instruments_unstaged.sql")
     ))]
-    async fn given_unstaged_test_instrument_when_marked_staged_then_staged(
-        pool: Pool<Postgres>,
-    ) -> Result<()> {
+    async fn given_unstaged_test_instrument_when_marked_staged_then_staged(pool: Pool<Postgres>) {
         //Entry should not be staged
         let instruments_result =
             sqlx::query!("select * from nyse_instruments where instrument_type = 'TEST'")
@@ -333,7 +334,6 @@ mod test {
                 .await
                 .unwrap();
         assert_eq!(instruments_result.is_staged, true);
-        Ok(())
     }
 
     #[traced_test]
@@ -347,7 +347,7 @@ mod test {
 
     async fn given_master_data_without_dates_when_dates_staged_then_dates_in_correct_columns(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         //Given staged entry in sec_companies
         let md_result = query!("select count(*) from master_data")
             .fetch_one(&pool)
@@ -373,7 +373,9 @@ mod test {
         assert!(md_result.len() == 0);
 
         // Stage nyse instruments dates per stock exchange
-        mark_stock_exchange_per_stock_as_current_date(&pool).await?;
+        mark_stock_exchange_per_stock_as_current_date(&pool)
+            .await
+            .unwrap();
 
         // Date is now in correct field
         let current_date = Utc::now().date_naive();
@@ -431,7 +433,6 @@ mod test {
             .iter()
             .any(|row| row.issuer_name.eq("S&P 103 INDEX")
                 && row.start_cboe.unwrap().eq(&current_date)));
-        Ok(())
     }
 
     #[traced_test]
@@ -444,7 +445,7 @@ mod test {
     ))]
     async fn given_master_data_without_dates_and_staged_instruments_when_dates_staged_then_no_change_in_master_data(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         //Given master data entry with NULL in start_nyse (instrument is registered at NYSE)
         let md_result = sqlx::query_as!(
             MasterDataRow,
@@ -456,7 +457,9 @@ mod test {
         assert_eq!(md_result.start_nyse, None);
 
         // Stage nyse instruments per stock exchange
-        mark_stock_exchange_per_stock_as_current_date(&pool).await?;
+        mark_stock_exchange_per_stock_as_current_date(&pool)
+            .await
+            .unwrap();
 
         //Master data date is still NULL for start_nyse, because source data is marked as staged
         let md_result = sqlx::query_as!(
@@ -467,7 +470,6 @@ mod test {
         .await
         .unwrap();
         assert_eq!(md_result.start_nyse, None);
-        Ok(())
     }
 
     #[traced_test]
@@ -480,7 +482,7 @@ mod test {
     ))]
     async fn given_master_data_wihtout_company_info_when_non_company_instruments_staged_then_master_data_marked_as_non_company(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         // Given companies without company info
         let md_result = query!("select count(*) from master_data")
             .fetch_one(&pool)
@@ -510,7 +512,6 @@ mod test {
         .unwrap();
 
         assert_eq!(md_result.len(), 8);
-        Ok(())
     }
 
     #[traced_test]
@@ -523,16 +524,17 @@ mod test {
     ))]
     async fn given_master_data_without_company_info_when_staged_non_company_instruments_is_staged_again_then_no_change_in_master_data(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         // Given staged company in instruments
         let sc_result =
             sqlx::query!("Select * from nyse_instruments where instrument_name = 'TEST Company'")
                 .fetch_one(&pool)
-                .await?;
+                .await
+                .unwrap();
         assert_eq!(sc_result.is_staged, true);
 
         //Staging OTC
-        mark_non_companies_in_master_data(&pool).await?;
+        mark_non_companies_in_master_data(&pool).await.unwrap();
 
         //Then no change for master data
         let md_result =
@@ -541,8 +543,6 @@ mod test {
                 .await
                 .unwrap();
         assert_eq!(md_result.is_company, None);
-
-        Ok(())
     }
 
     #[traced_test]
@@ -555,7 +555,7 @@ mod test {
     ))]
     async fn given_master_data_without_company_info_when_company_instruments_is_staged_then_company_in_master_data(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         // Given
         let md_result = sqlx::query!("select * from master_data where issue_symbol in ('KARO', 'ABC1', 'ABC2') and is_company isnull").fetch_all(&pool).await.unwrap();
         assert_eq!(md_result.len(), 3);
@@ -566,8 +566,6 @@ mod test {
         //Then is_company not null
         let md_result = sqlx::query!("select * from master_data where issue_symbol in ('KARO', 'ABC1', 'ABC2') and is_company notnull").fetch_all(&pool).await.unwrap();
         assert_eq!(md_result.len(), 3);
-
-        Ok(())
     }
 
     #[traced_test]
@@ -580,7 +578,7 @@ mod test {
     ))]
     async fn given_master_data_without_company_info_when_staged_company_instruments_is_staged_again_then_no_change_in_master_data(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         // Given staged entry in instruments
         let instrument_result =
             sqlx::query!("select * from nyse_instruments where symbol_esignal_ticker = 'KARO2'")
@@ -599,8 +597,6 @@ mod test {
             .await
             .unwrap();
         assert_eq!(md_result.is_company, None);
-
-        Ok(())
     }
 
     #[traced_test]
@@ -610,7 +606,7 @@ mod test {
     ))]
     async fn given_master_data_with_non_company_info_when_mark_non_company_instruments_staged_then_instruments_marked_staged(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         // Given
         let md_result = sqlx::query!("Select * from master_data where issue_symbol = 'ATAKR'")
             .fetch_one(&pool)
@@ -630,7 +626,6 @@ mod test {
                 .await
                 .unwrap();
         assert_eq!(instruments_result.is_staged, true);
-        Ok(())
     }
 
     #[traced_test]
@@ -643,7 +638,7 @@ mod test {
     ))]
     async fn given_master_data_without_company_info_and_unstaged_instrument_when_mark_company_instruments_staged_then_unstaged_instrument_not_marked_staged(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         // Given
         let md_result = sqlx::query!("select * from master_data where issue_symbol = 'KARO'")
             .fetch_one(&pool)
@@ -663,8 +658,6 @@ mod test {
                 .await
                 .unwrap();
         assert_eq!(instrument_result.is_staged, false);
-
-        Ok(())
     }
 
     #[traced_test]
@@ -674,7 +667,7 @@ mod test {
     ))]
     async fn given_master_data_with_company_info_when_mark_instruments_staged_then_instruments_staged(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         // Given
         let md_result = sqlx::query!("select * from master_data where issue_symbol = 'BOH'")
             .fetch_one(&pool)
@@ -694,8 +687,6 @@ mod test {
                 .await
                 .unwrap();
         assert_eq!(instrument_result.is_staged, true);
-
-        Ok(())
     }
 
     #[traced_test]
@@ -708,7 +699,7 @@ mod test {
     ))]
     async fn given_master_data_without_company_info_and_unstaged_non_company_instrument_when_mark_instruments_staged_then_unstaged_instrument_not_marked_staged(
         pool: Pool<Postgres>,
-    ) -> Result<()> {
+    ) {
         let md_result = sqlx::query!("select * from master_data where issue_symbol = 'EGOX'")
             .fetch_one(&pool)
             .await
@@ -727,6 +718,5 @@ mod test {
                 .await
                 .unwrap();
         assert_eq!(instrument_result.is_staged, false);
-        Ok(())
     }
 }

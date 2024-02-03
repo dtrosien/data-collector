@@ -36,6 +36,8 @@ tracing = { version = "0.1", features = ["log"] } # facade to generate traces
 tracing-test = "0.2.4"
 uuid = { version = "1", features = ["v4"] }
 zip = "0.6.6"
+thiserror = "1"
+anyhow = "1"
 
 [dev-dependencies]
 filetime = "0.2.23"

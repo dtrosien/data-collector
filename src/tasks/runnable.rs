@@ -1,10 +1,10 @@
-use crate::utils::errors::Result;
+use crate::tasks::task::TaskError;
 use async_trait::async_trait;
 
 /// used when spawning tokio tasks, needs adjustment when async traits are allowed
 #[async_trait]
 pub trait Runnable: Send + Sync {
-    async fn run(&self) -> Result<()>;
+    async fn run(&self) -> anyhow::Result<(), TaskError>;
 }
 
 // currently not useful since rust does not (yet) support trait upcasting

@@ -1,7 +1,6 @@
 use crate::configuration::TaskSetting;
 use crate::tasks::actions::action::{create_action, BoxedAction};
 use crate::tasks::runnable::Runnable;
-use crate::utils::errors::Result;
 use crate::utils::futures::join_future_results;
 use async_trait::async_trait;
 use futures_util::future::BoxFuture;
@@ -76,17 +75,27 @@ impl Task {
 #[async_trait]
 impl Runnable for Task {
     #[tracing::instrument(name = "Running tasks", skip(self), fields(task_id = % self.id,))]
-    async fn run(&self) -> Result<()> {
+    async fn run(&self) -> Result<(), TaskError> {
         let action_futures = self
             .actions
             .iter()
             .map(|action| action.execute(self.action_dependencies.clone()))
-            .collect::<Vec<BoxFuture<Result<()>>>>();
+            .collect::<Vec<BoxFuture<Result<(), TaskError>>>>();
 
         join_future_results(action_futures).await
     }
 }
 
-pub fn execute_task(task: Arc<Task>) -> JoinHandle<Result<()>> {
+pub fn execute_task(task: Arc<Task>) -> JoinHandle<anyhow::Result<(), TaskError>> {
     tokio::spawn(async move { task.run().await })
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum TaskError {
+    #[error("Database interaction failed")]
+    DatabaseError(#[source] sqlx::Error),
+    #[error("The action of the task failed")]
+    ClientRequestError(#[source] reqwest::Error),
+    #[error("Something went wrong")]
+    UnexpectedError(#[from] anyhow::Error),
 }
