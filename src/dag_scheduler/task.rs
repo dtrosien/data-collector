@@ -15,13 +15,27 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-
+use std::time::Duration;
+use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+pub struct ExecutionStats {
+    runtime: Duration,
+    retries: Option<u8>,
+    pub custom_stats: Option<StatsMap>,
+}
+
+pub struct Trigger {
+    is_error: bool,
+    next_tasks: Vec<TaskRef>,
+}
+
+pub type StatsMap = Arc<Mutex<HashMap<String, Arc<dyn Any + Send + Sync>>>>;
+
 #[async_trait]
 pub trait Runnable: Send + Sync {
-    async fn run(&self) -> anyhow::Result<(), TaskError>;
+    async fn run(&self) -> anyhow::Result<Option<StatsMap>, TaskError>;
 }
 
 // todo generalize for lib usage
@@ -42,27 +56,63 @@ pub struct Task {
     pub id: Uuid,
     pub name: String,
     pub num_ingoing_tasks: Option<u16>,
-    pub outgoing_tasks: HashMap<String, TaskRef>,
+    pub outgoing_tasks: Vec<TaskRef>,
     pub retry: Option<u8>,
     pub repeat: Option<u8>,
     pub tools: Tools,
     pub runnable: Box<dyn Runnable>,
+    pub s_finished: mpsc::Sender<(bool, Vec<TaskRef>)>,
+    pub stats: Option<ExecutionStats>, // todo hier die stats einfuegen oder spaeter die ergebnisse sammeln in einer map im scheduler??
 }
 
 impl Task {
-    // Implement the new function for Task
-    pub fn new(name: String, runnable: Box<dyn Runnable>, tools: Tools) -> TaskRef {
+    pub fn new(
+        name: String,
+        runnable: Box<dyn Runnable>,
+        tools: Tools,
+        s_finished: mpsc::Sender<(bool, Vec<TaskRef>)>,
+    ) -> TaskRef {
         let task = Task {
             id: Uuid::new_v4(),
             name,
             num_ingoing_tasks: None,
-            outgoing_tasks: HashMap::new(),
+            outgoing_tasks: Vec::new(),
             retry: None,
             repeat: None,
             tools,
             runnable,
+            s_finished,
+            stats: None,
         };
         Arc::new(Mutex::new(task))
+    }
+
+    pub async fn run(&self) -> anyhow::Result<ExecutionStats, TaskError> {
+        // init stats .. think about whats helpful
+        let mut stats = ExecutionStats {
+            runtime: Default::default(),
+            retries: None,
+            custom_stats: None,
+        };
+
+        let result = self.runnable.run().await;
+
+        if result.is_err() {
+            self.s_finished
+                .send((true, self.outgoing_tasks.clone()))
+                .await
+                .expect("TODO: panic message");
+        } else {
+            self.s_finished
+                .send((false, self.outgoing_tasks.clone()))
+                .await
+                .expect("TODO: panic message");
+        }
+
+        result.map(|s| {
+            stats.custom_stats = s;
+            stats
+        })
     }
 }
 

@@ -18,7 +18,11 @@ impl Scheduler {
 
         for task_ref in initial_tasks {
             let task = task_ref.lock().await;
-            task.runnable.run().await.unwrap(); // Ensure runnable is properly defined to support .await
+            task.run().await.unwrap();
+        }
+
+        loop {
+            //todo()
         }
     }
 }
