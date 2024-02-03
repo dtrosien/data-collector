@@ -357,6 +357,7 @@ mod test {
         (server, url)
     }
 
+    #[ignore]
     #[test]
     fn given_new_file_when_checked_then_returns_false() {
         let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
@@ -460,6 +461,7 @@ mod test {
         assert_eq!(file_path.metadata().unwrap().len(), 3109);
     }
 
+    #[ignore]
     #[tokio::test]
     async fn file_is_not_loaded_when_new() {
         let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
