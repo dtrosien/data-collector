@@ -18,9 +18,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 pub struct ExecutionStats {
+    is_error: bool,
     runtime: Duration,
     retries: Option<u8>,
     pub custom_stats: Option<StatsMap>,
@@ -52,6 +54,24 @@ pub enum TaskError {
 pub type TaskRef = Arc<Mutex<Task>>;
 pub type Tools = Arc<Mutex<HashMap<String, Arc<dyn Any + Send + Sync>>>>;
 
+// pub struct ImmutableTask{
+//     pub id: Uuid,
+//     pub mutable_task: TaskRef,
+// }
+//
+// impl Hash for ImmutableTask {
+//     fn hash<H: Hasher>(&self, state: &mut H) {
+//         self.id.hash(state)
+//     }
+// }
+//
+// impl PartialEq<Self> for ImmutableTask {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.id.eq(&other.id)
+//     }
+// }
+// impl Eq for ImmutableTask {}
+
 pub struct Task {
     pub id: Uuid,
     pub name: String,
@@ -63,6 +83,7 @@ pub struct Task {
     pub runnable: Box<dyn Runnable>,
     pub s_finished: mpsc::Sender<(bool, Vec<TaskRef>)>,
     pub stats: Option<ExecutionStats>, // todo hier die stats einfuegen oder spaeter die ergebnisse sammeln in einer map im scheduler??
+    pub job_handle: Option<JoinHandle<()>>, // todo save handle handle of runnable to be able to cancel jobs
 }
 
 impl Task {
@@ -83,6 +104,7 @@ impl Task {
             runnable,
             s_finished,
             stats: None,
+            job_handle: None,
         };
         Arc::new(Mutex::new(task))
     }
@@ -90,6 +112,7 @@ impl Task {
     pub async fn run(&self) -> anyhow::Result<ExecutionStats, TaskError> {
         // init stats .. think about whats helpful
         let mut stats = ExecutionStats {
+            is_error: false,
             runtime: Default::default(),
             retries: None,
             custom_stats: None,
