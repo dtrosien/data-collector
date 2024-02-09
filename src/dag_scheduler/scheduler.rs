@@ -1,5 +1,5 @@
 use crate::dag_scheduler::task::{ExecutionStats, Runnable, Task, TaskRef, Tools};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -26,7 +26,7 @@ pub type TaskDependenciesSpecs = HashMap<TaskSpecRef, Vec<TaskSpecRef>>;
 
 impl Scheduler {
     pub fn new() -> Self {
-        let (trigger_sender, mut trigger_receiver) = mpsc::channel(100);
+        let (trigger_sender, trigger_receiver) = mpsc::channel(100);
         Scheduler {
             tasks: Default::default(),
             results: Default::default(),
