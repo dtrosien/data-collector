@@ -10,6 +10,7 @@
 // Callback or Notification Mechanism: A way to notify other systems or components upon task completion or failure. This can be useful for triggering downstream processes.
 // Metadata: Additional information like task creator, creation date, last modified date, etc., for audit and tracking purposes.
 
+use crate::dag_scheduler::scheduler::{TaskSpec, TaskSpecRef};
 use async_trait::async_trait;
 use std::any::Any;
 use std::collections::HashMap;
@@ -52,6 +53,7 @@ pub enum TaskError {
 }
 
 pub type TaskRef = Arc<Mutex<Task>>;
+
 pub type Tools = Arc<Mutex<HashMap<String, Arc<dyn Any + Send + Sync>>>>;
 
 // pub struct ImmutableTask{
@@ -75,12 +77,12 @@ pub type Tools = Arc<Mutex<HashMap<String, Arc<dyn Any + Send + Sync>>>>;
 pub struct Task {
     pub id: Uuid,
     pub name: String,
-    pub num_ingoing_tasks: Option<u16>,
+    pub num_ingoing_tasks: Option<usize>,
     pub outgoing_tasks: Vec<TaskRef>,
     pub retry: Option<u8>,
     pub repeat: Option<u8>,
     pub tools: Tools,
-    pub runnable: Box<dyn Runnable>,
+    pub runnable: Arc<dyn Runnable>,
     pub s_finished: mpsc::Sender<(bool, Vec<TaskRef>)>,
     pub stats: Option<ExecutionStats>, // todo hier die stats einfuegen oder spaeter die ergebnisse sammeln in einer map im scheduler??
     pub job_handle: Option<JoinHandle<()>>, // todo save handle handle of runnable to be able to cancel jobs
@@ -89,7 +91,7 @@ pub struct Task {
 impl Task {
     pub fn new(
         name: String,
-        runnable: Box<dyn Runnable>,
+        runnable: Arc<dyn Runnable>,
         tools: Tools,
         s_finished: mpsc::Sender<(bool, Vec<TaskRef>)>,
     ) -> TaskRef {
@@ -102,6 +104,26 @@ impl Task {
             repeat: None,
             tools,
             runnable,
+            s_finished,
+            stats: None,
+            job_handle: None,
+        };
+        Arc::new(Mutex::new(task))
+    }
+
+    pub fn new_from_spec(
+        task_spec: TaskSpecRef,
+        s_finished: mpsc::Sender<(bool, Vec<TaskRef>)>,
+    ) -> TaskRef {
+        let task = Task {
+            id: task_spec.id,
+            name: task_spec.name.clone(),
+            num_ingoing_tasks: None,
+            outgoing_tasks: Vec::new(),
+            retry: task_spec.retry,
+            repeat: task_spec.repeat,
+            tools: task_spec.tools.clone(),
+            runnable: task_spec.runnable.clone(),
             s_finished,
             stats: None,
             job_handle: None,
