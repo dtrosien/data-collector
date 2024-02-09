@@ -1,5 +1,5 @@
 use crate::dag_scheduler::task::{ExecutionStats, Runnable, Task, TaskRef, Tools};
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
