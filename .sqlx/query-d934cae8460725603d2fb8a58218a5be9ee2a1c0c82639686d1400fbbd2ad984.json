@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": " update master_data \n    set\n      instrument = 'OTC' \n    from \n     (select sc.exchange as exchange, sc.ticker as ticker, sc.name as sec_name from sec_companies sc\n        join master_data md on\n             md.issuer_name = \"name\"\n         and md.issue_symbol = ticker\n         where sc.exchange = 'OTC'\n           and sc.is_staged = false) a\n    where \n      sec_name = issuer_name  and issue_symbol = ticker",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "d934cae8460725603d2fb8a58218a5be9ee2a1c0c82639686d1400fbbd2ad984"
+}
