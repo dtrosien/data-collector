@@ -14,12 +14,15 @@ use crate::dag_scheduler::scheduler::TaskSpecRef;
 use async_trait::async_trait;
 use std::any::Any;
 use std::collections::HashMap;
+
+use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tokio::sync::Mutex;
+use tokio::sync::{broadcast, Mutex};
 use tokio::task::JoinHandle;
+use tracing::log::warn;
 use uuid::Uuid;
 
 pub struct ExecutionStats {
@@ -34,11 +37,31 @@ pub struct Trigger {
     next_tasks: Vec<TaskRef>,
 }
 
+#[derive(Clone)]
+pub enum ExecutionMode {
+    Once,
+    Continuously { kill: broadcast::Sender<()> }, // use sender to resubscribe, since Receiver is not clone
+    RepeatLimited { count: u32 },
+    RepeatForDuration { duration: Duration },
+}
+
+// todo run task based on this (fsm)
+pub enum ExecutionState {
+    Pending,
+    Running,
+    // Paused,
+    Finished,
+    Failed,
+    Cancelled,
+    // Retry,
+    // Skipped,
+}
+
 pub type StatsMap = Arc<Mutex<HashMap<String, Arc<dyn Any + Send + Sync>>>>;
 
 #[async_trait]
 pub trait Runnable: Send + Sync {
-    async fn run(&self) -> anyhow::Result<Option<StatsMap>, TaskError>;
+    async fn run(&self) -> Result<Option<StatsMap>, TaskError>;
 }
 
 // todo generalize for lib usage
@@ -80,7 +103,7 @@ pub struct Task {
     pub num_ingoing_tasks: Option<usize>,
     pub outgoing_tasks: Vec<TaskRef>,
     pub retry: Option<u8>,
-    pub repeat: Option<u8>,
+    pub execution_mode: ExecutionMode,
     pub tools: Tools,
     pub runnable: Arc<dyn Runnable>,
     pub s_finished: mpsc::Sender<(bool, Vec<TaskRef>)>,
@@ -101,7 +124,7 @@ impl Task {
             num_ingoing_tasks: None,
             outgoing_tasks: Vec::new(),
             retry: None,
-            repeat: None,
+            execution_mode: ExecutionMode::Once,
             tools,
             runnable,
             s_finished,
@@ -121,7 +144,7 @@ impl Task {
             num_ingoing_tasks: None,
             outgoing_tasks: Vec::new(),
             retry: task_spec.retry,
-            repeat: task_spec.repeat,
+            execution_mode: task_spec.execution_mode.clone(),
             tools: task_spec.tools.clone(),
             runnable: task_spec.runnable.clone(),
             s_finished,
@@ -139,6 +162,12 @@ impl Task {
             retries: None,
             custom_stats: None,
         };
+
+        let f = &self.runnable;
+
+        let a = retry(self.retry.unwrap_or(0), Duration::from_secs(1), || f.run())
+            .await
+            .expect("TODO: panic message");
 
         let result = self.runnable.run().await;
 
@@ -173,3 +202,29 @@ impl PartialEq<Self> for Task {
     }
 }
 impl Eq for Task {}
+
+async fn retry<T, F, Fut>(max_tries: u8, delay: Duration, mut f: F) -> Result<Option<T>, TaskError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = anyhow::Result<Option<T>, TaskError>>,
+{
+    let mut retries_left = max_tries;
+    loop {
+        retries_left = retries_left.saturating_sub(1);
+        match f().await {
+            Ok(opt) => return Ok(opt),
+            Err(e) => {
+                if max_tries > 0 {
+                    warn!(
+                        "error: , retry send request, retries left: {}",
+                        retries_left
+                    );
+                }
+                if retries_left == 0 {
+                    return Err(e);
+                };
+                tokio::time::sleep(delay).await;
+            }
+        };
+    }
+}

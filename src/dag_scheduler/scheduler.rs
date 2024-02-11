@@ -1,5 +1,6 @@
-use crate::dag_scheduler::task::{ExecutionStats, Runnable, Task, TaskRef, Tools};
+use crate::dag_scheduler::task::{ExecutionMode, ExecutionStats, Runnable, Task, TaskRef, Tools};
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -17,9 +18,24 @@ pub struct TaskSpec {
     pub id: Uuid,
     pub name: String,
     pub retry: Option<u8>,
-    pub repeat: Option<u8>,
+    pub execution_mode: ExecutionMode,
     pub tools: Tools,
     pub runnable: Arc<dyn Runnable>,
+}
+
+// Implement PartialEq and Eq based on the id field
+impl PartialEq for TaskSpec {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for TaskSpec {}
+
+impl Hash for TaskSpec {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
 }
 
 pub type TaskDependenciesSpecs = HashMap<TaskSpecRef, Vec<TaskSpecRef>>;
@@ -129,21 +145,67 @@ impl Scheduler {
 
 #[cfg(test)]
 mod test {
-    use crate::tasks::runnable::Runnable;
-    use crate::tasks::task::TaskError;
+    use crate::dag_scheduler::scheduler::{
+        Scheduler, TaskDependenciesSpecs, TaskSpec, TaskSpecRef,
+    };
+    use crate::dag_scheduler::task::{ExecutionMode, Runnable, StatsMap};
     use async_trait::async_trait;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use uuid::Uuid;
 
     struct TestRunner {}
     #[async_trait]
     impl Runnable for TestRunner {
-        async fn run(&self) -> Result<(), TaskError> {
-            Ok(())
+        async fn run(&self) -> Result<Option<StatsMap>, crate::dag_scheduler::task::TaskError> {
+            Ok(None)
         }
     }
-    fn build_test_runnable() -> Box<dyn Runnable> {
-        Box::new(TestRunner {})
+    fn build_test_runner() -> Arc<dyn Runnable> {
+        Arc::new(TestRunner {})
     }
 
     #[tokio::test]
-    async fn test_build_schedule() {}
+    async fn test_build_schedule() {
+        let mut scheduler = Scheduler::new();
+
+        let runner_1 = build_test_runner();
+        let runner_2 = build_test_runner();
+        let runner_3 = build_test_runner();
+        let task_spec_1 = TaskSpec {
+            id: Uuid::new_v4(),
+            name: "1".to_string(),
+            retry: None,
+            execution_mode: ExecutionMode::Once,
+            tools: Arc::new(Default::default()),
+            runnable: runner_1,
+        };
+
+        let task_spec_2 = TaskSpec {
+            id: Uuid::new_v4(),
+            name: "2".to_string(),
+            retry: None,
+            execution_mode: ExecutionMode::Once,
+            tools: Arc::new(Default::default()),
+            runnable: runner_2,
+        };
+        let task_spec_3 = TaskSpec {
+            id: Uuid::new_v4(),
+            name: "3".to_string(),
+            retry: None,
+            execution_mode: ExecutionMode::Once,
+            tools: Arc::new(Default::default()),
+            runnable: runner_3,
+        };
+
+        let deps = vec![
+            TaskSpecRef::from(task_spec_1),
+            TaskSpecRef::from(task_spec_2),
+        ];
+        let mut tasks_specs: TaskDependenciesSpecs = HashMap::new();
+        tasks_specs.insert(TaskSpecRef::from(task_spec_3), deps);
+
+        scheduler.schedule_tasks(tasks_specs).await;
+        // scheduler.run_all().await; // todo fix lock
+    }
 }
