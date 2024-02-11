@@ -1,0 +1,68 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select * from nyse_instruments where symbol_exchange_ticker = 'BOH'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "instrument_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "instrument_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "symbol_ticker",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "symbol_exchange_ticker",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "normalized_ticker",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "symbol_esignal_ticker",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "mic_code",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "dateloaded",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 8,
+        "name": "is_staged",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "d1c2cdee34a11d240ee262534352d521c4ae37d1045d7058ea6794dc5efca247"
+}
