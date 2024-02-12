@@ -1,4 +1,6 @@
-use crate::dag_scheduler::task::{ExecutionMode, ExecutionStats, Runnable, Task, TaskRef, Tools};
+use crate::dag_scheduler::task::{
+    ExecutionMode, ExecutionStats, RetryOptions, Runnable, Task, TaskRef, Tools,
+};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -17,7 +19,7 @@ pub type TaskSpecRef = Arc<TaskSpec>;
 pub struct TaskSpec {
     pub id: Uuid,
     pub name: String,
-    pub retry: Option<u8>,
+    pub retry_options: RetryOptions,
     pub execution_mode: ExecutionMode,
     pub tools: Tools,
     pub runnable: Arc<dyn Runnable>,
@@ -148,7 +150,7 @@ mod test {
     use crate::dag_scheduler::scheduler::{
         Scheduler, TaskDependenciesSpecs, TaskSpec, TaskSpecRef,
     };
-    use crate::dag_scheduler::task::{ExecutionMode, Runnable, StatsMap};
+    use crate::dag_scheduler::task::{ExecutionMode, RetryOptions, Runnable, StatsMap};
     use async_trait::async_trait;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -175,7 +177,7 @@ mod test {
         let task_spec_1 = TaskSpec {
             id: Uuid::new_v4(),
             name: "1".to_string(),
-            retry: None,
+            retry_options: RetryOptions::default(),
             execution_mode: ExecutionMode::Once,
             tools: Arc::new(Default::default()),
             runnable: runner_1,
@@ -184,7 +186,7 @@ mod test {
         let task_spec_2 = TaskSpec {
             id: Uuid::new_v4(),
             name: "2".to_string(),
-            retry: None,
+            retry_options: RetryOptions::default(),
             execution_mode: ExecutionMode::Once,
             tools: Arc::new(Default::default()),
             runnable: runner_2,
@@ -192,7 +194,7 @@ mod test {
         let task_spec_3 = TaskSpec {
             id: Uuid::new_v4(),
             name: "3".to_string(),
-            retry: None,
+            retry_options: RetryOptions::default(),
             execution_mode: ExecutionMode::Once,
             tools: Arc::new(Default::default()),
             runnable: runner_3,

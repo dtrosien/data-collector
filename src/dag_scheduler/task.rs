@@ -15,8 +15,10 @@ use async_trait::async_trait;
 use std::any::Any;
 use std::collections::HashMap;
 
+use crate::dag_scheduler::task::TaskError::NoExecutionError;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
+use std::ops::{Add, Mul};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -73,6 +75,8 @@ pub enum TaskError {
     ClientRequestError(#[source] reqwest::Error),
     #[error("Something went wrong")]
     UnexpectedError(#[from] anyhow::Error),
+    #[error("Nothing was executed")]
+    NoExecutionError,
 }
 
 pub type TaskRef = Arc<Mutex<Task>>;
@@ -102,7 +106,7 @@ pub struct Task {
     pub name: String,
     pub num_ingoing_tasks: Option<usize>,
     pub outgoing_tasks: Vec<TaskRef>,
-    pub retry: Option<u8>,
+    pub retry_options: RetryOptions,
     pub execution_mode: ExecutionMode,
     pub tools: Tools,
     pub runnable: Arc<dyn Runnable>,
@@ -123,7 +127,7 @@ impl Task {
             name,
             num_ingoing_tasks: None,
             outgoing_tasks: Vec::new(),
-            retry: None,
+            retry_options: RetryOptions::default(),
             execution_mode: ExecutionMode::Once,
             tools,
             runnable,
@@ -143,7 +147,7 @@ impl Task {
             name: task_spec.name.clone(),
             num_ingoing_tasks: None,
             outgoing_tasks: Vec::new(),
-            retry: task_spec.retry,
+            retry_options: task_spec.retry_options,
             execution_mode: task_spec.execution_mode.clone(),
             tools: task_spec.tools.clone(),
             runnable: task_spec.runnable.clone(),
@@ -165,7 +169,7 @@ impl Task {
 
         let f = &self.runnable;
 
-        let a = retry(self.retry.unwrap_or(0), Duration::from_secs(1), || f.run())
+        let a = retry(self.retry_options, || f.run())
             .await
             .expect("TODO: panic message");
 
@@ -203,28 +207,101 @@ impl PartialEq<Self> for Task {
 }
 impl Eq for Task {}
 
-async fn retry<T, F, Fut>(max_tries: u8, delay: Duration, mut f: F) -> Result<Option<T>, TaskError>
+#[derive(Clone, Copy)]
+pub struct RetryOptions {
+    max_retries: u32,
+    back_off: BackOff,
+}
+
+impl Default for RetryOptions {
+    fn default() -> Self {
+        RetryOptions {
+            max_retries: 0,
+            back_off: BackOff::Constant {
+                back_off: Default::default(),
+            },
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum BackOff {
+    Constant {
+        back_off: Duration,
+    },
+    Linear {
+        min_back_off: Duration,
+        max_back_off: Duration,
+    },
+    Exponential {
+        base: u32,
+        min_back_off: Duration,
+        max_back_off: Duration,
+    },
+}
+
+async fn retry<T, F, Fut>(options: RetryOptions, mut f: F) -> Result<Option<T>, TaskError>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = anyhow::Result<Option<T>, TaskError>>,
 {
-    let mut retries_left = max_tries;
-    loop {
-        retries_left = retries_left.saturating_sub(1);
+    let mut maybe_result: Result<Option<T>, TaskError> = Err(NoExecutionError);
+    for retry_count in 0..=options.max_retries {
         match f().await {
-            Ok(opt) => return Ok(opt),
-            Err(e) => {
-                if max_tries > 0 {
-                    warn!(
-                        "error: , retry send request, retries left: {}",
-                        retries_left
-                    );
-                }
-                if retries_left == 0 {
-                    return Err(e);
-                };
-                tokio::time::sleep(delay).await;
+            Ok(opt) => {
+                maybe_result = Ok(opt);
+                break;
             }
+            Err(e) if retry_count < options.max_retries => {
+                warn!(
+                    "error: {}, retry executing task, retries left: {}",
+                    e,
+                    options.max_retries - retry_count
+                );
+                // add 1 since retry_count is 0 based
+                let back_off = derive_back_off_time(options, retry_count.add(1));
+                tokio::time::sleep(back_off).await;
+            }
+            Err(e) => maybe_result = Err(e),
         };
+    }
+    maybe_result
+}
+
+fn derive_back_off_time(options: RetryOptions, current_retry_count: u32) -> Duration {
+    match options.back_off {
+        BackOff::Constant { back_off } => back_off,
+        BackOff::Linear {
+            min_back_off,
+            max_back_off,
+        } => max_back_off
+            .saturating_sub(min_back_off)
+            .checked_div(options.max_retries)
+            .and_then(|s| s.checked_mul(current_retry_count))
+            .unwrap_or(max_back_off),
+        BackOff::Exponential {
+            base,
+            min_back_off,
+            max_back_off,
+        } => {
+            let exp_back_off = min_back_off
+                .checked_mul(base.pow(current_retry_count.saturating_sub(1)))
+                .unwrap_or(min_back_off);
+            std::cmp::min(exp_back_off, max_back_off)
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    #[tokio::test]
+    async fn test_retry_logic() {
+        todo!()
+    }
+
+    #[tokio::test]
+    async fn test_back_off_logic() {
+        todo!()
     }
 }
