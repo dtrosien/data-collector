@@ -1,10 +1,8 @@
 use serde::de;
 
-use crate::utils::errors::Result;
-
 /// Try to interpret the string as .json and parse it into the deserializable struct given as generic parameter.
 /// On failure the input will be displayed along with the failed line/column as error.
-pub fn parse_response<'a, T: de::Deserialize<'a>>(response: &'a str) -> Result<T> {
+pub fn parse_response<'a, T: de::Deserialize<'a>>(response: &'a str) -> Result<T, anyhow::Error> {
     let peak_response = match serde_json::from_str(response) {
         Ok(ok) => ok,
         Err(error) => {
@@ -14,7 +12,7 @@ pub fn parse_response<'a, T: de::Deserialize<'a>>(response: &'a str) -> Result<T
                 error.line(),
                 response
             );
-            return Err(Box::new(error));
+            return Err(anyhow::Error::from(error));
         }
     };
     Ok(peak_response)

@@ -3,7 +3,6 @@ use reqwest::Client;
 use crate::configuration::{DatabaseSettings, HttpClientSettings, Settings, TaskSetting};
 
 use crate::scheduler::Scheduler;
-use crate::utils::errors::Result;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 
@@ -26,7 +25,7 @@ impl Application {
     }
 
     #[tracing::instrument(name = "Start running tasks", skip(self))]
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(&self) -> Result<(), anyhow::Error> {
         let scheduler = Scheduler::build(&self.task_settings, &self.pool, &self.client);
         let results = scheduler.build_execution_sequence().run_all().await;
         // todo handle and log errors etc
