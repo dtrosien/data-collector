@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select * from master_data where issue_symbol in ('$ESGE.IV', 'MTUL','$OEX','GNS','MHLA','IGZ','EGOX','ABCD')\n            and is_company notnull",
+  "query": "select * from master_data where\n                Start_NYSE notnull or\n                Start_NYSE_Arca notnull or\n                Start_NYSE_American notnull or\n                Start_NASDAQ notnull or\n                Start_NASDAQ_Global_Select_Market notnull or\n                Start_NASDAQ_Select_Market notnull or\n                Start_NASDAQ_Capital_Market notnull or\n                Start_CBOE notnull",
   "describe": {
     "columns": [
       {
@@ -55,48 +55,48 @@
       },
       {
         "ordinal": 10,
-        "name": "is_company",
-        "type_info": "Bool"
-      },
-      {
-        "ordinal": 11,
         "name": "category",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 12,
+        "ordinal": 11,
         "name": "renamed_to_issuer_name",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 13,
+        "ordinal": 12,
         "name": "renamed_to_issue_symbol",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 14,
+        "ordinal": 13,
         "name": "renamed_at_date",
         "type_info": "Date"
       },
       {
-        "ordinal": 15,
+        "ordinal": 14,
         "name": "current_name",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 16,
+        "ordinal": 15,
         "name": "suspended",
         "type_info": "Bool"
       },
       {
-        "ordinal": 17,
+        "ordinal": 16,
         "name": "suspension_date",
         "type_info": "Date"
       },
       {
-        "ordinal": 18,
+        "ordinal": 17,
         "name": "start_cboe",
         "type_info": "Date"
+      },
+      {
+        "ordinal": 18,
+        "name": "instrument",
+        "type_info": "Varchar"
       }
     ],
     "parameters": {
@@ -124,5 +124,5 @@
       true
     ]
   },
-  "hash": "0be894cf670e10b9ddfd786d478dbb5bb342d2a62d06868ebca922275e4e10f5"
+  "hash": "48e67201e50d3d2f74b6ae90efa5b3ba066e151e6d2cbba25d395d002667683f"
 }
