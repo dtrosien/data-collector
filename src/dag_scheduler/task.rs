@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use crate::dag_scheduler::task::TaskError::NoExecutionError;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
-use std::ops::{Add};
+use std::ops::Add;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
