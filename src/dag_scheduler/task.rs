@@ -16,6 +16,7 @@ use std::any::Any;
 use std::collections::HashMap;
 
 use crate::dag_scheduler::task::TaskError::NoExecutionError;
+use anyhow::Error;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::ops::Add;
@@ -47,7 +48,7 @@ pub enum ExecutionMode {
     RepeatForDuration { duration: Duration },
 }
 
-// todo run task based on this (fsm)
+// todo run task based on this (fsm) or actor
 pub enum ExecutionState {
     Pending,
     Running,
@@ -74,7 +75,7 @@ pub enum TaskError {
     #[error("The action of the task failed")]
     ClientRequestError(#[source] reqwest::Error),
     #[error("Something went wrong")]
-    UnexpectedError(#[from] anyhow::Error),
+    UnexpectedError(#[source] anyhow::Error),
     #[error("Nothing was executed")]
     NoExecutionError,
 }
@@ -101,6 +102,7 @@ pub type Tools = Arc<Mutex<HashMap<String, Arc<dyn Any + Send + Sync>>>>;
 // }
 // impl Eq for ImmutableTask {}
 
+// todo maybe build as actor if really needed
 pub struct Task {
     pub id: Uuid,
     pub name: String,
@@ -166,14 +168,13 @@ impl Task {
             retries: None,
             custom_stats: None,
         };
+        println!("running: {}", self.name);
+        let f = self.runnable.clone();
+        let r = self.retry_options;
 
-        let f = &self.runnable;
-
-        let _a = retry(self.retry_options, || f.run())
+        let result = tokio::spawn(async move { retry(r, || f.run()).await })
             .await
-            .expect("TODO: panic message");
-
-        let result = self.runnable.run().await;
+            .map_err(|e| TaskError::UnexpectedError(Error::from(e)))?;
 
         if result.is_err() {
             self.s_finished
@@ -181,6 +182,8 @@ impl Task {
                 .await
                 .expect("TODO: panic message");
         } else {
+            println!("Finished: {}", self.name);
+
             self.s_finished
                 .send((false, self.outgoing_tasks.clone()))
                 .await
