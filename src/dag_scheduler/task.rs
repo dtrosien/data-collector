@@ -112,7 +112,7 @@ pub struct Task {
     pub execution_mode: ExecutionMode,
     pub tools: Tools,
     pub runnable: Arc<dyn Runnable>,
-    pub s_finished: mpsc::Sender<(bool, Vec<TaskRef>)>,
+    pub s_finished: Option<mpsc::Sender<(bool, Vec<TaskRef>)>>,
     pub stats: Option<ExecutionStats>, // todo hier die stats einfuegen oder spaeter die ergebnisse sammeln in einer map im scheduler??
     pub job_handle: Option<JoinHandle<()>>, // todo save handle handle of runnable to be able to cancel jobs
 }
@@ -122,7 +122,7 @@ impl Task {
         name: String,
         runnable: Arc<dyn Runnable>,
         tools: Tools,
-        s_finished: mpsc::Sender<(bool, Vec<TaskRef>)>,
+        s_finished: Option<mpsc::Sender<(bool, Vec<TaskRef>)>>,
     ) -> TaskRef {
         let task = Task {
             id: Uuid::new_v4(),
@@ -142,7 +142,7 @@ impl Task {
 
     pub fn new_from_spec(
         task_spec: TaskSpecRef,
-        s_finished: mpsc::Sender<(bool, Vec<TaskRef>)>,
+        s_finished: Option<mpsc::Sender<(bool, Vec<TaskRef>)>>,
     ) -> TaskRef {
         let task = Task {
             id: task_spec.id,
@@ -160,7 +160,7 @@ impl Task {
         Arc::new(Mutex::new(task))
     }
 
-    pub async fn run(&self) -> anyhow::Result<ExecutionStats, TaskError> {
+    pub async fn run(&mut self) -> anyhow::Result<ExecutionStats, TaskError> {
         // init stats .. think about whats helpful
         let mut stats = ExecutionStats {
             is_error: false,
@@ -178,6 +178,8 @@ impl Task {
 
         if result.is_err() {
             self.s_finished
+                .as_ref()
+                .unwrap()
                 .send((true, self.outgoing_tasks.clone()))
                 .await
                 .expect("TODO: panic message");
@@ -185,9 +187,15 @@ impl Task {
             println!("Finished: {}", self.name);
 
             self.s_finished
+                .as_ref()
+                .unwrap()
                 .send((false, self.outgoing_tasks.clone()))
                 .await
                 .expect("TODO: panic message");
+            if let Some(a) = self.s_finished.take() {
+                drop(a)
+            };
+            println!("exist: {}", self.s_finished.is_none())
         }
 
         result.map(|s| {

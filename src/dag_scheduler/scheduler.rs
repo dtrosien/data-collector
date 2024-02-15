@@ -10,7 +10,7 @@ use uuid::Uuid;
 pub struct Scheduler {
     tasks: HashMap<Uuid, TaskRef>,
     results: HashMap<Uuid, anyhow::Result<ExecutionStats, anyhow::Error>>, // maybe use task error
-    trigger_sender: mpsc::Sender<(bool, Vec<TaskRef>)>,
+    trigger_sender: Option<mpsc::Sender<(bool, Vec<TaskRef>)>>,
     trigger_receiver: mpsc::Receiver<(bool, Vec<TaskRef>)>,
 }
 
@@ -54,7 +54,7 @@ impl Scheduler {
         Scheduler {
             tasks: Default::default(),
             results: Default::default(),
-            trigger_sender,
+            trigger_sender: Some(trigger_sender),
             trigger_receiver,
         }
     }
@@ -67,7 +67,10 @@ impl Scheduler {
 
         // create tasks and count ingoing tasks (dependencies)
         for (task_spec, dependencies) in &task_dependencies_specs {
-            let task = Task::new_from_spec(task_spec.clone(), self.trigger_sender.clone());
+            let task = Task::new_from_spec(
+                task_spec.clone(),
+                Some(self.trigger_sender.as_ref().unwrap().clone()),
+            );
             if !dependencies.is_empty() {
                 task.lock().await.num_ingoing_tasks = Some(dependencies.len());
             }
@@ -100,7 +103,6 @@ impl Scheduler {
         // identify source tasks
         for (_, task_ref) in self.tasks.iter() {
             if task_ref.lock().await.num_ingoing_tasks.is_none() {
-                task_ref.lock().await.s_finished = self.trigger_sender.clone();
                 source_tasks.push(task_ref.clone());
             }
         }
@@ -112,12 +114,14 @@ impl Scheduler {
         // start source tasks
         for task_ref in source_tasks {
             tokio::spawn(async move {
-                let task = task_ref.lock().await;
+                let mut task = task_ref.lock().await;
                 task.run().await.unwrap();
             });
         }
 
-        // todo why is channel not closing after last task????!!!
+        // todo clean up drops (is there a more elegant way to shut down receiver)!?
+        let a = self.trigger_sender.take();
+        drop(a);
         // handle received finished triggers from tasks
         while let Some(msg) = &self.trigger_receiver.recv().await {
             let (_result, tasks) = msg;
@@ -229,6 +233,6 @@ mod test {
             println!("name: {}, in: {:?}, out: {:?}", name, i, out);
         }
 
-        // scheduler.run_all().await; // todo fix endless loop
+        scheduler.run_all().await;
     }
 }
