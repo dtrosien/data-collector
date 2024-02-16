@@ -122,7 +122,7 @@ impl Task {
         name: String,
         runnable: Arc<dyn Runnable>,
         tools: Tools,
-        s_finished: Option<mpsc::Sender<(bool, Vec<TaskRef>)>>,
+        _s_finished: Option<mpsc::Sender<(bool, Vec<TaskRef>)>>,
     ) -> TaskRef {
         let task = Task {
             id: Uuid::new_v4(),
