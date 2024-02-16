@@ -10,8 +10,7 @@ use uuid::Uuid;
 pub struct Scheduler {
     tasks: HashMap<Uuid, TaskRef>,
     results: HashMap<Uuid, anyhow::Result<ExecutionStats, anyhow::Error>>, // maybe use task error
-    trigger_sender: Option<mpsc::Sender<(bool, Vec<TaskRef>)>>,
-    trigger_receiver: mpsc::Receiver<(bool, Vec<TaskRef>)>,
+                                                                           // trigger_receiver: Option<mpsc::Receiver<(bool, Vec<TaskRef>)>>,
 }
 
 pub type TaskSpecRef = Arc<TaskSpec>;
@@ -50,12 +49,10 @@ impl Default for Scheduler {
 
 impl Scheduler {
     pub fn new() -> Self {
-        let (trigger_sender, trigger_receiver) = mpsc::channel(100);
         Scheduler {
             tasks: Default::default(),
             results: Default::default(),
-            trigger_sender: Some(trigger_sender),
-            trigger_receiver,
+            // trigger_receiver: None,
         }
     }
 
@@ -63,24 +60,38 @@ impl Scheduler {
         &mut self,
         task_dependencies_specs: TaskDependenciesSpecs,
     ) -> HashMap<Uuid, TaskRef> {
-        let mut tasks_map: HashMap<Uuid, TaskRef> = HashMap::new();
+        let tasks_map = self.create_tasks_from_specs(&task_dependencies_specs).await;
+        self.add_outgoing_tasks_to_tasks_in_map(&task_dependencies_specs, &tasks_map)
+            .await;
+        tasks_map
+    }
 
-        // create tasks and count ingoing tasks (dependencies)
-        for (task_spec, dependencies) in &task_dependencies_specs {
-            let task = Task::new_from_spec(
-                task_spec.clone(),
-                Some(self.trigger_sender.as_ref().unwrap().clone()),
-            );
+    /// creates TaskRef from TaskDependenciesSpecs,
+    /// counts ingoing tasks for each task and put them in a HashMap
+    async fn create_tasks_from_specs(
+        &self,
+        specs: &TaskDependenciesSpecs,
+    ) -> HashMap<Uuid, TaskRef> {
+        let mut tasks_map: HashMap<Uuid, TaskRef> = HashMap::new();
+        for (task_spec, dependencies) in specs {
+            let task = Task::new_from_spec(task_spec.clone());
             if !dependencies.is_empty() {
                 task.lock().await.num_ingoing_tasks = Some(dependencies.len());
             }
             tasks_map.insert(task_spec.id, task.clone());
         }
+        tasks_map
+    }
 
-        // add outgoings to tasks
-        // looks if there is a proper task in the task map, which should be the outgoing task
-        // then reverse the direction and go through the dependencies and add the outgoing task to their outgoing tasks
-        for (task_spec, dependencies) in &task_dependencies_specs {
+    /// add outgoings to tasks
+    /// looks if there is a proper task in the task map, which should be the outgoing task
+    /// then reverse the direction and go through the dependencies and add the outgoing task to their outgoing tasks
+    async fn add_outgoing_tasks_to_tasks_in_map(
+        &self,
+        specs: &TaskDependenciesSpecs,
+        tasks_map: &HashMap<Uuid, TaskRef>,
+    ) {
+        for (task_spec, dependencies) in specs {
             if let Some(outgoing_task) = tasks_map.get(&task_spec.id) {
                 for dep_task_spec in dependencies {
                     if let Some(task) = tasks_map.get(&dep_task_spec.id) {
@@ -90,7 +101,6 @@ impl Scheduler {
                 }
             }
         }
-        tasks_map
     }
 
     pub async fn schedule_tasks(&mut self, task_dependencies_specs: TaskDependenciesSpecs) {
@@ -98,8 +108,40 @@ impl Scheduler {
     }
 
     pub async fn run_all(&mut self) {
-        let mut source_tasks = Vec::new();
+        let (trigger_sender, mut trigger_receiver) = mpsc::channel(100);
 
+        self.start_source_tasks(trigger_sender.clone()).await;
+
+        // handle received finished triggers from tasks
+        for _ in 0..self.tasks.len() {
+            if let Some(msg) = trigger_receiver.recv().await {
+                let (_result, tasks) = msg;
+                println!("number received next tasks: {}", tasks.len());
+                for task in tasks {
+                    // different scope for locking task
+                    {
+                        let mut locked_task = task.lock().await;
+                        locked_task.num_ingoing_tasks =
+                            locked_task.num_ingoing_tasks.map(|i| i.saturating_sub(1));
+                        println!(
+                            "name: {:?} current count {:?}",
+                            &locked_task.name, &locked_task.num_ingoing_tasks
+                        );
+                    }
+                    if let Some(0) = task.lock().await.num_ingoing_tasks {
+                        let task = task.clone();
+                        let trigger_sender = trigger_sender.clone();
+                        tokio::spawn(async move {
+                            task.lock().await.run(trigger_sender).await.unwrap();
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    async fn start_source_tasks(&self, trigger_sender: mpsc::Sender<(bool, Vec<TaskRef>)>) {
+        let mut source_tasks = Vec::new();
         // identify source tasks
         for (_, task_ref) in self.tasks.iter() {
             if task_ref.lock().await.num_ingoing_tasks.is_none() {
@@ -113,39 +155,11 @@ impl Scheduler {
 
         // start source tasks
         for task_ref in source_tasks {
+            let trigger_sender = trigger_sender.clone();
             tokio::spawn(async move {
                 let mut task = task_ref.lock().await;
-                task.run().await.unwrap();
+                task.run(trigger_sender).await.unwrap();
             });
-        }
-
-        // todo clean up drops (is there a more elegant way to shut down receiver)!?
-        let a = self.trigger_sender.take();
-        drop(a);
-        // handle received finished triggers from tasks
-        while let Some(msg) = &self.trigger_receiver.recv().await {
-            let (_result, tasks) = msg;
-            println!("number received next tasks: {}", tasks.len());
-            for task in tasks {
-                let mut locked_task = task.lock().await;
-                locked_task.num_ingoing_tasks =
-                    locked_task.num_ingoing_tasks.map(|i| i.saturating_sub(1));
-                println!(
-                    "name: {:?} current count {:?}",
-                    &locked_task.name, &locked_task.num_ingoing_tasks
-                );
-                if let Some(num_ingoing_tasks) = locked_task.num_ingoing_tasks {
-                    drop(locked_task);
-                    if num_ingoing_tasks == 0 {
-                        let task = task.clone();
-                        tokio::spawn(async move {
-                            task.lock().await.run().await.unwrap();
-                        });
-                    }
-                } else {
-                    drop(locked_task);
-                }
-            }
         }
     }
 }
@@ -188,6 +202,9 @@ mod test {
         let runner_1 = build_test_runner();
         let runner_2 = build_test_runner();
         let runner_3 = build_test_runner();
+        let runner_4 = build_test_runner();
+        let runner_5 = build_test_runner();
+
         let task_spec_1 = TaskSpec {
             id: Uuid::new_v4(),
             name: "task_1".to_string(),
@@ -214,15 +231,40 @@ mod test {
             runnable: runner_3,
         };
 
+        let task_spec_4 = TaskSpec {
+            id: Uuid::new_v4(),
+            name: "task_4".to_string(),
+            retry_options: RetryOptions::default(),
+            execution_mode: ExecutionMode::Once,
+            tools: Arc::new(Default::default()),
+            runnable: runner_4,
+        };
+
+        let task_spec_5 = TaskSpec {
+            id: Uuid::new_v4(),
+            name: "task_5".to_string(),
+            retry_options: RetryOptions::default(),
+            execution_mode: ExecutionMode::Once,
+            tools: Arc::new(Default::default()),
+            runnable: runner_5,
+        };
+
         let task_spec_ref_1 = TaskSpecRef::from(task_spec_1);
         let task_spec_ref_2 = TaskSpecRef::from(task_spec_2);
         let task_spec_ref_3 = TaskSpecRef::from(task_spec_3);
+        let task_spec_ref_4 = TaskSpecRef::from(task_spec_4);
+        let task_spec_ref_5 = TaskSpecRef::from(task_spec_5);
 
-        let deps = vec![task_spec_ref_1.clone(), task_spec_ref_2.clone()];
+        let deps3 = vec![task_spec_ref_1.clone(), task_spec_ref_2.clone()];
+        let deps4 = vec![task_spec_ref_1.clone()];
+        let deps5 = vec![task_spec_ref_4.clone(), task_spec_ref_3.clone()];
+
         let mut tasks_specs: TaskDependenciesSpecs = HashMap::new();
-        tasks_specs.insert(task_spec_ref_3, deps);
+        tasks_specs.insert(task_spec_ref_3, deps3);
         tasks_specs.insert(task_spec_ref_2, vec![]);
         tasks_specs.insert(task_spec_ref_1, vec![]);
+        tasks_specs.insert(task_spec_ref_4, deps4);
+        tasks_specs.insert(task_spec_ref_5, deps5);
 
         scheduler.schedule_tasks(tasks_specs.clone()).await;
 
