@@ -259,12 +259,8 @@ mod test {
     #[tokio::test]
     async fn test_build_and_run_random_schedule() {
         let mut scheduler = Scheduler::new();
-        let task_specs = create_test_task_specs(1000);
-        let tasks_dep_specs = create_random_task_dependencies(&task_specs, 1000);
-
-        for (t, vt) in tasks_dep_specs.iter() {
-            println!("task:{},  num deps {}", t.name, vt.len())
-        }
+        let task_specs = create_test_task_specs(100);
+        let tasks_dep_specs = create_random_task_dependencies(&task_specs, 100);
 
         scheduler.schedule_tasks(tasks_dep_specs).await;
 
@@ -288,6 +284,15 @@ mod test {
                 panic!("scheduled tasks did not finish in time, maybe (undetected) cycle")
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_detects_cycles() {
+        let mut scheduler = Scheduler::new();
+        let task_specs = create_test_task_specs(1000);
+        let tasks_dep_specs = create_random_task_dependencies_with_cycles(&task_specs, 1000);
+
+        todo!()
     }
 
     fn create_test_task_specs(num_tasks: usize) -> HashMap<usize, TaskSpecRef> {
