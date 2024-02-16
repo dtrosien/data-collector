@@ -1,5 +1,5 @@
 use crate::dag_scheduler::task::{
-    ExecutionMode, ExecutionStats, RetryOptions, Runnable, Task, TaskRef, Tools,
+    ExecutionMode, ExecutionStats, RetryOptions, Runnable, Task, TaskError, TaskRef, Tools,
 };
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -9,8 +9,8 @@ use uuid::Uuid;
 
 pub struct Scheduler {
     tasks: HashMap<Uuid, TaskRef>,
-    results: HashMap<Uuid, anyhow::Result<ExecutionStats, anyhow::Error>>, // maybe use task error
-                                                                           // trigger_receiver: Option<mpsc::Receiver<(bool, Vec<TaskRef>)>>,
+    results: HashMap<Uuid, anyhow::Result<ExecutionStats, TaskError>>,
+    // trigger_receiver: Option<mpsc::Receiver<(bool, Vec<TaskRef>)>>,
 }
 
 pub type TaskSpecRef = Arc<TaskSpec>;
@@ -117,49 +117,54 @@ impl Scheduler {
             if let Some(msg) = trigger_receiver.recv().await {
                 let (_result, tasks) = msg;
                 println!("number received next tasks: {}", tasks.len());
-                for task in tasks {
-                    // different scope for locking task
-                    {
-                        let mut locked_task = task.lock().await;
-                        locked_task.num_ingoing_tasks =
-                            locked_task.num_ingoing_tasks.map(|i| i.saturating_sub(1));
-                        println!(
-                            "name: {:?} current count {:?}",
-                            &locked_task.name, &locked_task.num_ingoing_tasks
-                        );
-                    }
-                    if let Some(0) = task.lock().await.num_ingoing_tasks {
-                        let task = task.clone();
-                        let trigger_sender = trigger_sender.clone();
-                        tokio::spawn(async move {
-                            task.lock().await.run(trigger_sender).await.unwrap();
-                        });
-                    }
-                }
+                self.start_outgoing_tasks(&tasks, trigger_sender.clone())
+                    .await;
             }
         }
     }
 
     async fn start_source_tasks(&self, trigger_sender: mpsc::Sender<(bool, Vec<TaskRef>)>) {
-        let mut source_tasks = Vec::new();
+        let mut no_source_tasks = true;
         // identify source tasks
-        for (_, task_ref) in self.tasks.iter() {
-            if task_ref.lock().await.num_ingoing_tasks.is_none() {
-                source_tasks.push(task_ref.clone());
+        for (_, task) in self.tasks.iter() {
+            if task.lock().await.num_ingoing_tasks.is_none() {
+                let trigger_sender = trigger_sender.clone();
+                let task = task.clone();
+                tokio::spawn(async move {
+                    let mut task = task.lock().await;
+                    task.run(trigger_sender).await.unwrap();
+                });
+                no_source_tasks = false;
             }
         }
-
-        if source_tasks.is_empty() {
+        if no_source_tasks {
             panic!("No source tasks defined")
         }
+    }
 
-        // start source tasks
-        for task_ref in source_tasks {
-            let trigger_sender = trigger_sender.clone();
-            tokio::spawn(async move {
-                let mut task = task_ref.lock().await;
-                task.run(trigger_sender).await.unwrap();
-            });
+    async fn start_outgoing_tasks(
+        &self,
+        tasks: &Vec<TaskRef>,
+        trigger_sender: mpsc::Sender<(bool, Vec<TaskRef>)>,
+    ) {
+        for task in tasks {
+            // different scope for locking task and updating remaining incoming tasks
+            {
+                let mut locked_task = task.lock().await;
+                locked_task.num_ingoing_tasks =
+                    locked_task.num_ingoing_tasks.map(|i| i.saturating_sub(1));
+                println!(
+                    "name: {:?} current count {:?}",
+                    &locked_task.name, &locked_task.num_ingoing_tasks
+                );
+            }
+            if let Some(0) = task.lock().await.num_ingoing_tasks {
+                let task = task.clone();
+                let trigger_sender = trigger_sender.clone();
+                tokio::spawn(async move {
+                    task.lock().await.run(trigger_sender).await.unwrap();
+                });
+            }
         }
     }
 }
@@ -172,6 +177,7 @@ mod test {
     use crate::dag_scheduler::task::{ExecutionMode, RetryOptions, Runnable, StatsMap};
     use async_trait::async_trait;
     use rand::rngs::OsRng;
+    use rand::seq::SliceRandom;
     use rand::Rng;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -185,7 +191,7 @@ mod test {
         async fn run(&self) -> Result<Option<StatsMap>, crate::dag_scheduler::task::TaskError> {
             let stats: StatsMap = Arc::new(Mutex::new(HashMap::new()));
             let mut rng = OsRng;
-            let number = rng.gen_range(100..=300);
+            let number = rng.gen_range(1..=30);
             tokio::time::sleep(Duration::from_millis(number)).await;
             stats.lock().await.insert("errors".to_string(), Arc::new(0));
             Ok(Some(stats))
@@ -196,85 +202,181 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_build_schedule() {
+    async fn test_build_specific_schedule() {
         let mut scheduler = Scheduler::new();
 
-        let runner_1 = build_test_runner();
-        let runner_2 = build_test_runner();
-        let runner_3 = build_test_runner();
-        let runner_4 = build_test_runner();
-        let runner_5 = build_test_runner();
+        let task_specs = create_test_task_specs(5);
 
-        let task_spec_1 = TaskSpec {
-            id: Uuid::new_v4(),
-            name: "task_1".to_string(),
-            retry_options: RetryOptions::default(),
-            execution_mode: ExecutionMode::Once,
-            tools: Arc::new(Default::default()),
-            runnable: runner_1,
-        };
-
-        let task_spec_2 = TaskSpec {
-            id: Uuid::new_v4(),
-            name: "task_2".to_string(),
-            retry_options: RetryOptions::default(),
-            execution_mode: ExecutionMode::Once,
-            tools: Arc::new(Default::default()),
-            runnable: runner_2,
-        };
-        let task_spec_3 = TaskSpec {
-            id: Uuid::new_v4(),
-            name: "task_3".to_string(),
-            retry_options: RetryOptions::default(),
-            execution_mode: ExecutionMode::Once,
-            tools: Arc::new(Default::default()),
-            runnable: runner_3,
-        };
-
-        let task_spec_4 = TaskSpec {
-            id: Uuid::new_v4(),
-            name: "task_4".to_string(),
-            retry_options: RetryOptions::default(),
-            execution_mode: ExecutionMode::Once,
-            tools: Arc::new(Default::default()),
-            runnable: runner_4,
-        };
-
-        let task_spec_5 = TaskSpec {
-            id: Uuid::new_v4(),
-            name: "task_5".to_string(),
-            retry_options: RetryOptions::default(),
-            execution_mode: ExecutionMode::Once,
-            tools: Arc::new(Default::default()),
-            runnable: runner_5,
-        };
-
-        let task_spec_ref_1 = TaskSpecRef::from(task_spec_1);
-        let task_spec_ref_2 = TaskSpecRef::from(task_spec_2);
-        let task_spec_ref_3 = TaskSpecRef::from(task_spec_3);
-        let task_spec_ref_4 = TaskSpecRef::from(task_spec_4);
-        let task_spec_ref_5 = TaskSpecRef::from(task_spec_5);
-
-        let deps3 = vec![task_spec_ref_1.clone(), task_spec_ref_2.clone()];
-        let deps4 = vec![task_spec_ref_1.clone()];
-        let deps5 = vec![task_spec_ref_4.clone(), task_spec_ref_3.clone()];
+        let deps3 = vec![
+            task_specs.get(&1).unwrap().clone(),
+            task_specs.get(&2).unwrap().clone(),
+        ];
+        let deps4 = vec![task_specs.get(&1).unwrap().clone()];
+        let deps5 = vec![
+            task_specs.get(&4).unwrap().clone(),
+            task_specs.get(&3).unwrap().clone(),
+        ];
 
         let mut tasks_specs: TaskDependenciesSpecs = HashMap::new();
-        tasks_specs.insert(task_spec_ref_3, deps3);
-        tasks_specs.insert(task_spec_ref_2, vec![]);
-        tasks_specs.insert(task_spec_ref_1, vec![]);
-        tasks_specs.insert(task_spec_ref_4, deps4);
-        tasks_specs.insert(task_spec_ref_5, deps5);
+        tasks_specs.insert(task_specs.get(&3).unwrap().clone(), deps3);
+        tasks_specs.insert(task_specs.get(&2).unwrap().clone(), vec![]);
+        tasks_specs.insert(task_specs.get(&1).unwrap().clone(), vec![]);
+        tasks_specs.insert(task_specs.get(&4).unwrap().clone(), deps4);
+        tasks_specs.insert(task_specs.get(&5).unwrap().clone(), deps5);
 
         scheduler.schedule_tasks(tasks_specs.clone()).await;
 
+        assert_eq!(scheduler.tasks.len(), 5);
+
         for (_, task) in scheduler.tasks.iter() {
-            let name = task.lock().await.name.clone();
-            let i = task.lock().await.num_ingoing_tasks;
-            let out = task.lock().await.outgoing_tasks.len();
-            println!("name: {}, in: {:?}, out: {:?}", name, i, out);
+            let locked_task = task.lock().await;
+            match locked_task.name.as_str() {
+                "task_1" => {
+                    assert_eq!(locked_task.outgoing_tasks.len(), 2);
+                    assert_eq!(locked_task.num_ingoing_tasks, None);
+                }
+                "task_2" => {
+                    assert_eq!(locked_task.outgoing_tasks.len(), 1);
+                    assert_eq!(locked_task.num_ingoing_tasks, None);
+                }
+                "task_3" => {
+                    assert_eq!(locked_task.outgoing_tasks.len(), 1);
+                    assert_eq!(locked_task.num_ingoing_tasks, Some(2));
+                }
+                "task_4" => {
+                    assert_eq!(locked_task.outgoing_tasks.len(), 1);
+                    assert_eq!(locked_task.num_ingoing_tasks, Some(1));
+                }
+                "task_5" => {
+                    assert_eq!(locked_task.outgoing_tasks.len(), 0);
+                    assert_eq!(locked_task.num_ingoing_tasks, Some(2));
+                }
+                a => panic!("name did not match expected names: {}", a),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_build_and_run_random_schedule() {
+        let mut scheduler = Scheduler::new();
+        let task_specs = create_test_task_specs(1000);
+        let tasks_dep_specs = create_random_task_dependencies(&task_specs, 1000);
+
+        for (t, vt) in tasks_dep_specs.iter() {
+            println!("task:{},  num deps {}", t.name, vt.len())
         }
 
-        scheduler.run_all().await;
+        scheduler.schedule_tasks(tasks_dep_specs).await;
+
+        // for (_, task) in scheduler.tasks.iter() {
+        //     let name = task.lock().await.name.clone();
+        //     let i = task.lock().await.num_ingoing_tasks;
+        //     let out = task.lock().await.outgoing_tasks.len();
+        //
+        //     let mut next = Vec::new();
+        //     for a in task.lock().await.outgoing_tasks.iter() {
+        //         let name = a.lock().await.name.clone();
+        //         next.push(name);
+        //     }
+        //
+        //     println!("name: {}, in: {:?}, out: {:?}", name, i, next);
+        // }
+
+        tokio::select! {
+          _ =  scheduler.run_all() => {}
+         _ = tokio::time::sleep(Duration::from_secs(60)) => {
+                panic!("scheduled tasks did not finish in time, maybe (undetected) cycle")
+            }
+        }
+    }
+
+    fn create_test_task_specs(num_tasks: usize) -> HashMap<usize, TaskSpecRef> {
+        let mut task_spec_refs = HashMap::new();
+
+        for i in 1..=num_tasks {
+            let runner = build_test_runner();
+            let task_spec = TaskSpec {
+                id: Uuid::new_v4(),
+                name: format!("task_{}", i),
+                retry_options: RetryOptions::default(),
+                execution_mode: ExecutionMode::Once,
+                tools: Arc::new(Default::default()),
+                runnable: runner,
+            };
+
+            let task_spec_ref = TaskSpecRef::from(task_spec);
+            // Use the task number as the key
+            task_spec_refs.insert(i, task_spec_ref);
+        }
+
+        task_spec_refs
+    }
+
+    fn create_random_task_dependencies(
+        task_specs: &HashMap<usize, TaskSpecRef>,
+        max_deps: usize,
+    ) -> TaskDependenciesSpecs {
+        let mut rng = rand::thread_rng();
+        let mut task_deps: TaskDependenciesSpecs = HashMap::new();
+        let mut keys: Vec<&usize> = task_specs.keys().collect();
+        // Ensure the keys are sorted to respect the DAG property
+        keys.sort();
+
+        // Iterate through tasks in sorted order
+        for &key in &keys {
+            let task_spec_ref = task_specs.get(key).unwrap().clone();
+
+            // Determine valid dependencies (only tasks with a smaller index)
+            let valid_deps: Vec<&usize> = keys.iter().filter(|&&k| k < key).copied().collect();
+
+            // Randomly decide the number of dependencies
+            let num_deps = rng.gen_range(0..=max_deps.min(valid_deps.len()));
+
+            // Randomly select task specs to be dependencies from valid_deps
+            let deps: Vec<TaskSpecRef> = valid_deps
+                .choose_multiple(&mut rng, num_deps)
+                .map(|&k| task_specs.get(k).unwrap().clone())
+                .collect();
+
+            task_deps.insert(task_spec_ref, deps);
+        }
+
+        task_deps
+    }
+
+    fn create_random_task_dependencies_with_cycles(
+        task_specs: &HashMap<usize, TaskSpecRef>,
+        max_deps: usize,
+    ) -> TaskDependenciesSpecs {
+        let mut rng = rand::thread_rng();
+        let mut task_deps: TaskDependenciesSpecs = HashMap::new();
+        let keys: Vec<&usize> = task_specs.keys().collect();
+
+        // Randomly choose one task to have no dependencies
+        let no_deps_key = keys.choose(&mut rng).expect("No keys available");
+        let no_deps_task = task_specs.get(no_deps_key).unwrap().clone();
+        task_deps.insert(no_deps_task, vec![]);
+
+        // For the rest of the tasks, assign dependencies
+        for key in keys.iter().filter(|&k| k != no_deps_key) {
+            let task_spec_ref = task_specs.get(key).unwrap().clone();
+
+            // Randomly decide the number of dependencies (up to max_deps)
+            let num_deps = rng.gen_range(0..=max_deps.min(keys.len() - 1));
+
+            // Randomly select task specs to be dependencies, excluding the current task to reduce circular dependencies
+            let deps: Vec<TaskSpecRef> = keys
+                .iter()
+                .filter(|&k| k != key && k != no_deps_key) // Corrected comparison here
+                .map(|&k| task_specs.get(k).unwrap().clone())
+                .collect::<Vec<_>>()
+                .choose_multiple(&mut rng, num_deps)
+                .cloned()
+                .collect();
+
+            task_deps.insert(task_spec_ref, deps);
+        }
+
+        task_deps
     }
 }

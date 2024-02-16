@@ -113,6 +113,7 @@ pub struct Task {
     pub tools: Tools,
     pub runnable: Arc<dyn Runnable>,
     // pub s_finished: Option<mpsc::Sender<(bool, Vec<TaskRef>)>>,
+    pub execution_state: ExecutionState,
     pub stats: Option<ExecutionStats>, // todo hier die stats einfuegen oder spaeter die ergebnisse sammeln in einer map im scheduler??
     pub job_handle: Option<JoinHandle<()>>, // todo save handle handle of runnable to be able to cancel jobs
 }
@@ -134,6 +135,7 @@ impl Task {
             tools,
             runnable,
             // s_finished,
+            execution_state: ExecutionState::Pending,
             stats: None,
             job_handle: None,
         };
@@ -154,6 +156,7 @@ impl Task {
             tools: task_spec.tools.clone(),
             runnable: task_spec.runnable.clone(),
             // s_finished,
+            execution_state: ExecutionState::Pending,
             stats: None,
             job_handle: None,
         };
@@ -180,12 +183,14 @@ impl Task {
             .map_err(|e| TaskError::UnexpectedError(Error::from(e)))?;
 
         if result.is_err() {
+            self.execution_state = ExecutionState::Failed;
             s_finished
                 .send((true, self.outgoing_tasks.clone()))
                 .await
                 .expect("TODO: panic message");
         } else {
             println!("Finished: {}", self.name);
+            self.execution_state = ExecutionState::Finished;
             s_finished
                 .send((false, self.outgoing_tasks.clone()))
                 .await
