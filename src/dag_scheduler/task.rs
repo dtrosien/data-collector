@@ -43,7 +43,8 @@ pub struct Trigger {
 #[derive(Clone)]
 pub enum ExecutionMode {
     Once,
-    Continuously { kill: broadcast::Sender<()> }, // use sender to resubscribe, since Receiver is not clone
+    Continuously { kill: broadcast::Sender<()> },
+    // use sender to resubscribe, since Receiver is not clone
     RepeatLimited { count: u32 },
     RepeatForDuration { duration: Duration },
 }
@@ -58,6 +59,13 @@ pub enum ExecutionState {
     Cancelled,
     // Retry,
     // Skipped,
+}
+
+#[derive(PartialEq)]
+pub enum CycleCheck {
+    Unknown,
+    Visited { max_allowed: usize },
+    Finished,
 }
 
 pub type StatsMap = Arc<Mutex<HashMap<String, Arc<dyn Any + Send + Sync>>>>;
@@ -108,13 +116,15 @@ pub struct Task {
     pub name: String,
     pub num_ingoing_tasks: Option<usize>,
     pub outgoing_tasks: Vec<TaskRef>,
+    pub cycle_check: CycleCheck,
     pub retry_options: RetryOptions,
     pub execution_mode: ExecutionMode,
     pub tools: Tools,
     pub runnable: Arc<dyn Runnable>,
     // pub s_finished: Option<mpsc::Sender<(bool, Vec<TaskRef>)>>,
     pub execution_state: ExecutionState,
-    pub stats: Option<ExecutionStats>, // todo hier die stats einfuegen oder spaeter die ergebnisse sammeln in einer map im scheduler??
+    pub stats: Option<ExecutionStats>,
+    // todo hier die stats einfuegen oder spaeter die ergebnisse sammeln in einer map im scheduler??
     pub job_handle: Option<JoinHandle<()>>, // todo save handle handle of runnable to be able to cancel jobs
 }
 
@@ -130,6 +140,7 @@ impl Task {
             name,
             num_ingoing_tasks: None,
             outgoing_tasks: Vec::new(),
+            cycle_check: CycleCheck::Unknown,
             retry_options: RetryOptions::default(),
             execution_mode: ExecutionMode::Once,
             tools,
@@ -151,6 +162,7 @@ impl Task {
             name: task_spec.name.clone(),
             num_ingoing_tasks: None,
             outgoing_tasks: Vec::new(),
+            cycle_check: CycleCheck::Unknown,
             retry_options: task_spec.retry_options,
             execution_mode: task_spec.execution_mode.clone(),
             tools: task_spec.tools.clone(),
@@ -215,6 +227,7 @@ impl PartialEq<Self> for Task {
         self.id.eq(&other.id)
     }
 }
+
 impl Eq for Task {}
 
 #[derive(Clone, Copy)]
@@ -304,7 +317,6 @@ fn derive_back_off_time(options: RetryOptions, current_retry_count: u32) -> Dura
 
 #[cfg(test)]
 mod test {
-
     #[tokio::test]
     async fn test_retry_logic() {
         todo!()

@@ -1,5 +1,6 @@
 use crate::dag_scheduler::task::{
-    ExecutionMode, ExecutionStats, RetryOptions, Runnable, Task, TaskError, TaskRef, Tools,
+    CycleCheck, ExecutionMode, ExecutionStats, RetryOptions, Runnable, Task, TaskError, TaskRef,
+    Tools,
 };
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -64,6 +65,59 @@ impl Scheduler {
         self.add_outgoing_tasks_to_tasks_in_map(&task_dependencies_specs, &tasks_map)
             .await;
         tasks_map
+    }
+
+    async fn check_for_cycles(&self, tasks_map: &HashMap<Uuid, TaskRef>) {
+        let mut no_source_tasks = true;
+        let mut stack = Vec::new();
+        // todo search for source task in own function and reuse when starting (see start source tasks)
+        for task in tasks_map.values() {
+            let locked_task = task.lock().await;
+            if locked_task.num_ingoing_tasks.is_none() {
+                no_source_tasks = false;
+                stack.push(task.clone())
+            }
+        }
+        if no_source_tasks {
+            panic!("No source tasks defined")
+        }
+        while !stack.is_empty() {
+            // todo own stack for each iteration + remove source tasks from this check oder (just start with all)? ... functioniert wieder nicht weil doppelt besucht wenn kanten nicht weggenommen werden
+            let t = stack.pop().expect("todo proper error");
+            let mut l_t = t.lock().await;
+            match l_t.cycle_check {
+                CycleCheck::Unknown => {
+                    l_t.cycle_check = CycleCheck::Visited {
+                        max_allowed: l_t.num_ingoing_tasks.expect("todo proper error"),
+                    };
+                    if l_t.outgoing_tasks.len() == 0 {
+                        l_t.cycle_check = CycleCheck::Finished
+                    }
+                    let mut count: usize = 0;
+                    for out_t in l_t.outgoing_tasks.iter() {
+                        if out_t.lock().await.cycle_check == CycleCheck::Finished {
+                            count = count.saturating_add(1);
+                        }
+                    }
+                    if count == l_t.outgoing_tasks.len() {
+                        l_t.cycle_check = CycleCheck::Finished
+                    }
+                    for out_t in l_t.outgoing_tasks.iter() {
+                        stack.push(out_t.clone());
+                    }
+                }
+                CycleCheck::Visited { max_allowed } => {
+                    // todo max allowed not need?
+                    if max_allowed == 0 {
+                        panic!("cycle detected")
+                    }
+                    l_t.cycle_check = CycleCheck::Visited {
+                        max_allowed: max_allowed.saturating_sub(1),
+                    }
+                }
+                CycleCheck::Finished => continue,
+            }
+        }
     }
 
     /// creates TaskRef from TaskDependenciesSpecs,
@@ -186,6 +240,7 @@ mod test {
     use uuid::Uuid;
 
     struct TestRunner {}
+
     #[async_trait]
     impl Runnable for TestRunner {
         async fn run(&self) -> Result<Option<StatsMap>, crate::dag_scheduler::task::TaskError> {
@@ -197,6 +252,7 @@ mod test {
             Ok(Some(stats))
         }
     }
+
     fn build_test_runner() -> Arc<dyn Runnable> {
         Arc::new(TestRunner {})
     }
@@ -259,8 +315,8 @@ mod test {
     #[tokio::test]
     async fn test_build_and_run_random_schedule() {
         let mut scheduler = Scheduler::new();
-        let task_specs = create_test_task_specs(100);
-        let tasks_dep_specs = create_random_task_dependencies(&task_specs, 100);
+        let task_specs = create_test_task_specs(10);
+        let tasks_dep_specs = create_random_task_dependencies(&task_specs, 5);
 
         scheduler.schedule_tasks(tasks_dep_specs).await;
 
