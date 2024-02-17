@@ -73,7 +73,8 @@ impl Schedule {
     }
 
     async fn check_for_cycles_from_sources(&mut self) {
-        while let Some(t) = self.source_tasks.last().cloned() {
+        let mut task_stack = self.source_tasks.clone();
+        while let Some(t) = task_stack.last().cloned() {
             let mut l_t = t.lock().await;
             match l_t.cycle_check {
                 CycleCheck::Unknown => {
@@ -85,17 +86,17 @@ impl Schedule {
                     for out_t in outs {
                         match out_t.lock().await.cycle_check {
                             CycleCheck::Unknown => {
-                                self.source_tasks.push(out_t.clone());
+                                task_stack.push(out_t.clone());
                             }
-                            CycleCheck::Visited { .. } => {
-                                panic!("cycle detected")
+                            CycleCheck::Visited { max_allowed } => {
+                                //panic!("cycle detected")
                                 // todo use repeat in task creation and add the tasks to its own adj list then introduce the check
-                                // if max_allowed == 0 {
-                                //     panic!("cycle detected")
-                                // }
-                                // l_t.cycle_check = CycleCheck::Visited {
-                                //     max_allowed: max_allowed.saturating_sub(1),
-                                // }
+                                if max_allowed == 0 {
+                                    panic!("cycle detected")
+                                }
+                                t.lock().await.cycle_check = CycleCheck::Visited {
+                                    max_allowed: max_allowed.saturating_sub(1),
+                                }
                             }
                             CycleCheck::Finished => {}
                         }
@@ -103,10 +104,10 @@ impl Schedule {
                 }
                 CycleCheck::Visited { .. } => {
                     l_t.cycle_check = CycleCheck::Finished;
-                    self.source_tasks.pop();
+                    task_stack.pop();
                 }
                 CycleCheck::Finished => {
-                    self.source_tasks.pop();
+                    task_stack.pop();
                 }
             }
         }
