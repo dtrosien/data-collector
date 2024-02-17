@@ -8,12 +8,17 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+// todo clean up, exchange unwraps and panic with proper error handling
+// todo introduce schedule error
+// todo remove prints and use tracing
+// todo think about attributes of schedule and how to design api (see also next todo)
 // todo was renamed to schedule: think about if which functions really need to be used on it and , furthermore introduce a Scheduler which can can create/run multiple schedules by type
 pub struct Schedule {
     source_tasks: Vec<TaskRef>,
     tasks: HashMap<Uuid, TaskRef>,
     results: HashMap<Uuid, anyhow::Result<ExecutionStats, TaskError>>,
-    num_reachable_tasks: Option<usize>,
+    num_reachable_tasks: usize,
+    num_tasks: usize,
     // trigger_receiver: Option<mpsc::Receiver<(bool, Vec<TaskRef>)>>,
 }
 
@@ -57,7 +62,8 @@ impl Schedule {
             source_tasks: Default::default(),
             tasks: Default::default(),
             results: Default::default(),
-            num_reachable_tasks: None,
+            num_reachable_tasks: 0,
+            num_tasks: 0,
             // trigger_receiver: None,
         }
     }
@@ -72,6 +78,32 @@ impl Schedule {
         tasks_map
     }
 
+    // todo proper error handling and check preconditions before running (e.g tasks must be scheduled)
+    pub async fn run_checks(&mut self) {
+        self.check_if_source_tasks_exists().await;
+        self.check_for_cycles_from_sources().await;
+        // must run last because dependent on cycle check
+        self.check_if_all_tasks_are_reachable().await;
+    }
+
+    async fn check_if_source_tasks_exists(&self) {
+        if self.source_tasks.is_empty() {
+            panic!("Not all tasks are reachable")
+        }
+    }
+
+    async fn check_if_all_tasks_are_reachable(&self) {
+        if self.num_reachable_tasks != self.num_tasks {
+            panic!(
+                "Not all tasks are reachable. Only {} of {} can be reached",
+                self.num_reachable_tasks, self.num_tasks
+            )
+        }
+    }
+
+    /// uses an iterative dfs starting with the source tasks to identify cycles
+    /// Visited counts the allowed visits for a node in case that the
+    /// node should be executed multiple times repeated
     async fn check_for_cycles_from_sources(&mut self) {
         let mut task_stack = self.source_tasks.clone();
         while let Some(t) = task_stack.last().cloned() {
@@ -81,15 +113,13 @@ impl Schedule {
                     l_t.cycle_check = CycleCheck::Visited {
                         max_allowed: l_t.repeat.unwrap_or(0),
                     };
-                    drop(l_t); // todo  think about if drop here is necessary or if we can work with it further
-                    let outs = t.lock().await.outgoing_tasks.clone();
+                    let outs = l_t.outgoing_tasks.clone();
                     for out_t in outs {
                         match out_t.lock().await.cycle_check {
                             CycleCheck::Unknown => {
                                 task_stack.push(out_t.clone());
                             }
                             CycleCheck::Visited { max_allowed } => {
-                                //panic!("cycle detected")
                                 // todo use repeat in task creation and add the tasks to its own adj list then introduce the check
                                 if max_allowed == 0 {
                                     panic!("cycle detected")
@@ -104,6 +134,7 @@ impl Schedule {
                 }
                 CycleCheck::Visited { .. } => {
                     l_t.cycle_check = CycleCheck::Finished;
+                    self.num_reachable_tasks += 1;
                     task_stack.pop();
                 }
                 CycleCheck::Finished => {
@@ -129,6 +160,7 @@ impl Schedule {
                 self.source_tasks.push(task.clone())
             }
             tasks_map.insert(task_spec.id, task.clone());
+            self.num_tasks += 1;
         }
         tasks_map
     }
@@ -163,7 +195,7 @@ impl Schedule {
         self.start_source_tasks(trigger_sender.clone()).await;
 
         // handle received finished triggers from tasks
-        for _ in 0..self.tasks.len() {
+        for _ in 0..self.num_reachable_tasks {
             if let Some(msg) = trigger_receiver.recv().await {
                 let (_result, tasks) = msg;
                 println!("number received next tasks: {}", tasks.len());
@@ -228,15 +260,6 @@ impl Schedule {
  */
 
 #[cfg(test)]
-mod tests {
-
-    #[test]
-    fn test_example() {
-        // Write your test cases here
-    }
-}
-
-#[cfg(test)]
 mod test {
     use crate::dag_scheduler::scheduler::{Schedule, TaskDependenciesSpecs, TaskSpec, TaskSpecRef};
     use crate::dag_scheduler::task::{ExecutionMode, RetryOptions, Runnable, StatsMap};
@@ -250,24 +273,6 @@ mod test {
     use std::time::Duration;
     use tokio::sync::Mutex;
     use uuid::Uuid;
-
-    struct TestRunner {}
-
-    #[async_trait]
-    impl Runnable for TestRunner {
-        async fn run(&self) -> Result<Option<StatsMap>, crate::dag_scheduler::task::TaskError> {
-            let stats: StatsMap = Arc::new(Mutex::new(HashMap::new()));
-            let mut rng = OsRng;
-            let number = rng.gen_range(1..=30);
-            tokio::time::sleep(Duration::from_millis(number)).await;
-            stats.lock().await.insert("errors".to_string(), Arc::new(0));
-            Ok(Some(stats))
-        }
-    }
-
-    fn build_test_runner() -> Arc<dyn Runnable> {
-        Arc::new(TestRunner {})
-    }
 
     #[tokio::test]
     async fn test_build_specific_schedule() {
@@ -327,30 +332,15 @@ mod test {
     #[tokio::test]
     async fn test_build_and_run_random_schedule() {
         let mut scheduler = Schedule::new();
-        let task_specs = create_test_task_specs(10);
-        let tasks_dep_specs = create_random_task_dependencies(&task_specs, 5);
+        let task_specs = create_test_task_specs(100);
+        let tasks_dep_specs = create_random_task_dependencies(&task_specs, 50);
 
         scheduler.schedule_tasks(tasks_dep_specs).await;
-
-        scheduler.check_for_cycles_from_sources().await;
-
-        // for (_, task) in scheduler.tasks.iter() {
-        //     let name = task.lock().await.name.clone();
-        //     let i = task.lock().await.num_ingoing_tasks;
-        //     let out = task.lock().await.outgoing_tasks.len();
-        //
-        //     let mut next = Vec::new();
-        //     for a in task.lock().await.outgoing_tasks.iter() {
-        //         let name = a.lock().await.name.clone();
-        //         next.push(name);
-        //     }
-        //
-        //     println!("name: {}, in: {:?}, out: {:?}", name, i, next);
-        // }
+        scheduler.run_checks().await;
 
         tokio::select! {
           _ =  scheduler.run_schedule() => {}
-         _ = tokio::time::sleep(Duration::from_secs(60)) => {
+         _ = tokio::time::sleep(Duration::from_secs(3)) => {
                 panic!("scheduled tasks did not finish in time, maybe (undetected) cycle")
             }
         }
@@ -384,7 +374,8 @@ mod test {
 
         scheduler.schedule_tasks(tasks_specs.clone()).await;
 
-        scheduler.check_for_cycles_from_sources().await;
+        // must panic
+        scheduler.run_checks().await;
     }
 
     #[tokio::test]
@@ -416,27 +407,52 @@ mod test {
 
         scheduler.schedule_tasks(tasks_specs.clone()).await;
 
-        scheduler.check_for_cycles_from_sources().await;
+        // must panic
+        scheduler.run_checks().await;
     }
 
     #[tokio::test]
     #[should_panic]
     async fn test_detects_errors_in_random_task_dependencies() {
         let mut scheduler = Schedule::new();
-        let task_specs = create_test_task_specs(10);
-        let tasks_dep_specs = create_random_task_dependencies_with_maybe_cycles(&task_specs, 5);
+        let task_specs = create_test_task_specs(100);
+        let tasks_dep_specs = create_random_task_dependencies_with_maybe_cycles(&task_specs, 20);
 
         scheduler.schedule_tasks(tasks_dep_specs).await;
 
-        scheduler.check_for_cycles_from_sources().await;
+        // maybe panic
+        scheduler.run_checks().await;
 
         tokio::select! {
-          _ =  scheduler.run_schedule() => {}
-         _ = tokio::time::sleep(Duration::from_secs(10)) => {
-                // todo fix test when unconnected tasks are implemented
-               // panic!("scheduled tasks did not finish in time, maybe (undetected) cycle")
-            }
+            // case if the random dependencies form a proper dag
+            _ =  scheduler.run_schedule() => {panic!("this is correct and is done because test must fail if correct")}
+            // case if a cycles was not detected or tasks cannot be reached
+            _ = tokio::time::sleep(Duration::from_secs(3)) => {}
         }
+    }
+
+    /*
+     * ==================================================================================
+     * ============================ TEST UTILITIES SECTION ==============================
+     * ==================================================================================
+     */
+
+    struct TestRunner {}
+
+    #[async_trait]
+    impl Runnable for TestRunner {
+        async fn run(&self) -> Result<Option<StatsMap>, crate::dag_scheduler::task::TaskError> {
+            let stats: StatsMap = Arc::new(Mutex::new(HashMap::new()));
+            let mut rng = OsRng;
+            let number = rng.gen_range(1..=30);
+            tokio::time::sleep(Duration::from_millis(number)).await;
+            stats.lock().await.insert("errors".to_string(), Arc::new(0));
+            Ok(Some(stats))
+        }
+    }
+
+    fn build_test_runner() -> Arc<dyn Runnable> {
+        Arc::new(TestRunner {})
     }
 
     fn create_test_task_specs(num_tasks: usize) -> HashMap<usize, TaskSpecRef> {

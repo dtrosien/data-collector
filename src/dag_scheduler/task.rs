@@ -320,11 +320,12 @@ fn derive_back_off_time(options: RetryOptions, current_retry_count: u32) -> Dura
 
 #[cfg(test)]
 mod test {
+    #[ignore]
     #[tokio::test]
     async fn test_retry_logic() {
         todo!()
     }
-
+    #[ignore]
     #[tokio::test]
     async fn test_back_off_logic() {
         todo!()
