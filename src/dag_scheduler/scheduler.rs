@@ -8,10 +8,12 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-pub struct Scheduler {
+// todo was renamed to schedule: think about if which functions really need to be used on it and , furthermore introduce a Scheduler which can can create/run multiple schedules by type
+pub struct Schedule {
     source_tasks: Vec<TaskRef>,
     tasks: HashMap<Uuid, TaskRef>,
     results: HashMap<Uuid, anyhow::Result<ExecutionStats, TaskError>>,
+    num_reachable_tasks: Option<usize>,
     // trigger_receiver: Option<mpsc::Receiver<(bool, Vec<TaskRef>)>>,
 }
 
@@ -43,23 +45,24 @@ impl Hash for TaskSpec {
 
 pub type TaskDependenciesSpecs = HashMap<TaskSpecRef, Vec<TaskSpecRef>>;
 
-impl Default for Scheduler {
+impl Default for Schedule {
     fn default() -> Self {
-        Scheduler::new()
+        Schedule::new()
     }
 }
 
-impl Scheduler {
+impl Schedule {
     pub fn new() -> Self {
-        Scheduler {
+        Schedule {
             source_tasks: Default::default(),
             tasks: Default::default(),
             results: Default::default(),
+            num_reachable_tasks: None,
             // trigger_receiver: None,
         }
     }
 
-    pub async fn create_schedule(
+    async fn create_schedule(
         &mut self,
         task_dependencies_specs: TaskDependenciesSpecs,
     ) -> HashMap<Uuid, TaskRef> {
@@ -69,21 +72,8 @@ impl Scheduler {
         tasks_map
     }
 
-    async fn check_for_cycles(&self, tasks_map: &HashMap<Uuid, TaskRef>) {
-        let mut no_source_tasks = true;
-        let mut stack = Vec::new();
-        // todo search for source task in own function and reuse when starting (see start source tasks)
-        for task in tasks_map.values() {
-            let locked_task = task.lock().await;
-            if locked_task.num_ingoing_tasks.is_none() {
-                no_source_tasks = false;
-                stack.push(task.clone())
-            }
-        }
-        if no_source_tasks {
-            panic!("No source tasks defined")
-        }
-        while let Some(t) = stack.last().cloned() {
+    async fn check_for_cycles_from_sources(&mut self) {
+        while let Some(t) = self.source_tasks.last().cloned() {
             let mut l_t = t.lock().await;
             match l_t.cycle_check {
                 CycleCheck::Unknown => {
@@ -95,7 +85,7 @@ impl Scheduler {
                     for out_t in outs {
                         match out_t.lock().await.cycle_check {
                             CycleCheck::Unknown => {
-                                stack.push(out_t.clone());
+                                self.source_tasks.push(out_t.clone());
                             }
                             CycleCheck::Visited { .. } => {
                                 panic!("cycle detected")
@@ -113,50 +103,10 @@ impl Scheduler {
                 }
                 CycleCheck::Visited { .. } => {
                     l_t.cycle_check = CycleCheck::Finished;
-                    stack.pop();
+                    self.source_tasks.pop();
                 }
                 CycleCheck::Finished => {
-                    stack.pop();
-                }
-            }
-        }
-    }
-
-    async fn check_for_cycles_from_sources(source_tasks: &mut Vec<TaskRef>) {
-        while let Some(t) = source_tasks.last().cloned() {
-            let mut l_t = t.lock().await;
-            match l_t.cycle_check {
-                CycleCheck::Unknown => {
-                    l_t.cycle_check = CycleCheck::Visited {
-                        max_allowed: l_t.repeat.unwrap_or(0),
-                    };
-                    drop(l_t); // todo  think about if drop here is necessary or if we can work with it further
-                    let outs = t.lock().await.outgoing_tasks.clone();
-                    for out_t in outs {
-                        match out_t.lock().await.cycle_check {
-                            CycleCheck::Unknown => {
-                                source_tasks.push(out_t.clone());
-                            }
-                            CycleCheck::Visited { .. } => {
-                                panic!("cycle detected")
-                                // todo use repeat in task creation and add the tasks to its own adj list then introduce the check
-                                // if max_allowed == 0 {
-                                //     panic!("cycle detected")
-                                // }
-                                // l_t.cycle_check = CycleCheck::Visited {
-                                //     max_allowed: max_allowed.saturating_sub(1),
-                                // }
-                            }
-                            CycleCheck::Finished => {}
-                        }
-                    }
-                }
-                CycleCheck::Visited { .. } => {
-                    l_t.cycle_check = CycleCheck::Finished;
-                    source_tasks.pop();
-                }
-                CycleCheck::Finished => {
-                    source_tasks.pop();
+                    self.source_tasks.pop();
                 }
             }
         }
@@ -206,7 +156,7 @@ impl Scheduler {
         self.tasks = self.create_schedule(task_dependencies_specs).await;
     }
 
-    pub async fn run_all(&mut self) {
+    pub async fn run_schedule(&mut self) {
         let (trigger_sender, mut trigger_receiver) = mpsc::channel(100);
 
         self.start_source_tasks(trigger_sender.clone()).await;
@@ -223,21 +173,16 @@ impl Scheduler {
     }
 
     async fn start_source_tasks(&self, trigger_sender: mpsc::Sender<(bool, Vec<TaskRef>)>) {
-        let mut no_source_tasks = true;
-        // identify source tasks
-        for (_, task) in self.tasks.iter() {
-            if task.lock().await.num_ingoing_tasks.is_none() {
-                let trigger_sender = trigger_sender.clone();
-                let task = task.clone();
-                tokio::spawn(async move {
-                    let mut task = task.lock().await;
-                    task.run(trigger_sender).await.unwrap();
-                });
-                no_source_tasks = false;
-            }
-        }
-        if no_source_tasks {
+        if self.source_tasks.is_empty() {
             panic!("No source tasks defined")
+        }
+        for task in self.source_tasks.iter() {
+            let trigger_sender = trigger_sender.clone();
+            let task = task.clone();
+            tokio::spawn(async move {
+                let mut task = task.lock().await;
+                task.run(trigger_sender).await.unwrap();
+            });
         }
     }
 
@@ -268,17 +213,38 @@ impl Scheduler {
     }
 }
 
+/*
+ * ==================================================================================
+ * ================================== TEST SECTION ==================================
+ * ==================================================================================
+ *
+ * =========================== Begin of Test Section ================================
+ * Below this line, you'll find unit tests and integration tests for the code above.
+ * Use `cargo test` to run these tests and verify the functionality and correctness
+ * of the implemented logic.
+ *
+ * ==================================================================================
+ */
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn test_example() {
+        // Write your test cases here
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use crate::dag_scheduler::scheduler::{
-        Scheduler, TaskDependenciesSpecs, TaskSpec, TaskSpecRef,
-    };
+    use crate::dag_scheduler::scheduler::{Schedule, TaskDependenciesSpecs, TaskSpec, TaskSpecRef};
     use crate::dag_scheduler::task::{ExecutionMode, RetryOptions, Runnable, StatsMap};
     use async_trait::async_trait;
     use rand::rngs::OsRng;
     use rand::seq::SliceRandom;
     use rand::Rng;
     use std::collections::HashMap;
+    use std::panic;
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::sync::Mutex;
@@ -304,7 +270,7 @@ mod test {
 
     #[tokio::test]
     async fn test_build_specific_schedule() {
-        let mut scheduler = Scheduler::new();
+        let mut scheduler = Schedule::new();
 
         let task_specs = create_test_task_specs(5);
 
@@ -359,11 +325,13 @@ mod test {
 
     #[tokio::test]
     async fn test_build_and_run_random_schedule() {
-        let mut scheduler = Scheduler::new();
+        let mut scheduler = Schedule::new();
         let task_specs = create_test_task_specs(10);
         let tasks_dep_specs = create_random_task_dependencies(&task_specs, 5);
 
         scheduler.schedule_tasks(tasks_dep_specs).await;
+
+        scheduler.check_for_cycles_from_sources().await;
 
         // for (_, task) in scheduler.tasks.iter() {
         //     let name = task.lock().await.name.clone();
@@ -380,7 +348,7 @@ mod test {
         // }
 
         tokio::select! {
-          _ =  scheduler.run_all() => {}
+          _ =  scheduler.run_schedule() => {}
          _ = tokio::time::sleep(Duration::from_secs(60)) => {
                 panic!("scheduled tasks did not finish in time, maybe (undetected) cycle")
             }
@@ -388,12 +356,86 @@ mod test {
     }
 
     #[tokio::test]
+    #[should_panic]
     async fn test_detects_cycles() {
-        let mut scheduler = Scheduler::new();
-        let task_specs = create_test_task_specs(1000);
-        let tasks_dep_specs = create_random_task_dependencies_with_cycles(&task_specs, 1000);
+        let mut scheduler = Schedule::new();
 
-        todo!()
+        let task_specs = create_test_task_specs(5);
+
+        // task 1 has a cyclic dependency with task 3
+        let cycle_deps1 = vec![task_specs.get(&3).unwrap().clone()];
+        let deps3 = vec![
+            task_specs.get(&1).unwrap().clone(),
+            task_specs.get(&2).unwrap().clone(),
+        ];
+        let deps4 = vec![task_specs.get(&1).unwrap().clone()];
+        let deps5 = vec![
+            task_specs.get(&4).unwrap().clone(),
+            task_specs.get(&3).unwrap().clone(),
+        ];
+
+        let mut tasks_specs: TaskDependenciesSpecs = HashMap::new();
+        tasks_specs.insert(task_specs.get(&3).unwrap().clone(), deps3);
+        tasks_specs.insert(task_specs.get(&2).unwrap().clone(), vec![]);
+        tasks_specs.insert(task_specs.get(&1).unwrap().clone(), cycle_deps1);
+        tasks_specs.insert(task_specs.get(&4).unwrap().clone(), deps4);
+        tasks_specs.insert(task_specs.get(&5).unwrap().clone(), deps5);
+
+        scheduler.schedule_tasks(tasks_specs.clone()).await;
+
+        scheduler.check_for_cycles_from_sources().await;
+    }
+
+    #[tokio::test]
+    #[should_panic]
+    async fn test_detects_unconnected_tasks() {
+        let mut scheduler = Schedule::new();
+
+        let task_specs = create_test_task_specs(5);
+
+        // task 1 and task 4 cannot be reached
+        let unconnected_deps1 = vec![task_specs.get(&4).unwrap().clone()];
+        let unconnected_deps4 = vec![task_specs.get(&1).unwrap().clone()];
+
+        let deps3 = vec![
+            task_specs.get(&1).unwrap().clone(),
+            task_specs.get(&2).unwrap().clone(),
+        ];
+        let deps5 = vec![
+            task_specs.get(&4).unwrap().clone(),
+            task_specs.get(&3).unwrap().clone(),
+        ];
+
+        let mut tasks_specs: TaskDependenciesSpecs = HashMap::new();
+        tasks_specs.insert(task_specs.get(&3).unwrap().clone(), deps3);
+        tasks_specs.insert(task_specs.get(&2).unwrap().clone(), vec![]);
+        tasks_specs.insert(task_specs.get(&1).unwrap().clone(), unconnected_deps1);
+        tasks_specs.insert(task_specs.get(&4).unwrap().clone(), unconnected_deps4);
+        tasks_specs.insert(task_specs.get(&5).unwrap().clone(), deps5);
+
+        scheduler.schedule_tasks(tasks_specs.clone()).await;
+
+        scheduler.check_for_cycles_from_sources().await;
+    }
+
+    #[tokio::test]
+    #[should_panic]
+    async fn test_detects_errors_in_random_task_dependencies() {
+        let mut scheduler = Schedule::new();
+        let task_specs = create_test_task_specs(10);
+        let tasks_dep_specs = create_random_task_dependencies_with_maybe_cycles(&task_specs, 5);
+
+        scheduler.schedule_tasks(tasks_dep_specs).await;
+
+        scheduler.check_for_cycles_from_sources().await;
+
+        tokio::select! {
+          _ =  scheduler.run_schedule() => {}
+         _ = tokio::time::sleep(Duration::from_secs(10)) => {
+                // todo fix test when unconnected tasks are implemented
+               // panic!("scheduled tasks did not finish in time, maybe (undetected) cycle")
+            }
+        }
     }
 
     fn create_test_task_specs(num_tasks: usize) -> HashMap<usize, TaskSpecRef> {
@@ -450,7 +492,7 @@ mod test {
         task_deps
     }
 
-    fn create_random_task_dependencies_with_cycles(
+    fn create_random_task_dependencies_with_maybe_cycles(
         task_specs: &HashMap<usize, TaskSpecRef>,
         max_deps: usize,
     ) -> TaskDependenciesSpecs {
