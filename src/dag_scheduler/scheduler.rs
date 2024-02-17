@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 pub struct Scheduler {
+    source_tasks: Vec<TaskRef>,
     tasks: HashMap<Uuid, TaskRef>,
     results: HashMap<Uuid, anyhow::Result<ExecutionStats, TaskError>>,
     // trigger_receiver: Option<mpsc::Receiver<(bool, Vec<TaskRef>)>>,
@@ -51,6 +52,7 @@ impl Default for Scheduler {
 impl Scheduler {
     pub fn new() -> Self {
         Scheduler {
+            source_tasks: Default::default(),
             tasks: Default::default(),
             results: Default::default(),
             // trigger_receiver: None,
@@ -81,49 +83,90 @@ impl Scheduler {
         if no_source_tasks {
             panic!("No source tasks defined")
         }
-        while !stack.is_empty() {
-            // todo own stack for each iteration + remove source tasks from this check oder (just start with all)? ... functioniert wieder nicht weil doppelt besucht wenn kanten nicht weggenommen werden
-            let t = stack.pop().expect("todo proper error");
+        while let Some(t) = stack.last().cloned() {
             let mut l_t = t.lock().await;
             match l_t.cycle_check {
                 CycleCheck::Unknown => {
                     l_t.cycle_check = CycleCheck::Visited {
-                        max_allowed: l_t.num_ingoing_tasks.expect("todo proper error"),
+                        max_allowed: l_t.repeat.unwrap_or(0),
                     };
-                    if l_t.outgoing_tasks.len() == 0 {
-                        l_t.cycle_check = CycleCheck::Finished
-                    }
-                    let mut count: usize = 0;
-                    for out_t in l_t.outgoing_tasks.iter() {
-                        if out_t.lock().await.cycle_check == CycleCheck::Finished {
-                            count = count.saturating_add(1);
+                    drop(l_t); // todo  think about if drop here is necessary or if we can work with it further
+                    let outs = t.lock().await.outgoing_tasks.clone();
+                    for out_t in outs {
+                        match out_t.lock().await.cycle_check {
+                            CycleCheck::Unknown => {
+                                stack.push(out_t.clone());
+                            }
+                            CycleCheck::Visited { .. } => {
+                                panic!("cycle detected")
+                                // todo use repeat in task creation and add the tasks to its own adj list then introduce the check
+                                // if max_allowed == 0 {
+                                //     panic!("cycle detected")
+                                // }
+                                // l_t.cycle_check = CycleCheck::Visited {
+                                //     max_allowed: max_allowed.saturating_sub(1),
+                                // }
+                            }
+                            CycleCheck::Finished => {}
                         }
                     }
-                    if count == l_t.outgoing_tasks.len() {
-                        l_t.cycle_check = CycleCheck::Finished
-                    }
-                    for out_t in l_t.outgoing_tasks.iter() {
-                        stack.push(out_t.clone());
-                    }
                 }
-                CycleCheck::Visited { max_allowed } => {
-                    // todo max allowed not need?
-                    if max_allowed == 0 {
-                        panic!("cycle detected")
-                    }
+                CycleCheck::Visited { .. } => {
+                    l_t.cycle_check = CycleCheck::Finished;
+                    stack.pop();
+                }
+                CycleCheck::Finished => {
+                    stack.pop();
+                }
+            }
+        }
+    }
+
+    async fn check_for_cycles_from_sources(source_tasks: &mut Vec<TaskRef>) {
+        while let Some(t) = source_tasks.last().cloned() {
+            let mut l_t = t.lock().await;
+            match l_t.cycle_check {
+                CycleCheck::Unknown => {
                     l_t.cycle_check = CycleCheck::Visited {
-                        max_allowed: max_allowed.saturating_sub(1),
+                        max_allowed: l_t.repeat.unwrap_or(0),
+                    };
+                    drop(l_t); // todo  think about if drop here is necessary or if we can work with it further
+                    let outs = t.lock().await.outgoing_tasks.clone();
+                    for out_t in outs {
+                        match out_t.lock().await.cycle_check {
+                            CycleCheck::Unknown => {
+                                source_tasks.push(out_t.clone());
+                            }
+                            CycleCheck::Visited { .. } => {
+                                panic!("cycle detected")
+                                // todo use repeat in task creation and add the tasks to its own adj list then introduce the check
+                                // if max_allowed == 0 {
+                                //     panic!("cycle detected")
+                                // }
+                                // l_t.cycle_check = CycleCheck::Visited {
+                                //     max_allowed: max_allowed.saturating_sub(1),
+                                // }
+                            }
+                            CycleCheck::Finished => {}
+                        }
                     }
                 }
-                CycleCheck::Finished => continue,
+                CycleCheck::Visited { .. } => {
+                    l_t.cycle_check = CycleCheck::Finished;
+                    source_tasks.pop();
+                }
+                CycleCheck::Finished => {
+                    source_tasks.pop();
+                }
             }
         }
     }
 
     /// creates TaskRef from TaskDependenciesSpecs,
     /// counts ingoing tasks for each task and put them in a HashMap
+    /// identifies source tasks and puts their reference also in a Vec for later identification and usage
     async fn create_tasks_from_specs(
-        &self,
+        &mut self,
         specs: &TaskDependenciesSpecs,
     ) -> HashMap<Uuid, TaskRef> {
         let mut tasks_map: HashMap<Uuid, TaskRef> = HashMap::new();
@@ -131,6 +174,8 @@ impl Scheduler {
             let task = Task::new_from_spec(task_spec.clone());
             if !dependencies.is_empty() {
                 task.lock().await.num_ingoing_tasks = Some(dependencies.len());
+            } else {
+                self.source_tasks.push(task.clone())
             }
             tasks_map.insert(task_spec.id, task.clone());
         }
