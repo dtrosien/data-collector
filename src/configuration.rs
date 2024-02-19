@@ -32,8 +32,8 @@ pub struct ApplicationSettings {
 
 #[derive(serde::Deserialize, Clone)]
 pub struct TaskDependency {
-   pub name: TaskName,
-   pub dependencies: Vec<TaskName>,
+    pub name: TaskName,
+    pub dependencies: Vec<TaskName>,
 }
 
 pub type TaskName = String;

@@ -21,7 +21,10 @@ pub struct CollectAction {}
 
 #[async_trait]
 impl Action for CollectAction {
-    async fn execute(&self, dependencies: ActionDependencies) -> Result<Option<StatsMap>, TaskError> {
+    async fn execute(
+        &self,
+        dependencies: ActionDependencies,
+    ) -> Result<Option<StatsMap>, TaskError> {
         let collectors = CollectAction::matching_collectors(
             &dependencies.setting,
             &dependencies.pool,
@@ -80,6 +83,8 @@ impl CollectAction {
 }
 
 // cannot be executed via execute_runner, since trait upcasting is currently not allowed in Rust :/
-pub fn execute_collector(collector: Box<dyn Collector>) -> JoinHandle<Result<Option<StatsMap>, TaskError>> {
+pub fn execute_collector(
+    collector: Box<dyn Collector>,
+) -> JoinHandle<Result<Option<StatsMap>, TaskError>> {
     tokio::spawn(async move { collector.run().await })
 }

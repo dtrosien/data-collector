@@ -10,7 +10,10 @@ use crate::tasks::task::ActionDependencies;
 #[async_trait]
 pub trait Action: Send + Sync {
     /// transform will take an input Resource and perform an actions on it and returns another Resource.
-    async fn execute(&self, dependencies: ActionDependencies) -> Result<Option<StatsMap>, TaskError>;
+    async fn execute(
+        &self,
+        dependencies: ActionDependencies,
+    ) -> Result<Option<StatsMap>, TaskError>;
 }
 
 /// BoxedAction is a boxed trait object of Action.
