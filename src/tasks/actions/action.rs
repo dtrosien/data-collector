@@ -1,15 +1,16 @@
+use crate::dag_scheduler::task::{StatsMap, TaskError};
 use anyhow::anyhow;
 use async_trait::async_trait;
 
 use crate::tasks::actions::collect::CollectAction;
 use crate::tasks::actions::stage::StageAction;
-use crate::tasks::task::{ActionDependencies, TaskError};
+use crate::tasks::task::ActionDependencies;
 
 /// Action is a trait that defines the interface for all actions.
 #[async_trait]
 pub trait Action: Send + Sync {
     /// transform will take an input Resource and perform an actions on it and returns another Resource.
-    async fn execute(&self, dependencies: ActionDependencies) -> Result<(), TaskError>;
+    async fn execute(&self, dependencies: ActionDependencies) -> Result<Option<StatsMap>, TaskError>;
 }
 
 /// BoxedAction is a boxed trait object of Action.

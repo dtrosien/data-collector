@@ -33,9 +33,9 @@ impl ExecutionSequence {
         for task_group in &self.0 {
             let batch: Vec<JoinHandle<Result<(), TaskError>>> = task_group
                 .iter()
-                .filter(|a| execution_sequence_position.contains(&a.execution_sequence_position))
+                //    .filter(|a| execution_sequence_position.contains(&a.execution_sequence_position))
                 .cloned()
-                .map(execute_task)
+                //   .map(execute_task)
                 .collect();
             if !batch.is_empty() {
                 let batch_result = join_task_handle_results(batch).await;
@@ -101,14 +101,13 @@ fn build_ordered_tasks(
 ) -> OrderedTasks {
     let mut tasks = Vec::new();
 
-    for ts in task_settings
-        .iter()
-        .filter(|s| s.execution_sequence_position >= 0)
+    for ts in task_settings.iter()
+    //   .filter(|s| s.execution_sequence_position >= 0)
     {
         let task = Arc::new(Task::new(ts, pool, client));
         tasks.push(task)
     }
-    tasks.sort();
+    //   tasks.sort();
     OrderedTasks(tasks)
 }
 

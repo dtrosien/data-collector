@@ -9,8 +9,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::collectors::collector::Collector;
 use crate::collectors::{collector_sources, sp500_fields, utils};
-use crate::tasks::runnable::Runnable;
-use crate::tasks::task::TaskError;
+
+use crate::dag_scheduler::task::{Runnable, StatsMap, TaskError};
+
+use crate::dag_scheduler::task::TaskError::UnexpectedError;
 use sqlx::PgPool;
 use tracing::{debug, info, warn};
 
@@ -36,10 +38,11 @@ impl Display for NyseEventCollector {
 
 #[async_trait]
 impl Runnable for NyseEventCollector {
-    async fn run(&self) -> Result<(), TaskError> {
+    async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
         load_and_store_missing_data(self.pool.clone(), self.client.clone())
-            .map_err(TaskError::UnexpectedError)
-            .await
+            .map_err(UnexpectedError)
+            .await?;
+        Ok(None)
     }
 }
 

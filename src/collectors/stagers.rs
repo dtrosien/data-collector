@@ -1,5 +1,5 @@
 use crate::collectors::{collector_sources, sp500_fields};
-use crate::tasks::runnable::Runnable;
+use crate::dag_scheduler::task::Runnable;
 use core::fmt;
 use core::fmt::Display;
 

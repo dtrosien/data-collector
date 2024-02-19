@@ -25,20 +25,30 @@ pub struct DatabaseSettings {
 
 #[derive(serde::Deserialize)]
 pub struct ApplicationSettings {
+    pub task_dependencies: Vec<TaskDependency>,
     pub tasks: Vec<TaskSetting>,
     pub http_client: HttpClientSettings,
 }
 
 #[derive(serde::Deserialize, Clone)]
+pub struct TaskDependency {
+   pub name: TaskName,
+   pub dependencies: Vec<TaskName>,
+}
+
+pub type TaskName = String;
+
+#[derive(serde::Deserialize, Clone)]
 pub struct TaskSetting {
+    pub name: TaskName,
     pub comment: Option<String>,
     pub actions: Vec<ActionType>,
     pub sp500_fields: Vec<sp500_fields::Fields>,
-    #[serde(
-        deserialize_with = "deserialize_number_from_string",
-        default = "default_execution_sequence_position"
-    )]
-    pub execution_sequence_position: i32,
+    // #[serde(
+    //     deserialize_with = "deserialize_number_from_string",
+    //     default = "default_execution_sequence_position"
+    // )]
+    // pub execution_sequence_position: i32,
     #[serde(default = "default_include_source")]
     pub include_sources: Vec<CollectorSource>,
     #[serde(default = "default_exclude_source")]

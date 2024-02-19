@@ -7,19 +7,35 @@ database:
 application:
   http_client:
     timeout_milliseconds: 1000000
+  task_dependencies:
+    - name: task_1
+      dependencies: [ ]
+    - name: task_2
+      dependencies: [ ]
+    - name: task_3
+      dependencies: [ task_1, task_2 ]
+  
+  
   tasks:
-    - comment: Helpful comment
+    - name: task_1
       actions: [Collect]
+      comment: Helpful comment
       sp500_fields:
         - NYSE
-      execution_sequence_position: 1
       include_sources:
         - ALL
-    - comment: Helpful comment
+    - name: task_2
       actions: [Stage]
+      comment: Helpful comment
       sp500_fields:
         - NYSE
-      priority: 2
+      include_sources:
+        - ALL
+    - name: task_3
+      actions: [Collect]
+      comment: Helpful comment
+      sp500_fields:
+        - NYSE
       include_sources:
         - ALL
     # - comment: Helpful comment1

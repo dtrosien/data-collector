@@ -8,8 +8,9 @@ use crate::utils::futures::join_handle_results;
 use async_trait::async_trait;
 
 use crate::collectors::collector::Collector;
+use crate::dag_scheduler::task::{StatsMap, TaskError};
 use crate::tasks::actions::action::Action;
-use crate::tasks::task::{ActionDependencies, TaskError};
+use crate::tasks::task::ActionDependencies;
 use reqwest::Client;
 use sqlx::PgPool;
 use std::collections::BTreeSet;
@@ -20,14 +21,14 @@ pub struct CollectAction {}
 
 #[async_trait]
 impl Action for CollectAction {
-    async fn execute(&self, dependencies: ActionDependencies) -> Result<(), TaskError> {
+    async fn execute(&self, dependencies: ActionDependencies) -> Result<Option<StatsMap>, TaskError> {
         let collectors = CollectAction::matching_collectors(
             &dependencies.setting,
             &dependencies.pool,
             &dependencies.client,
         );
 
-        let handles: Vec<JoinHandle<Result<(), TaskError>>> =
+        let handles: Vec<JoinHandle<Result<Option<StatsMap>, TaskError>>> =
             collectors.into_iter().map(execute_collector).collect();
 
         join_handle_results(handles).await
@@ -79,6 +80,6 @@ impl CollectAction {
 }
 
 // cannot be executed via execute_runner, since trait upcasting is currently not allowed in Rust :/
-pub fn execute_collector(collector: Box<dyn Collector>) -> JoinHandle<Result<(), TaskError>> {
+pub fn execute_collector(collector: Box<dyn Collector>) -> JoinHandle<Result<Option<StatsMap>, TaskError>> {
     tokio::spawn(async move { collector.run().await })
 }

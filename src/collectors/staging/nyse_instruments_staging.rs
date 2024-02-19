@@ -7,13 +7,14 @@ use reqwest::Client;
 use serde::Deserialize;
 use sqlx::PgPool;
 
+use sqlx::encode::IsNull::No;
 use std::fmt::Display;
 use strum::{Display, EnumIter, IntoEnumIterator};
 use tracing::info;
 
 use crate::collectors::{collector_sources, sp500_fields};
-use crate::tasks::runnable::Runnable;
-use crate::tasks::task::TaskError;
+use crate::dag_scheduler::task::TaskError::UnexpectedError;
+use crate::dag_scheduler::task::{Runnable, StatsMap, TaskError};
 
 #[derive(Debug, Deserialize, Display, EnumIter, PartialEq)]
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
@@ -92,10 +93,11 @@ impl Stager for NyseInstrumentStager {
 
 #[async_trait]
 impl Runnable for NyseInstrumentStager {
-    async fn run(&self) -> Result<(), TaskError> {
+    async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
         stage_data(self.pool.clone())
             .await
-            .map_err(TaskError::UnexpectedError)
+            .map_err(UnexpectedError)?;
+        Ok(None)
     }
 }
 
@@ -157,8 +159,8 @@ async fn mark_stock_exchange_per_stock_as_current_date(
                     where is_staged = false
                 ) as r
             where master_data.issuer_name = r.issuer_name and master_data.issue_symbol = r.issue_symbol"##)
-    .execute(connection_pool)
-    .await?;
+        .execute(connection_pool)
+        .await?;
     Ok(())
 }
 
@@ -344,7 +346,6 @@ mod test {
             "master_data_without_company_and_date.sql"
         )
     ))]
-
     async fn given_master_data_without_dates_when_dates_staged_then_dates_in_correct_columns(
         pool: Pool<Postgres>,
     ) {
@@ -507,9 +508,9 @@ mod test {
         let md_result = sqlx::query!(
             "select * from master_data where issue_symbol in ('$ESGE.IV', 'MTUL','$OEX','GNS','MHLA','IGZ','EGOX','ABCD')
             and is_company notnull")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+            .fetch_all(&pool)
+            .await
+            .unwrap();
 
         assert_eq!(md_result.len(), 8);
     }

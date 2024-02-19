@@ -8,8 +8,9 @@ use std::fmt::Display;
 
 use crate::collectors::source_apis::sec_companies::SecCompanyCollector;
 use crate::collectors::{collector_sources, sp500_fields};
-use crate::tasks::runnable::Runnable;
-use crate::tasks::task::TaskError;
+use crate::dag_scheduler;
+use crate::dag_scheduler::task::TaskError::UnexpectedError;
+use crate::dag_scheduler::task::{Runnable, StatsMap, TaskError};
 
 #[derive(Clone)]
 pub struct SecCompanyStager {
@@ -48,10 +49,11 @@ impl Stager for SecCompanyStager {
 
 #[async_trait]
 impl Runnable for SecCompanyStager {
-    async fn run(&self) -> Result<(), TaskError> {
+    async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
         stage_data(self.pool.clone())
-            .map_err(TaskError::UnexpectedError)
-            .await
+            .map_err(UnexpectedError)
+            .await?;
+        Ok(None)
     }
 }
 
@@ -105,8 +107,8 @@ async fn derive_country_from_sec_code(connection_pool: &PgPool) -> Result<(), an
            on c.sec_code = sc.state_of_incorporation  
        where is_staged = false) a
     where issuer_name = c_name and issue_symbol = ticker"##)
-    .execute(connection_pool)
-    .await?;
+        .execute(connection_pool)
+        .await?;
     Ok(())
 }
 
@@ -270,7 +272,7 @@ mod test {
                 Some("USA"),
                 None,
                 None,
-                md_result
+                md_result,
             ),
             true
         );

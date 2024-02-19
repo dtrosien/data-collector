@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use std::fmt::Display;
 
-use crate::{collectors::utils, tasks::runnable::Runnable};
+use crate::collectors::utils;
 
 use async_trait::async_trait;
 use futures_util::TryFutureExt;
@@ -14,7 +14,9 @@ use tracing::info;
 
 use crate::collectors::collector::Collector;
 use crate::collectors::{collector_sources, sp500_fields};
-use crate::tasks::task::TaskError;
+use crate::dag_scheduler::task::{Runnable, StatsMap, TaskError};
+use crate::dag_scheduler::task::TaskError::UnexpectedError;
+
 
 const URL: &str = "https://www.nyse.com/api/quotes/filter";
 
@@ -38,10 +40,11 @@ impl Display for NyseInstrumentCollector {
 
 #[async_trait]
 impl Runnable for NyseInstrumentCollector {
-    async fn run(&self) -> Result<(), TaskError> {
+    async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
         load_and_store_missing_data(self.pool.clone(), self.client.clone())
-            .map_err(TaskError::UnexpectedError)
-            .await
+            .map_err(UnexpectedError)
+            .await?;
+        Ok(None)
     }
 }
 

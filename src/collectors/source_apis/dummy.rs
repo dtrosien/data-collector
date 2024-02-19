@@ -1,8 +1,8 @@
 use crate::collectors::collector::Collector;
 use crate::collectors::collector_sources::CollectorSource;
 use crate::collectors::sp500_fields::Fields;
-use crate::tasks::runnable::Runnable;
-use crate::tasks::task::TaskError;
+use crate::dag_scheduler::task::{Runnable, StatsMap, TaskError};
+
 use async_trait::async_trait;
 use core::fmt::{Display, Formatter};
 
@@ -11,8 +11,8 @@ pub struct DummyCollector {}
 #[async_trait]
 impl Runnable for DummyCollector {
     #[tracing::instrument(name = "Start running dummy collector", skip(self))]
-    async fn run(&self) -> Result<(), TaskError> {
-        Ok(())
+    async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
+        Ok(None)
     }
 }
 

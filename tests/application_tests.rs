@@ -64,10 +64,10 @@ pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
 async fn start_task() {
     // Arrange
     let tasks = vec![TaskSetting {
+        name: "task_1".to_string(),
         comment: None,
         actions: vec![],
         sp500_fields: vec![],
-        execution_sequence_position: 500,
         include_sources: vec![CollectorSource::Dummy],
         exclude_sources: vec![],
     }];
@@ -86,18 +86,18 @@ async fn running_collect_action_on_dummmy_source() {
     // Arrange
     let num_tasks = 20;
     let base_task = TaskSetting {
+        name: "task".to_string(),
         comment: None,
         actions: vec![Collect],
         sp500_fields: vec![Fields::Nyse],
-        execution_sequence_position: 0,
         include_sources: vec![CollectorSource::Dummy],
         exclude_sources: vec![],
     };
     let mut tasks = vec![];
     let mut rng = rand::thread_rng();
-    for _n in 0..num_tasks {
+    for n in 0..num_tasks {
         let mut task = base_task.clone();
-        task.execution_sequence_position = rng.gen();
+        task.name = format!("task_{}", n);
         tasks.push(task);
     }
 
