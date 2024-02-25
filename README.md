@@ -1,9 +1,25 @@
 # data-collector
 
+- [Requirements](#requirements)
+- [Developer Setup - Tools](#developer-setup---tools)
+	- [SQLX:](#sqlx)
+	- [Postgres Docker:](#postgres-docker)
+	- [PSQL:](#psql)
+	- [Setup Git Hook](#setup-git-hook)
+- [Developer Setup - Building](#developer-setup---building)
+	- [Start postgres, create database and migrate:](#start-postgres-create-database-and-migrate)
+	- [Migration](#migration)
+	- [Env File (.env)](#env-file-env)
+- [Deployment](#deployment)
+	- [Build Docker Image](#build-docker-image)
+		- [update sqlx cli](#update-sqlx-cli)
+		- [Prepare sqlx meta for offline mode](#prepare-sqlx-meta-for-offline-mode)
+		- [In Case of Error or no file output etc:](#in-case-of-error-or-no-file-output-etc)
+		- [Run Docker Build](#run-docker-build)
+		- [Deploy on Digital Ocean (only required for repo owner):](#deploy-on-digital-ocean-only-required-for-repo-owner)
 
 
-
-## Requirements:
+## Requirements
 Have docker installed
 
 ## Developer Setup - Tools
@@ -18,12 +34,10 @@ Run all Linux commands to install the components. Docker is needed beforehand:
 sudo apt-get install -y postgresql-client
 ## Get Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-## 
+##  Get sqlx-cli
 cargo install --version='~0.7.2' sqlx-cli --no-default-features --features rustls,postgres
-## Get Postgres
+## Get Postgres docker image
 docker pull postgres
-## Install sqlx-cli
-cargo install sqlx-cli
 ## Get nightly rust
 rustup toolchain install nightly
 ## Prepare Git hooks
@@ -80,7 +94,7 @@ run script from root directory:
 
 
 ### Migration
-sqls code for migrations are placed in migrations directory
+sqlx code for migrations are placed in migrations directory
 
 
 ### Env File (.env)
