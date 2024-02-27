@@ -1,6 +1,6 @@
-
-use chrono::NaiveDate;
+use chrono::{Days, Months, NaiveDate, Utc};
 use std::fmt::Display;
+use std::{thread, time};
 
 use crate::{collectors::utils, tasks::runnable::Runnable};
 
@@ -54,17 +54,18 @@ impl Runnable for PolygonOpenCloseCollector {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PolygonOpenClose {
-    after_hours: f64,
-    close: f64,
     #[serde(alias = "from")]
-    business_date: NaiveDate,
-    high: f64,
-    low: f64,
-    open: f64,
+    business_date: Option<NaiveDate>,
+    after_hours: Option<f64>,
+    close: Option<f64>,
+    high: Option<f64>,
+    low: Option<f64>,
+    open: Option<f64>,
     status: String,
-    pre_market: f64,
-    symbol: String,
-    volume: f64,
+    pre_market: Option<f64>,
+    symbol: Option<String>,
+    volume: Option<f64>,
+    message: Option<String>,
 }
 
 #[derive(Default, Deserialize, Debug, Serialize, PartialEq)]
@@ -97,37 +98,40 @@ async fn load_and_store_missing_data_given_url(
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Polygon open close.");
 
-    let request = create_polygon_open_close_request(
-        "AAPL",
-        NaiveDate::parse_from_str("2024-02-22", "%Y-%m-%d").expect("Parsing constant."),
-        api_key,
-    );
-    println!("my request: {}", request);
-    let response = client
-        .get(request)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
-    let open_close = vec![utils::parse_response::<PolygonOpenClose>(&response)?];
-    let open_close = transpose_polygon_open_close(open_close);
-    // INSERT INTO polygon_open_close (after_hours, "close", business_date, high, low, "open", pre_market, symbol, volume) VALUES(0, 0, '', 0, 0, 0, 0, '', 0);
-    sqlx::query!(r#"INSERT INTO polygon_open_close
-    (after_hours, "close", business_date, high, low, "open", pre_market, symbol, volume)
-    Select * from UNNEST ($1::float[], $2::float[], $3::date[], $4::float[], $5::float[], $6::float[], $7::float[], $8::text[], $9::float[]) on conflict do nothing"#,
-    &open_close.after_hours[..],
-    &open_close.close[..],
-    &open_close.business_date[..],
-    &open_close.high[..],
-    &open_close.low[..],
-    &open_close.open[..],
-    &open_close.pre_market[..],
-    &open_close.symbol[..],
-    &open_close.volume[..],
+    let mut current_check_date = earliest_date();
+    while current_check_date.lt(&Utc::now().date_naive()) {
+        let request = create_polygon_open_close_request("AA", current_check_date, api_key);
+        println!("my request: {}", request);
+        let response = client
+            .get(request)
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        let open_close = vec![utils::parse_response::<PolygonOpenClose>(&response).unwrap()];
+        if open_close[0].status.eq("OK") {
+            let open_close = transpose_polygon_open_close(open_close);
+            // INSERT INTO polygon_open_close (after_hours, "close", business_date, high, low, "open", pre_market, symbol, volume) VALUES(0, 0, '', 0, 0, 0, 0, '', 0);
+            sqlx::query!(r#"INSERT INTO polygon_open_close
+                (after_hours, "close", business_date, high, low, "open", pre_market, symbol, volume)
+                Select * from UNNEST ($1::float[], $2::float[], $3::date[], $4::float[], $5::float[], $6::float[], $7::float[], $8::text[], $9::float[]) on conflict do nothing"#,
+                &open_close.after_hours[..],
+                &open_close.close[..],
+                &open_close.business_date[..],
+                &open_close.high[..],
+                &open_close.low[..],
+                &open_close.open[..],
+                &open_close.pre_market[..],
+                &open_close.symbol[..],
+                &open_close.volume[..],
         ).execute(&connection_pool).await?;
-
+        }
+        current_check_date = current_check_date.checked_add_days(Days::new(1)).unwrap();
+        let thirteen_secs = time::Duration::from_secs(13);
+        thread::sleep(thirteen_secs);
+    }
     Ok(())
 }
 
@@ -145,17 +149,26 @@ fn transpose_polygon_open_close(instruments: Vec<PolygonOpenClose>) -> Transpose
     };
 
     for data in instruments {
-        result.after_hours.push(data.after_hours);
-        result.close.push(data.close);
-        result.business_date.push(data.business_date);
-        result.high.push(data.high);
-        result.low.push(data.low);
-        result.open.push(data.open);
-        result.pre_market.push(data.pre_market);
-        result.symbol.push(data.symbol);
-        result.volume.push(data.volume);
+        result.after_hours.push(data.after_hours.unwrap());
+        result.close.push(data.close.unwrap());
+        result.business_date.push(data.business_date.unwrap());
+        result.high.push(data.high.unwrap());
+        result.low.push(data.low.unwrap());
+        result.open.push(data.open.unwrap());
+        result.pre_market.push(data.pre_market.unwrap());
+        result.symbol.push(data.symbol.unwrap());
+        result.volume.push(data.volume.unwrap());
     }
     result
+}
+
+fn earliest_date() -> NaiveDate {
+    Utc::now()
+        .date_naive()
+        .checked_sub_months(Months::new(24))
+        .expect("Minus 2 years should never fail")
+        .checked_add_days(Days::new(1))
+        .expect("Adding 1 day should always work")
 }
 
 // fn filter_for_valid_datasets(input: Vec<NyseInstrument>) -> Vec<NyseInstrument> {
@@ -251,17 +264,19 @@ mod test {
         }"#;
         let parsed = utils::parse_response::<PolygonOpenClose>(input_json).unwrap();
         let instrument = PolygonOpenClose {
-            after_hours: 183.95,
-            close: 184.37,
-            business_date: NaiveDate::parse_from_str("2024-02-22", "%Y-%m-%d")
-                .expect("Parsing constant."),
-            high: 184.955,
-            low: 182.46,
-            open: 183.48,
+            after_hours: Some(183.95),
+            close: Some(184.37),
+            business_date: Some(
+                NaiveDate::parse_from_str("2024-02-22", "%Y-%m-%d").expect("Parsing constant."),
+            ),
+            high: Some(184.955),
+            low: Some(182.46),
+            open: Some(183.48),
             status: "OK".to_string(),
-            pre_market: 183.8,
-            symbol: "AAPL".to_string(),
-            volume: 52284192.0,
+            pre_market: Some(183.8),
+            symbol: Some("AAPL".to_string()),
+            volume: Some(52284192.0),
+            message: None,
         };
         assert_eq!(parsed, instrument);
     }
