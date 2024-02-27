@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+
 use chrono::NaiveDate;
 use std::fmt::Display;
 
@@ -9,7 +9,7 @@ use futures_util::TryFutureExt;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+
 use sqlx::PgPool;
 use tracing::info;
 
@@ -93,7 +93,7 @@ async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
     client: Client,
     api_key: &str,
-    url: &str,
+    _url: &str,
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Polygon open close.");
 
