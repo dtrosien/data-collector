@@ -8,4 +8,5 @@ pub enum Fields {
     Nasdaq,
     MarketCap,
     MonthTradingVolume,
+    OpenClose,
 }

@@ -8,30 +8,28 @@ application:
   http_client:
     timeout_milliseconds: 1000000
   tasks:
-    - comment: Helpful comment
-      actions: [Collect]
-      sp500_fields:
-        - NYSE
-      execution_sequence_position: 1
-      include_sources:
-        - ALL
-    - comment: Helpful comment
-      actions: [Stage]
-      sp500_fields:
-        - NYSE
-      priority: 2
-      include_sources:
-        - ALL
-    # - comment: Helpful comment1
+    # - comment: Helpful comment
     #   actions: [Collect]
     #   sp500_fields:
-    #     - MARKET_CAP
-    #     - MONTH_TRADING_VOLUME 
+    #     - NYSE
+    #   execution_sequence_position: 1
+    #   include_sources:
+    #     - ALL
+    # - comment: Helpful comment
+    #   actions: [Stage]
+    #   sp500_fields:
+    #     - NYSE
     #   priority: 2
     #   include_sources:
     #     - ALL
-    #   exclude_sources:
-    #     - NYSE_EVENTS
+    - comment: Helpful comment1
+      actions: [Collect]
+      sp500_fields:
+        - MARKET_CAP
+        - MONTH_TRADING_VOLUME 
+      priority: 1
+      include_sources:
+        - POLYGON_OPEN_CLOSE
     # - comment: Helpful comment1
     #   actions: [Collect,Stage]
     #   sp500_fields:

@@ -49,6 +49,7 @@ rusty-hook = "^0.11.2"
 version = "0.7.3"
 default-features = false
 features = [
+    "bigdecimal",
     "runtime-tokio-rustls",
     "macros",
     "postgres",

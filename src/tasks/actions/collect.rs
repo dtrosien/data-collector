@@ -1,6 +1,7 @@
 use crate::collectors::collector_sources::CollectorSource;
 use crate::collectors::source_apis::nyse_events::NyseEventCollector;
 use crate::collectors::source_apis::nyse_instruments::NyseInstrumentCollector;
+use crate::collectors::source_apis::polygon_open_close::PolygonOpenCloseCollector;
 use crate::collectors::source_apis::sec_companies::SecCompanyCollector;
 use crate::configuration::TaskSetting;
 
@@ -53,6 +54,11 @@ impl CollectAction {
             Box::new(NyseEventCollector::new(pool.clone(), client.clone())),
             Box::new(NyseInstrumentCollector::new(pool.clone(), client.clone())),
             Box::new(SecCompanyCollector::new(pool.clone(), client.clone())),
+            Box::new(PolygonOpenCloseCollector::new(
+                pool.clone(),
+                client.clone(),
+                "secret".to_string(),
+            )),
         ]
     }
 
