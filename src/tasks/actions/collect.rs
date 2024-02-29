@@ -57,7 +57,7 @@ impl CollectAction {
             Box::new(PolygonOpenCloseCollector::new(
                 pool.clone(),
                 client.clone(),
-                "secret".to_string(),
+                "iMX3MwHNhuj_RAHRG1zkor2o4WyZqp2U".to_string(),
             )),
         ]
     }

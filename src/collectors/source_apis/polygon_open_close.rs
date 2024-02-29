@@ -98,23 +98,26 @@ async fn load_and_store_missing_data_given_url(
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Polygon open close.");
 
-    let mut current_check_date = earliest_date();
-    while current_check_date.lt(&Utc::now().date_naive()) {
-        let request = create_polygon_open_close_request("AA", current_check_date, api_key);
-        println!("my request: {}", request);
-        let response = client
-            .get(request)
-            .send()
-            .await
-            .unwrap()
-            .text()
-            .await
-            .unwrap();
-        let open_close = vec![utils::parse_response::<PolygonOpenClose>(&response).unwrap()];
-        if open_close[0].status.eq("OK") {
-            let open_close = transpose_polygon_open_close(open_close);
-            // INSERT INTO polygon_open_close (after_hours, "close", business_date, high, low, "open", pre_market, symbol, volume) VALUES(0, 0, '', 0, 0, 0, 0, '', 0);
-            sqlx::query!(r#"INSERT INTO polygon_open_close
+    let mut result  = sqlx::query!("select issue_symbol from master_data_eligible mde where issue_symbol not in (select distinct(symbol) from polygon_open_close poc ) order by issue_symbol").fetch_one(&connection_pool).await?.issue_symbol;
+    while result.is_some() {
+        let mut current_check_date = earliest_date();
+        let test = result.clone().unwrap();
+        while current_check_date.lt(&Utc::now().date_naive()) {
+            let request = create_polygon_open_close_request(&test, current_check_date, api_key);
+            println!("my request: {}", request);
+            let response = client
+                .get(request)
+                .send()
+                .await
+                .unwrap()
+                .text()
+                .await
+                .unwrap();
+            let open_close = vec![utils::parse_response::<PolygonOpenClose>(&response).unwrap()];
+            if open_close[0].status.eq("OK") {
+                let open_close = transpose_polygon_open_close(open_close);
+                // INSERT INTO polygon_open_close (after_hours, "close", business_date, high, low, "open", pre_market, symbol, volume) VALUES(0, 0, '', 0, 0, 0, 0, '', 0);
+                sqlx::query!(r#"INSERT INTO polygon_open_close
                 (after_hours, "close", business_date, high, low, "open", pre_market, symbol, volume)
                 Select * from UNNEST ($1::float[], $2::float[], $3::date[], $4::float[], $5::float[], $6::float[], $7::float[], $8::text[], $9::float[]) on conflict do nothing"#,
                 &open_close.after_hours[..],
@@ -127,10 +130,12 @@ async fn load_and_store_missing_data_given_url(
                 &open_close.symbol[..],
                 &open_close.volume[..],
         ).execute(&connection_pool).await?;
+            }
+            current_check_date = current_check_date.checked_add_days(Days::new(1)).unwrap();
+            let thirteen_secs = time::Duration::from_secs(13);
+            thread::sleep(thirteen_secs);
         }
-        current_check_date = current_check_date.checked_add_days(Days::new(1)).unwrap();
-        let thirteen_secs = time::Duration::from_secs(13);
-        thread::sleep(thirteen_secs);
+        result  = sqlx::query!("select issue_symbol from master_data_eligible mde where issue_symbol not in (select distinct(symbol) from polygon_open_close poc ) order by issue_symbol").fetch_one(&connection_pool).await?.issue_symbol;
     }
     Ok(())
 }
@@ -148,6 +153,8 @@ fn transpose_polygon_open_close(instruments: Vec<PolygonOpenClose>) -> Transpose
         volume: vec![],
     };
 
+    //my request: https://api.polygon.io/v1/open-close/AACI/2022-06-06?adjusted=true&apiKey=iMX3MwHNhuj_RAHRG1zkor2o4WyZqp2U
+    // thread 'tokio-runtime-worker' panicked at 'called `Option::unwrap()` on a `None` value', src/collectors/source_apis/polygon_open_close.rs:152:50
     for data in instruments {
         result.after_hours.push(data.after_hours.unwrap());
         result.close.push(data.close.unwrap());
