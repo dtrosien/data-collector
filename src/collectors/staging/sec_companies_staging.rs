@@ -2,13 +2,13 @@
 // use crate::collectors::stagers::Stager;
 use async_trait::async_trait;
 use futures_util::TryFutureExt;
-use reqwest::Client;
+
 use sqlx::PgPool;
 use std::fmt::Display;
 
-use crate::collectors::source_apis::sec_companies::SecCompanyCollector;
-use crate::collectors::{collector_sources, sp500_fields};
-use crate::dag_scheduler;
+
+
+
 use crate::dag_scheduler::task::TaskError::UnexpectedError;
 use crate::dag_scheduler::task::{Runnable, StatsMap, TaskError};
 

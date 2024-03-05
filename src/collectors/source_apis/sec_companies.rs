@@ -1,4 +1,4 @@
-use crate::collectors::{self, collector_sources, sp500_fields};
+use crate::collectors::{self};
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use chrono::{DateTime, Days, Utc};

@@ -4,12 +4,12 @@ use crate::collectors::source_apis::nyse_instruments::NyseInstrumentCollector;
 use crate::collectors::source_apis::sec_companies::SecCompanyCollector;
 use crate::collectors::staging::nyse_instruments_staging::NyseInstrumentStager;
 use crate::collectors::staging::sec_companies_staging::SecCompanyStager;
-use crate::configuration::TaskSetting;
-use crate::dag_scheduler::task::{Runnable, StatsMap, TaskError};
-use anyhow::anyhow;
-use async_trait::async_trait;
+
+use crate::dag_scheduler::task::{Runnable};
+
+
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 

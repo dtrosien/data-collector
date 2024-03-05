@@ -8,7 +8,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 //use crate::collectors::collector::Collector;
-use crate::collectors::{collector_sources, sp500_fields, utils};
+use crate::collectors::{utils};
 
 use crate::dag_scheduler::task::{Runnable, StatsMap, TaskError};
 
