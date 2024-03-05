@@ -1,9 +1,11 @@
 use data_collector::collectors::collector_sources::CollectorSource;
 
 use data_collector::collectors::sp500_fields::Fields;
-use data_collector::configuration::{get_configuration, DatabaseSettings, TaskSetting};
+use data_collector::configuration::{
+    get_configuration, DatabaseSettings, TaskDependency, TaskSetting,
+};
 use data_collector::startup::Application;
-use data_collector::tasks::actions::action::ActionType::Collect;
+use data_collector::tasks::actions::action::ActionType;
 use data_collector::utils::telemetry::{get_subscriber, init_subscriber};
 use rand::Rng;
 use sqlx::types::Uuid;
@@ -28,12 +30,16 @@ fn init_tracing() {
     });
 }
 
-async fn spawn_app_with_test_tasks(tasks: Vec<TaskSetting>) -> Application {
+async fn spawn_app_with_test_tasks(
+    tasks: Vec<TaskSetting>,
+    deps: Vec<TaskDependency>,
+) -> Application {
     init_tracing();
 
     let mut configuration = get_configuration().expect("Failed to read configuration.");
     configuration.database.database_name = Uuid::new_v4().to_string();
     configuration.application.tasks = tasks;
+    configuration.application.task_dependencies = deps;
     configure_database(&configuration.database).await;
     Application::build(configuration).await
 }
@@ -66,13 +72,18 @@ async fn start_task() {
     let tasks = vec![TaskSetting {
         name: "task_1".to_string(),
         comment: None,
-        actions: vec![],
+        task_type: ActionType::Dummy,
         sp500_fields: vec![],
-        include_sources: vec![CollectorSource::Dummy],
+        include_sources: vec![],
         exclude_sources: vec![],
     }];
 
-    let app = spawn_app_with_test_tasks(tasks).await;
+    let dep = TaskDependency {
+        name: "task_1".to_string(),
+        dependencies: vec![],
+    };
+
+    let app = spawn_app_with_test_tasks(tasks, vec![dep]).await;
 
     // Act
     let runner = app.run();
@@ -82,26 +93,32 @@ async fn start_task() {
 }
 
 #[tokio::test]
-async fn running_collect_action_on_dummmy_source() {
+async fn running_collect_action_on_dummy_source() {
     // Arrange
     let num_tasks = 20;
     let base_task = TaskSetting {
         name: "task".to_string(),
         comment: None,
-        actions: vec![Collect],
-        sp500_fields: vec![Fields::Nyse],
-        include_sources: vec![CollectorSource::Dummy],
+        task_type: ActionType::Dummy,
+        sp500_fields: vec![],
+        include_sources: vec![],
         exclude_sources: vec![],
     };
     let mut tasks = vec![];
-    let mut rng = rand::thread_rng();
+    let mut deps = vec![];
     for n in 0..num_tasks {
         let mut task = base_task.clone();
-        task.name = format!("task_{}", n);
+        let name = format!("task_{}", n);
+        task.name = name.clone();
+        let dep = TaskDependency {
+            name,
+            dependencies: vec![],
+        };
         tasks.push(task);
+        deps.push(dep);
     }
 
-    let app = spawn_app_with_test_tasks(tasks).await;
+    let app = spawn_app_with_test_tasks(tasks, deps).await;
 
     // Act
     let runner = app.run();

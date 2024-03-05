@@ -1,6 +1,6 @@
-use crate::collectors::collector::Collector;
+//use crate::collectors::collector::Collector;
 use crate::collectors::source_apis::nyse_instruments::NyseInstrumentCollector;
-use crate::collectors::stagers::Stager;
+//use crate::collectors::stagers::Stager;
 use async_trait::async_trait;
 use reqwest::Client;
 
@@ -73,23 +73,23 @@ impl Display for NyseInstrumentStager {
     }
 }
 
-impl Stager for NyseInstrumentStager {
-    /// Take fields from the matching collector
-    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-        NyseInstrumentCollector::new(self.pool.clone(), Client::new()).get_sp_fields()
-        // todo: do we really want to init a Collector here? (Client is only here so it can compile)
-    }
-
-    /// Take fields from the matching collector
-    fn get_source(&self) -> collector_sources::CollectorSource {
-        NyseInstrumentCollector::new(self.pool.clone(), Client::new()).get_source()
-        // todo: do we really want to init a Collector here? (Client is only here so it can compile)
-    }
-
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Stager of source: {}", Stager::get_source(self))
-    }
-}
+// impl Stager for NyseInstrumentStager {
+//     /// Take fields from the matching collector
+//     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
+//         NyseInstrumentCollector::new(self.pool.clone(), Client::new()).get_sp_fields()
+//         // todo: do we really want to init a Collector here? (Client is only here so it can compile)
+//     }
+//
+//     /// Take fields from the matching collector
+//     fn get_source(&self) -> collector_sources::CollectorSource {
+//         NyseInstrumentCollector::new(self.pool.clone(), Client::new()).get_source()
+//         // todo: do we really want to init a Collector here? (Client is only here so it can compile)
+//     }
+//
+//     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+//         write!(f, "Stager of source: {}", Stager::get_source(self))
+//     }
+// }
 
 #[async_trait]
 impl Runnable for NyseInstrumentStager {

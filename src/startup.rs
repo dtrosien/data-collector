@@ -1,3 +1,4 @@
+use reqwest::redirect::Action;
 use reqwest::Client;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -6,9 +7,9 @@ use crate::configuration::{
     DatabaseSettings, HttpClientSettings, Settings, TaskDependency, TaskName, TaskSetting,
 };
 
-use crate::dag_scheduler::scheduler::{TaskDependenciesSpecs, TaskSpec, TaskSpecRef};
+use crate::dag_scheduler::scheduler::{Schedule, TaskDependenciesSpecs, TaskSpec, TaskSpecRef};
 use crate::dag_scheduler::task::{ExecutionMode, RetryOptions};
-use crate::tasks::task::Task;
+use crate::tasks::actions::action::create_action;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -33,55 +34,63 @@ impl Application {
         }
     }
 
-    // #[tracing::instrument(name = "Start running tasks", skip(self))]
-    // pub async fn run(&self) -> Result<(), anyhow::Error> {
-    //     let scheduler = Scheduler::build(&self.task_settings, &self.pool, &self.client);
-    //     let results = scheduler.build_execution_sequence().run_all().await;
-    //     // todo handle and log errors etc
-    //     results.into_iter().try_for_each(|r| r)?;
-    //     Ok(())
-    // }
-
     #[tracing::instrument(name = "Start running tasks", skip(self))]
     pub async fn run(&self) -> Result<(), anyhow::Error> {
-        let mut task_spec_refs = HashMap::new();
+        // init specs from config
+        let task_specs = build_task_specs(&self.task_settings, &self.pool, &self.client);
 
-        // create task refs
-        for ts in self.task_settings.iter() {
+        // build adj list from specs
+        let task_dep_specs = add_dependencies_to_task_specs(task_specs, &self.task_dependencies);
+
+        // schedule and run
+        let mut schedule = Schedule::new();
+        schedule.schedule_tasks(task_dep_specs).await;
+        schedule.run_checks().await;
+        schedule.run_schedule().await;
+        Ok(())
+    }
+}
+
+fn build_task_specs(
+    task_settings: &[TaskSetting],
+    pool: &PgPool,
+    client: &Client,
+) -> HashMap<TaskName, TaskSpecRef> {
+    task_settings
+        .iter()
+        .map(|ts| {
             let task_name: TaskName = ts.name.clone();
-
-            let runner = Arc::new(Task::new(ts, &self.pool, &self.client));
-
+            let action = create_action(&ts.task_type, pool, client);
             let task_spec = TaskSpec {
                 id: Uuid::new_v4(),
                 name: task_name.clone(),
                 retry_options: RetryOptions::default(),
                 execution_mode: ExecutionMode::Once,
                 tools: Arc::new(Default::default()),
-                runnable: runner,
+                runnable: action,
             };
             let task_spec_ref: TaskSpecRef = TaskSpecRef::from(task_spec);
-            task_spec_refs.insert(task_name, task_spec_ref);
-        }
-        let mut tasks_specs: TaskDependenciesSpecs = HashMap::new();
-        task_spec_refs.values().for_each(|v| {
-            let deps: Vec<TaskSpecRef> = self
-                .task_dependencies
+            (task_name, task_spec_ref)
+        })
+        .collect()
+}
+
+fn add_dependencies_to_task_specs(
+    task_specs_map: HashMap<TaskName, TaskSpecRef>,
+    task_dependencies: &[TaskDependency],
+) -> TaskDependenciesSpecs {
+    task_specs_map
+        .values()
+        .map(|task_specs_ref| {
+            let deps: Vec<TaskSpecRef> = task_dependencies
                 .iter()
-                .filter_map(|k| task_spec_refs.get(&k.name))
+                .flat_map(|task_dependency| &task_dependency.dependencies)
+                .filter_map(|task_name| task_specs_map.get(task_name))
                 .cloned()
                 .collect();
-            tasks_specs.insert(v.clone(), deps);
-        });
-
-        // let deps: Vec<TaskSpecRef> = self
-        //     .task_dependencies
-        //     .iter()
-        //     .map(|k| task_spec_refs.get(&k.name).unwrap().clone())
-        //     .collect();
-
-        Ok(())
-    }
+            (task_specs_ref.clone(), deps)
+        })
+        .collect()
 }
 
 pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {

@@ -42,13 +42,9 @@ pub type TaskName = String;
 pub struct TaskSetting {
     pub name: TaskName,
     pub comment: Option<String>,
-    pub actions: Vec<ActionType>,
+    pub task_type: ActionType,
+    #[serde(default = "default_sp500_fields")]
     pub sp500_fields: Vec<sp500_fields::Fields>,
-    // #[serde(
-    //     deserialize_with = "deserialize_number_from_string",
-    //     default = "default_execution_sequence_position"
-    // )]
-    // pub execution_sequence_position: i32,
     #[serde(default = "default_include_source")]
     pub include_sources: Vec<CollectorSource>,
     #[serde(default = "default_exclude_source")]
@@ -66,8 +62,8 @@ impl HttpClientSettings {
     }
 }
 
-fn default_execution_sequence_position() -> i32 {
-    1
+fn default_sp500_fields() -> Vec<sp500_fields::Fields> {
+    vec![]
 }
 
 fn default_include_source() -> Vec<CollectorSource> {

@@ -7,7 +7,7 @@ use std::fmt::Display;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::collectors::collector::Collector;
+//use crate::collectors::collector::Collector;
 use crate::collectors::{collector_sources, sp500_fields, utils};
 
 use crate::dag_scheduler::task::{Runnable, StatsMap, TaskError};
@@ -46,15 +46,15 @@ impl Runnable for NyseEventCollector {
     }
 }
 
-impl Collector for NyseEventCollector {
-    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-        vec![sp500_fields::Fields::Nyse]
-    }
-
-    fn get_source(&self) -> collector_sources::CollectorSource {
-        collector_sources::CollectorSource::NyseEvents
-    }
-}
+// impl Collector for NyseEventCollector {
+//     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
+//         vec![sp500_fields::Fields::Nyse]
+//     }
+//
+//     fn get_source(&self) -> collector_sources::CollectorSource {
+//         collector_sources::CollectorSource::NyseEvents
+//     }
+// }
 
 #[derive(Default, Deserialize, Serialize, Debug)]
 struct NyseRequest {

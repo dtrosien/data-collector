@@ -12,7 +12,7 @@ use serde_json::json;
 use sqlx::PgPool;
 use tracing::info;
 
-use crate::collectors::collector::Collector;
+//use crate::collectors::collector::Collector;
 use crate::collectors::{collector_sources, sp500_fields};
 use crate::dag_scheduler::task::TaskError::UnexpectedError;
 use crate::dag_scheduler::task::{Runnable, StatsMap, TaskError};
@@ -158,15 +158,15 @@ fn filter_for_valid_datasets(input: Vec<NyseInstrument>) -> Vec<NyseInstrument> 
         .collect()
 }
 
-impl Collector for NyseInstrumentCollector {
-    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-        vec![sp500_fields::Fields::Nyse]
-    }
-
-    fn get_source(&self) -> collector_sources::CollectorSource {
-        collector_sources::CollectorSource::NyseInstruments
-    }
-}
+// impl Collector for NyseInstrumentCollector {
+//     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
+//         vec![sp500_fields::Fields::Nyse]
+//     }
+//
+//     fn get_source(&self) -> collector_sources::CollectorSource {
+//         collector_sources::CollectorSource::NyseInstruments
+//     }
+// }
 
 async fn get_amount_instruments_available(
     client: &Client,
