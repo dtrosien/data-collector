@@ -5,11 +5,10 @@ use crate::collectors::source_apis::sec_companies::SecCompanyCollector;
 use crate::collectors::staging::nyse_instruments_staging::NyseInstrumentStager;
 use crate::collectors::staging::sec_companies_staging::SecCompanyStager;
 
-use crate::dag_scheduler::task::{Runnable};
-
+use crate::dag_scheduler::task::Runnable;
 
 use reqwest::Client;
-use serde::{Deserialize};
+use serde::Deserialize;
 use sqlx::PgPool;
 use std::sync::Arc;
 

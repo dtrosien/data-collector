@@ -1,4 +1,3 @@
-
 use reqwest::Client;
 use std::collections::HashMap;
 use std::sync::Arc;

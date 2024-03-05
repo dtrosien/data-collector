@@ -1,8 +1,3 @@
-
-
-
-
-
 // pub trait Stager: Runnable + Display + Send + Sync {
 //     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields>;
 //     fn get_source(&self) -> collector_sources::CollectorSource;
