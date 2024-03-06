@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select * from nyse_instruments where symbol_esignal_ticker = 'ATAKR'",
+  "query": "select * from nyse_instruments where symbol_esignal_ticker = 'MHLA'",
   "describe": {
     "columns": [
       {
@@ -64,5 +64,5 @@
       false
     ]
   },
-  "hash": "95ef234bcf001f2194dd0622b95d9a2493750ac34de16f91e2873520e07d1e27"
+  "hash": "af165e6175d4b0f1bd21a852faa6fc8f69704b2cf7f975155d7274339c9dc0cf"
 }

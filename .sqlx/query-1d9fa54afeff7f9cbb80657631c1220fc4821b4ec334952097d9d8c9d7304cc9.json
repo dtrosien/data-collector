@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select * from master_data where issue_symbol = 'KARO'",
+  "query": "Select * from master_data where issue_symbol = 'KARO2'",
   "describe": {
     "columns": [
       {
@@ -55,48 +55,48 @@
       },
       {
         "ordinal": 10,
-        "name": "is_company",
-        "type_info": "Bool"
-      },
-      {
-        "ordinal": 11,
         "name": "category",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 12,
+        "ordinal": 11,
         "name": "renamed_to_issuer_name",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 13,
+        "ordinal": 12,
         "name": "renamed_to_issue_symbol",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 14,
+        "ordinal": 13,
         "name": "renamed_at_date",
         "type_info": "Date"
       },
       {
-        "ordinal": 15,
+        "ordinal": 14,
         "name": "current_name",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 16,
+        "ordinal": 15,
         "name": "suspended",
         "type_info": "Bool"
       },
       {
-        "ordinal": 17,
+        "ordinal": 16,
         "name": "suspension_date",
         "type_info": "Date"
       },
       {
-        "ordinal": 18,
+        "ordinal": 17,
         "name": "start_cboe",
         "type_info": "Date"
+      },
+      {
+        "ordinal": 18,
+        "name": "instrument",
+        "type_info": "Varchar"
       }
     ],
     "parameters": {
@@ -124,5 +124,5 @@
       true
     ]
   },
-  "hash": "0ad70abfde94f77f2209ff87820da187b7f3545669390baf66a71588e9397192"
+  "hash": "1d9fa54afeff7f9cbb80657631c1220fc4821b4ec334952097d9d8c9d7304cc9"
 }

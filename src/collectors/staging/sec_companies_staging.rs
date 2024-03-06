@@ -76,8 +76,7 @@ async fn move_otc_issues_to_master_data(connection_pool: &PgPool) -> Result<(), 
     sqlx::query!(
         r##" update master_data 
     set
-      is_company =  false,
-      category =    'OTC' 
+      instrument = 'OTC'
     from 
      (select sc.exchange as exchange, sc.ticker as ticker, sc.name as sec_name from sec_companies sc
         join master_data md on
@@ -120,8 +119,8 @@ async fn mark_otc_issuers_as_staged(connection_pool: &PgPool) -> Result<(), anyh
        inner join master_data md on
              sc."name" = md.issuer_name 
          and sc.ticker = md.issue_symbol 
-       where md.category = 'OTC'
-         and md.is_company notnull) a
+       where md.instrument = 'OTC'
+      ) as r
     where "name" = c_name and ticker = c_ticker"##
     )
     .execute(connection_pool)
@@ -167,7 +166,7 @@ mod test {
         start_nasdaq_select_market: Option<NaiveDate>,
         start_nasdaq_capital_market: Option<NaiveDate>,
         start_cboe: Option<NaiveDate>,
-        is_company: Option<bool>,
+        instrument: Option<String>,
         category: Option<String>,
         renamed_to_issuer_name: Option<String>,
         renamed_to_issue_symbol: Option<String>,
@@ -191,7 +190,7 @@ mod test {
             .await
             .unwrap();
         assert_eq!(
-            is_row_in_master_data("VIRCO MFG CORPORATION", "VIRC", None, None, None, db_result),
+            is_row_in_master_data("VIRCO MFG CORPORATION", "VIRC", None, None, db_result),
             false
         );
 
@@ -204,7 +203,7 @@ mod test {
             .await
             .unwrap();
         assert_eq!(
-            is_row_in_master_data("VIRCO MFG CORPORATION", "VIRC", None, None, None, db_result),
+            is_row_in_master_data("VIRCO MFG CORPORATION", "VIRC", None, None, db_result),
             true
         );
     }
@@ -263,14 +262,7 @@ mod test {
                 .await
                 .unwrap();
         assert_eq!(
-            is_row_in_master_data(
-                "VIVEVE MEDICAL, INC.",
-                "VIVE",
-                Some("USA"),
-                None,
-                None,
-                md_result,
-            ),
+            is_row_in_master_data("VIVEVE MEDICAL, INC.", "VIVE", Some("USA"), None, md_result,),
             true
         );
         //Stage OTC info to master data
@@ -283,8 +275,7 @@ mod test {
         .fetch_one(&pool)
         .await
         .unwrap();
-        assert_eq!(md_result.category.as_deref(), Some("OTC"));
-        assert_eq!(md_result.is_company, Some(false));
+        assert_eq!(md_result.instrument.as_deref(), Some("OTC"));
     }
 
     #[traced_test]
@@ -312,8 +303,7 @@ mod test {
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        assert_eq!(md_result.category, None);
-        assert_eq!(md_result.is_company, None);
+        assert_eq!(md_result.instrument, None);
 
         //Staging OTC
         move_otc_issues_to_master_data(&pool).await.unwrap();
@@ -324,16 +314,15 @@ mod test {
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        assert_eq!(md_result.category, None);
-        assert_eq!(md_result.is_company, None);
+        assert_eq!(md_result.instrument, None);
+
         //Unstaged OTC sec company entry got staged and master data entry contains OTC
         let md_result =
             sqlx::query!("select * from master_data where issuer_name = 'VIVEVE MEDICAL, INC.'")
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        assert_eq!(md_result.category.as_deref(), Some("OTC"));
-        assert_eq!(md_result.is_company, Some(false));
+        assert_eq!(md_result.instrument.as_deref(), Some("OTC"));
     }
 
     #[traced_test]
@@ -401,13 +390,13 @@ mod test {
     async fn given_data_in_sec_companies_and_otc_issuers_in_master_data_when_mark_staged_sec_companies_then_otc_sec_companies_marked_staged(
         pool: Pool<Postgres>,
     ) {
-        //Master data contains entry with OTC category and sec_companys corresponding entry is unstaged
+        //Master data contains entry with OTC instrument and sec_companys corresponding entry is unstaged
         let md_result =
             sqlx::query!("select * from master_data where issuer_name ='VIVEVE MEDICAL, INC.'")
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        assert_eq!(md_result.category.as_deref(), Some("OTC"));
+        assert_eq!(md_result.instrument.as_deref(), Some("OTC"));
         let sc_result =
             sqlx::query!("select * from sec_companies where name = 'VIVEVE MEDICAL, INC.'")
                 .fetch_one(&pool)
@@ -458,7 +447,7 @@ mod test {
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        assert_eq!(md_result.category.as_deref(), Some("OTC"));
+        assert_eq!(md_result.instrument.as_deref(), Some("OTC"));
         assert_eq!(md_result.location.as_deref(), Some("USA"));
 
         let sc_result =
@@ -497,16 +486,14 @@ mod test {
         issuer_name: &str,
         issue_symbol: &str,
         location: Option<&str>,
-        is_company: Option<bool>,
-        category: Option<&str>,
+        instrument: Option<&str>,
         master_data: Vec<MasterDataRow>,
     ) -> bool {
         master_data.iter().any(|row| {
             row.issuer_name.eq(issuer_name)
                 && row.issue_symbol.eq(issue_symbol)
                 && row.location.as_deref().eq(&location)
-                && row.is_company.eq(&is_company)
-                && row.category.as_deref().eq(&category)
+                && row.instrument.as_deref().eq(&instrument)
         })
     }
 

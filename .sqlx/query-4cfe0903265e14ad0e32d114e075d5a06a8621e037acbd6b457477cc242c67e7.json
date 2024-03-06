@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select * from nyse_instruments where symbol_esignal_ticker = 'BOH'",
+  "query": "select * from nyse_instruments where instrument_type notnull",
   "describe": {
     "columns": [
       {
@@ -64,5 +64,5 @@
       false
     ]
   },
-  "hash": "76c6902e1f70508d4d5ee9c3ff6043f8bc69efb1076f084f37ed61c79dcce8b6"
+  "hash": "4cfe0903265e14ad0e32d114e075d5a06a8621e037acbd6b457477cc242c67e7"
 }
