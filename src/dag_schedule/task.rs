@@ -322,14 +322,83 @@ fn derive_back_off_time(options: RetryOptions, current_retry_count: u32) -> Dura
 
 #[cfg(test)]
 mod test {
-    #[ignore]
+    use crate::dag_schedule::task::{retry, BackOff, RetryOptions, TaskError};
+    use std::cell::RefCell;
+
+    use std::rc::Rc;
+    use std::time::Duration;
+
     #[tokio::test]
     async fn test_retry_logic() {
-        todo!()
+        let r = RetryOptions {
+            max_retries: 3,
+            back_off: BackOff::Constant {
+                back_off: Duration::from_millis(10),
+            },
+        };
+        let counter = Rc::new(RefCell::new(5));
+        match retry(r, || run(counter.clone())).await {
+            Ok(_) => {
+                panic!("last try must fail for this test")
+            }
+            Err(_) => {
+                // 4 trys total: 1 regular + 3 retry
+                assert_eq!(counter.take(), 1);
+            }
+        };
     }
-    #[ignore]
+
     #[tokio::test]
-    async fn test_back_off_logic() {
-        todo!()
+    async fn test_exponential_back_off_logic() {
+        let r = RetryOptions {
+            max_retries: 7,
+            back_off: BackOff::Exponential {
+                base: 2,
+                min_back_off: Duration::from_millis(2),
+                max_back_off: Duration::from_millis(400),
+            },
+        };
+        // start time
+        let t1 = std::time::SystemTime::now();
+        let counter = Rc::new(RefCell::new(7));
+        retry(r, || run(counter.clone())).await.unwrap();
+
+        // end time
+        let t2 = std::time::SystemTime::now();
+
+        let total_duration = t2.duration_since(t1).unwrap().as_millis();
+        assert_eq!(counter.take(), 0);
+        assert!((260..270).contains(&total_duration))
+    }
+
+    #[tokio::test]
+    async fn test_linear_back_off_logic() {
+        let r = RetryOptions {
+            max_retries: 2,
+            back_off: BackOff::Linear {
+                min_back_off: Duration::from_millis(1),
+                max_back_off: Duration::from_millis(100),
+            },
+        };
+        // start time
+        let t1 = std::time::SystemTime::now();
+        let counter = Rc::new(RefCell::new(2));
+        retry(r, || run(counter.clone())).await.unwrap();
+
+        // end time
+        let t2 = std::time::SystemTime::now();
+
+        let total_duration = t2.duration_since(t1).unwrap().as_millis();
+        assert_eq!(counter.take(), 0);
+        assert!((150..155).contains(&total_duration))
+    }
+
+    async fn run(counter: Rc<RefCell<u8>>) -> Result<Option<()>, TaskError> {
+        let mut counter_ref = counter.borrow_mut();
+        if *counter_ref > 0 {
+            *counter_ref = counter_ref.saturating_sub(1);
+            return Err(TaskError::NoExecutionError);
+        }
+        Ok(Some(()))
     }
 }
