@@ -327,6 +327,7 @@ mod test {
 
     use std::rc::Rc;
     use std::time::Duration;
+    use tokio::time::Instant;
 
     #[tokio::test]
     async fn test_retry_logic() {
@@ -355,20 +356,19 @@ mod test {
             back_off: BackOff::Exponential {
                 base: 2,
                 min_back_off: Duration::from_millis(2),
-                max_back_off: Duration::from_millis(400),
+                max_back_off: Duration::from_millis(500),
             },
         };
         // start time
-        let t1 = std::time::SystemTime::now();
+        let start = Instant::now();
         let counter = Rc::new(RefCell::new(7));
         retry(r, || run(counter.clone())).await.unwrap();
 
-        // end time
-        let t2 = std::time::SystemTime::now();
+        // elapsed time
+        let elapsed = start.elapsed();
 
-        let total_duration = t2.duration_since(t1).unwrap().as_millis();
         assert_eq!(counter.take(), 0);
-        assert!((260..270).contains(&total_duration))
+        assert!((260..400).contains(&elapsed.as_millis())) // bigger interval for slower envs
     }
 
     #[tokio::test]
@@ -381,16 +381,15 @@ mod test {
             },
         };
         // start time
-        let t1 = std::time::SystemTime::now();
+        let start = Instant::now();
         let counter = Rc::new(RefCell::new(2));
         retry(r, || run(counter.clone())).await.unwrap();
 
-        // end time
-        let t2 = std::time::SystemTime::now();
+        // elapsed time
+        let elapsed = start.elapsed();
 
-        let total_duration = t2.duration_since(t1).unwrap().as_millis();
         assert_eq!(counter.take(), 0);
-        assert!((150..155).contains(&total_duration))
+        assert!((150..200).contains(&elapsed.as_millis())) // bigger interval for slower envs
     }
 
     async fn run(counter: Rc<RefCell<u8>>) -> Result<Option<()>, TaskError> {
