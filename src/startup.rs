@@ -41,7 +41,7 @@ impl Application {
         // build adj list from specs
         let task_dep_specs = add_dependencies_to_task_specs(task_specs, &self.task_dependencies);
 
-        // schedule and run
+        // schedule, check resulting dag and run
         let mut schedule = Schedule::new();
         schedule.schedule_tasks(task_dep_specs).await;
         schedule.run_checks().await;

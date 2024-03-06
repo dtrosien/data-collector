@@ -4,6 +4,8 @@ use anyhow::anyhow;
 use futures_util::future::{try_join_all, BoxFuture};
 use tokio::task::JoinHandle;
 
+// todo delete future utils, if not needed for error handling in the future (scnr)
+
 /// Joins all results from handles into one,
 /// if any future returns an error then all other handles will
 /// be canceled and an error will be returned immediately
