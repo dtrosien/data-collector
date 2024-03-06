@@ -134,7 +134,7 @@ mod test {
     use sqlx::{Pool, Postgres};
     use tracing_test::traced_test;
 
-    use crate::collectors::staging::sec_companies_staging::{
+    use crate::actions::stage::sec_companies::{
         derive_country_from_sec_code, mark_otc_issuers_as_staged, stage_data,
     };
 

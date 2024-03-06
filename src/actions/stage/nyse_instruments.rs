@@ -200,7 +200,7 @@ mod test {
     use sqlx::{query, Pool, Postgres};
     use tracing_test::traced_test;
 
-    use crate::collectors::staging::nyse_instruments_staging::{
+    use crate::actions::stage::nyse_instruments::{
         copy_instruments_to_master_data, mark_already_staged_instruments_as_staged,
     };
 

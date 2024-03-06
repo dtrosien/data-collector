@@ -2,9 +2,9 @@ use secrecy::{ExposeSecret, Secret};
 use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 
-use crate::collectors::collector_sources::CollectorSource;
-use crate::collectors::sp500_fields;
-use crate::tasks::actions::action::ActionType;
+use crate::actions::action::ActionType;
+use crate::actions::collector_sources::CollectorSource;
+use crate::actions::sp500_fields;
 
 #[derive(serde::Deserialize)]
 pub struct Settings {

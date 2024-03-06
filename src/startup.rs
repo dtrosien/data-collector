@@ -6,9 +6,9 @@ use crate::configuration::{
     DatabaseSettings, HttpClientSettings, Settings, TaskDependency, TaskName, TaskSetting,
 };
 
+use crate::actions::action::create_action;
 use crate::dag_schedule::schedule::{Schedule, TaskDependenciesSpecs, TaskSpec, TaskSpecRef};
 use crate::dag_schedule::task::{ExecutionMode, RetryOptions};
-use crate::tasks::actions::action::create_action;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use uuid::Uuid;

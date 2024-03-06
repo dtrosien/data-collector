@@ -28,6 +28,7 @@ use tokio::task::JoinHandle;
 use tracing::log::warn;
 use uuid::Uuid;
 
+#[allow(dead_code)]
 pub struct ExecutionStats {
     is_error: bool,
     runtime: Duration,
@@ -35,8 +36,9 @@ pub struct ExecutionStats {
     pub custom_stats: Option<StatsMap>,
 }
 
+#[allow(dead_code)]
 pub struct Trigger {
-    is_error: bool,
+    _is_error: bool,
     next_tasks: Vec<TaskRef>,
 }
 
@@ -83,7 +85,7 @@ pub enum TaskError {
     #[error("The action of the task failed")]
     ClientRequestError(#[source] reqwest::Error),
     #[error("Something went wrong")]
-    UnexpectedError(#[source] anyhow::Error),
+    UnexpectedError(#[source] Error),
     #[error("Nothing was executed")]
     NoExecutionError,
 }

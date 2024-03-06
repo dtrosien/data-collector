@@ -16,7 +16,7 @@ use uuid::Uuid;
 pub struct Schedule {
     source_tasks: Vec<TaskRef>,
     tasks: HashMap<Uuid, TaskRef>,
-    results: HashMap<Uuid, anyhow::Result<ExecutionStats, TaskError>>,
+    _results: HashMap<Uuid, anyhow::Result<ExecutionStats, TaskError>>,
     num_reachable_tasks: usize,
     num_tasks: usize,
     // trigger_receiver: Option<mpsc::Receiver<(bool, Vec<TaskRef>)>>,
@@ -61,7 +61,7 @@ impl Schedule {
         Schedule {
             source_tasks: Default::default(),
             tasks: Default::default(),
-            results: Default::default(),
+            _results: Default::default(),
             num_reachable_tasks: 0,
             num_tasks: 0,
             // trigger_receiver: None,
