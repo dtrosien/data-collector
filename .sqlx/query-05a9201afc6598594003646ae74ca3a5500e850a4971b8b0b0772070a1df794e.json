@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    update nyse_instruments  set is_staged = true\n    from   (select issue_symbol\n            from master_data\n            where instrument notnull\n            ) as r\n    where\n        replace(symbol_esignal_ticker,'/','-') = r.issue_symbol;",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "05a9201afc6598594003646ae74ca3a5500e850a4971b8b0b0772070a1df794e"
+}
