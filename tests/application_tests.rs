@@ -1,9 +1,8 @@
-
+use data_collector::actions::action::ActionType;
 use data_collector::configuration::{
     get_configuration, DatabaseSettings, TaskDependency, TaskSetting,
 };
 use data_collector::startup::Application;
-use data_collector::actions::action::ActionType;
 use data_collector::utils::telemetry::{get_subscriber, init_subscriber};
 use sqlx::types::Uuid;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
