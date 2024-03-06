@@ -1,4 +1,4 @@
-use crate::dag_scheduler::task::{
+use crate::dag_schedule::task::{
     CycleCheck, ExecutionMode, ExecutionStats, RetryOptions, Runnable, Task, TaskError, TaskRef,
     Tools,
 };
@@ -261,8 +261,8 @@ impl Schedule {
 
 #[cfg(test)]
 mod test {
-    use crate::dag_scheduler::scheduler::{Schedule, TaskDependenciesSpecs, TaskSpec, TaskSpecRef};
-    use crate::dag_scheduler::task::{ExecutionMode, RetryOptions, Runnable, StatsMap};
+    use crate::dag_schedule::schedule::{Schedule, TaskDependenciesSpecs, TaskSpec, TaskSpecRef};
+    use crate::dag_schedule::task::{ExecutionMode, RetryOptions, Runnable, StatsMap};
     use async_trait::async_trait;
     use rand::rngs::OsRng;
     use rand::seq::SliceRandom;
@@ -441,7 +441,7 @@ mod test {
 
     #[async_trait]
     impl Runnable for TestRunner {
-        async fn run(&self) -> Result<Option<StatsMap>, crate::dag_scheduler::task::TaskError> {
+        async fn run(&self) -> Result<Option<StatsMap>, crate::dag_schedule::task::TaskError> {
             let stats: StatsMap = Arc::new(Mutex::new(HashMap::new()));
             let mut rng = OsRng;
             let number = rng.gen_range(1..=30);

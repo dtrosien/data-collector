@@ -1,6 +1,6 @@
 pub mod collectors;
 pub mod configuration;
-pub mod dag_scheduler;
+pub mod dag_schedule;
 //pub mod scheduler;
 pub mod startup;
 pub mod tasks;

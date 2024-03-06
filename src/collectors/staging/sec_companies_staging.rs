@@ -6,8 +6,8 @@ use futures_util::TryFutureExt;
 use sqlx::PgPool;
 use std::fmt::Display;
 
-use crate::dag_scheduler::task::TaskError::UnexpectedError;
-use crate::dag_scheduler::task::{Runnable, StatsMap, TaskError};
+use crate::dag_schedule::task::TaskError::UnexpectedError;
+use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 #[derive(Clone)]
 pub struct SecCompanyStager {

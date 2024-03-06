@@ -20,8 +20,8 @@ use zip::ZipArchive;
 use tokio_stream::StreamExt;
 
 //use crate::collectors::collector::Collector;
-use crate::dag_scheduler::task::TaskError::UnexpectedError;
-use crate::dag_scheduler::task::{Runnable, StatsMap};
+use crate::dag_schedule::task::TaskError::UnexpectedError;
+use crate::dag_schedule::task::{Runnable, StatsMap};
 use tracing::debug;
 
 use crate::utils::telemetry::spawn_blocking_with_tracing;
@@ -89,7 +89,7 @@ impl Display for SecCompanyCollector {
 
 #[async_trait]
 impl Runnable for SecCompanyCollector {
-    async fn run(&self) -> Result<Option<StatsMap>, crate::dag_scheduler::task::TaskError> {
+    async fn run(&self) -> Result<Option<StatsMap>, crate::dag_schedule::task::TaskError> {
         load_and_store_missing_data(self.pool.clone(), self.client.clone())
             .await
             .map_err(UnexpectedError)?;

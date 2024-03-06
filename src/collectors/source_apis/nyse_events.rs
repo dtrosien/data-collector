@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 //use crate::collectors::collector::Collector;
 use crate::collectors::utils;
 
-use crate::dag_scheduler::task::{Runnable, StatsMap, TaskError};
+use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
-use crate::dag_scheduler::task::TaskError::UnexpectedError;
+use crate::dag_schedule::task::TaskError::UnexpectedError;
 use sqlx::PgPool;
 use tracing::{debug, info, warn};
 

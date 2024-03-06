@@ -1,5 +1,5 @@
-use crate::dag_scheduler::task::TaskError::UnexpectedError;
-use crate::dag_scheduler::task::{StatsMap, TaskError};
+use crate::dag_schedule::task::TaskError::UnexpectedError;
+use crate::dag_schedule::task::{StatsMap, TaskError};
 use anyhow::anyhow;
 use futures_util::future::{try_join_all, BoxFuture};
 use tokio::task::JoinHandle;

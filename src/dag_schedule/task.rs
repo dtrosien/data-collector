@@ -10,12 +10,12 @@
 // Callback or Notification Mechanism: A way to notify other systems or components upon task completion or failure. This can be useful for triggering downstream processes.
 // Metadata: Additional information like task creator, creation date, last modified date, etc., for audit and tracking purposes.
 
-use crate::dag_scheduler::scheduler::TaskSpecRef;
+use crate::dag_schedule::schedule::TaskSpecRef;
 use async_trait::async_trait;
 use std::any::Any;
 use std::collections::HashMap;
 
-use crate::dag_scheduler::task::TaskError::NoExecutionError;
+use crate::dag_schedule::task::TaskError::NoExecutionError;
 use anyhow::Error;
 use std::future::Future;
 use std::hash::{Hash, Hasher};

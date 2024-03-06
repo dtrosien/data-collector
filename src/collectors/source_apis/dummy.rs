@@ -1,4 +1,4 @@
-use crate::dag_scheduler::task::{Runnable, StatsMap, TaskError};
+use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 use async_trait::async_trait;
 use core::fmt::{Display, Formatter};

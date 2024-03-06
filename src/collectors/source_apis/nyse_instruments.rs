@@ -14,8 +14,8 @@ use tracing::info;
 
 //use crate::collectors::collector::Collector;
 
-use crate::dag_scheduler::task::TaskError::UnexpectedError;
-use crate::dag_scheduler::task::{Runnable, StatsMap, TaskError};
+use crate::dag_schedule::task::TaskError::UnexpectedError;
+use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 const URL: &str = "https://www.nyse.com/api/quotes/filter";
 

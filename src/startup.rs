@@ -6,8 +6,8 @@ use crate::configuration::{
     DatabaseSettings, HttpClientSettings, Settings, TaskDependency, TaskName, TaskSetting,
 };
 
-use crate::dag_scheduler::scheduler::{Schedule, TaskDependenciesSpecs, TaskSpec, TaskSpecRef};
-use crate::dag_scheduler::task::{ExecutionMode, RetryOptions};
+use crate::dag_schedule::schedule::{Schedule, TaskDependenciesSpecs, TaskSpec, TaskSpecRef};
+use crate::dag_schedule::task::{ExecutionMode, RetryOptions};
 use crate::tasks::actions::action::create_action;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -63,7 +63,7 @@ fn build_task_specs(
             let task_spec = TaskSpec {
                 id: Uuid::new_v4(),
                 name: task_name.clone(),
-                retry_options: RetryOptions::default(),
+                retry_options: RetryOptions::default(), // todo read from config
                 execution_mode: ExecutionMode::Once,
                 tools: Arc::new(Default::default()),
                 runnable: action,

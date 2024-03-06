@@ -9,8 +9,8 @@ use std::fmt::Display;
 
 use tracing::info;
 
-use crate::dag_scheduler::task::TaskError::UnexpectedError;
-use crate::dag_scheduler::task::{Runnable, StatsMap, TaskError};
+use crate::dag_schedule::task::TaskError::UnexpectedError;
+use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 // #[derive(Debug, Deserialize, Display, EnumIter, PartialEq)]
 // #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
