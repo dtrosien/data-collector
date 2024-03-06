@@ -96,16 +96,6 @@ impl Runnable for SecCompanyCollector {
     }
 }
 
-// impl Collector for SecCompanyCollector {
-//     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-//         vec![sp500_fields::Fields::Nyse]
-//     }
-//
-//     fn get_source(&self) -> collector_sources::CollectorSource {
-//         collector_sources::CollectorSource::SecCompanies
-//     }
-// }
-
 pub async fn load_and_store_missing_data(
     connection_pool: PgPool,
     client: Client,

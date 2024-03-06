@@ -26,24 +26,6 @@ impl Display for SecCompanyStager {
     }
 }
 
-// impl Stager for SecCompanyStager {
-//     /// Take fields from the matching collector
-//     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-//         SecCompanyCollector::new(self.pool.clone(), Client::new()).get_sp_fields()
-//         // todo: do we really want to init a Collector here? (Client is only here so it can compile)
-//     }
-//
-//     /// Take fields from the matching collector
-//     fn get_source(&self) -> collector_sources::CollectorSource {
-//         SecCompanyCollector::new(self.pool.clone(), Client::new()).get_source()
-//         // todo: do we really want to init a Collector here? (Client is only here so it can compile)
-//     }
-//
-//     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-//         write!(f, "Stager of source: {}", Stager::get_source(self))
-//     }
-// }
-
 #[async_trait]
 impl Runnable for SecCompanyStager {
     async fn run(&self) -> Result<Option<StatsMap>, TaskError> {

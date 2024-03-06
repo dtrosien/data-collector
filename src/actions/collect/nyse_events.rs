@@ -45,16 +45,6 @@ impl Runnable for NyseEventCollector {
     }
 }
 
-// impl Collector for NyseEventCollector {
-//     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-//         vec![sp500_fields::Fields::Nyse]
-//     }
-//
-//     fn get_source(&self) -> collector_sources::CollectorSource {
-//         collector_sources::CollectorSource::NyseEvents
-//     }
-// }
-
 #[derive(Default, Deserialize, Serialize, Debug)]
 struct NyseRequest {
     #[serde(rename = "action_date__gte")]
