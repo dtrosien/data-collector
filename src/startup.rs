@@ -36,10 +36,20 @@ impl Application {
     #[tracing::instrument(name = "Start running tasks", skip(self))]
     pub async fn run(&self) -> Result<(), anyhow::Error> {
         // init specs from config
-        let task_specs = build_task_specs(&self.task_settings, &self.pool, &self.client);
+        let task_specs = build_task_specs(
+            &self.task_settings,
+            &self.task_dependencies,
+            &self.pool,
+            &self.client,
+        );
 
         // build adj list from specs
         let task_dep_specs = add_dependencies_to_task_specs(task_specs, &self.task_dependencies);
+
+        // todo remove after proper logging
+        // task_dep_specs
+        //     .iter()
+        //     .for_each(|(a, b)| b.iter().for_each(|c| println!("{}:{}", a.name, c.name)));
 
         // schedule, check resulting dag and run
         let mut schedule = Schedule::new();
@@ -52,11 +62,16 @@ impl Application {
 
 fn build_task_specs(
     task_settings: &[TaskSetting],
+    task_dependencies: &[TaskDependency],
     pool: &PgPool,
     client: &Client,
 ) -> HashMap<TaskName, TaskSpecRef> {
+    let required_tasks: Vec<TaskName> = task_dependencies.iter().map(|t| t.name.clone()).collect();
+
     task_settings
         .iter()
+        // only tasks in the dependency list shall be executed
+        .filter(|ts| required_tasks.contains(&ts.name))
         .map(|ts| {
             let task_name: TaskName = ts.name.clone();
             let action = create_action(&ts.task_type, pool, client);
@@ -83,6 +98,7 @@ fn add_dependencies_to_task_specs(
         .map(|task_specs_ref| {
             let deps: Vec<TaskSpecRef> = task_dependencies
                 .iter()
+                .filter(|task_dependency| task_dependency.name == task_specs_ref.name)
                 .flat_map(|task_dependency| &task_dependency.dependencies)
                 .filter_map(|task_name| task_specs_map.get(task_name))
                 .cloned()
