@@ -1,15 +1,13 @@
-use crate::collectors::collector::Collector;
-use crate::collectors::stagers::Stager;
+// use crate::collectors::collector::Collector;
+// use crate::collectors::stagers::Stager;
 use async_trait::async_trait;
 use futures_util::TryFutureExt;
-use reqwest::Client;
+
 use sqlx::PgPool;
 use std::fmt::Display;
 
-use crate::collectors::source_apis::sec_companies::SecCompanyCollector;
-use crate::collectors::{collector_sources, sp500_fields};
-use crate::tasks::runnable::Runnable;
-use crate::tasks::task::TaskError;
+use crate::dag_schedule::task::TaskError::UnexpectedError;
+use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 #[derive(Clone)]
 pub struct SecCompanyStager {
@@ -28,30 +26,13 @@ impl Display for SecCompanyStager {
     }
 }
 
-impl Stager for SecCompanyStager {
-    /// Take fields from the matching collector
-    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-        SecCompanyCollector::new(self.pool.clone(), Client::new()).get_sp_fields()
-        // todo: do we really want to init a Collector here? (Client is only here so it can compile)
-    }
-
-    /// Take fields from the matching collector
-    fn get_source(&self) -> collector_sources::CollectorSource {
-        SecCompanyCollector::new(self.pool.clone(), Client::new()).get_source()
-        // todo: do we really want to init a Collector here? (Client is only here so it can compile)
-    }
-
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Stager of source: {}", Stager::get_source(self))
-    }
-}
-
 #[async_trait]
 impl Runnable for SecCompanyStager {
-    async fn run(&self) -> Result<(), TaskError> {
+    async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
         stage_data(self.pool.clone())
-            .map_err(TaskError::UnexpectedError)
-            .await
+            .map_err(UnexpectedError)
+            .await?;
+        Ok(None)
     }
 }
 
@@ -77,7 +58,7 @@ async fn move_otc_issues_to_master_data(connection_pool: &PgPool) -> Result<(), 
     sqlx::query!(
         r##" update master_data 
     set
-      instrument = 'OTC' 
+      instrument = 'OTC'
     from 
      (select sc.exchange as exchange, sc.ticker as ticker, sc.name as sec_name from sec_companies sc
         join master_data md on
@@ -104,8 +85,8 @@ async fn derive_country_from_sec_code(connection_pool: &PgPool) -> Result<(), an
            on c.sec_code = sc.state_of_incorporation  
        where is_staged = false) a
     where issuer_name = c_name and issue_symbol = ticker"##)
-    .execute(connection_pool)
-    .await?;
+        .execute(connection_pool)
+        .await?;
     Ok(())
 }
 
@@ -135,7 +116,7 @@ mod test {
     use sqlx::{Pool, Postgres};
     use tracing_test::traced_test;
 
-    use crate::collectors::staging::sec_companies_staging::{
+    use crate::actions::stage::sec_companies::{
         derive_country_from_sec_code, mark_otc_issuers_as_staged, stage_data,
     };
 
@@ -263,7 +244,7 @@ mod test {
                 .await
                 .unwrap();
         assert_eq!(
-            is_row_in_master_data("VIVEVE MEDICAL, INC.", "VIVE", Some("USA"), None, md_result),
+            is_row_in_master_data("VIVEVE MEDICAL, INC.", "VIVE", Some("USA"), None, md_result,),
             true
         );
         //Stage OTC info to master data

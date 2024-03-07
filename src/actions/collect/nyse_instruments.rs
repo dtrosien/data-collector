@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use std::fmt::Display;
 
-use crate::{collectors::utils, tasks::runnable::Runnable};
+use crate::utils::action_helpers;
 
 use async_trait::async_trait;
 use futures_util::TryFutureExt;
@@ -12,9 +12,8 @@ use serde_json::json;
 use sqlx::PgPool;
 use tracing::info;
 
-use crate::collectors::collector::Collector;
-use crate::collectors::{collector_sources, sp500_fields};
-use crate::tasks::task::TaskError;
+use crate::dag_schedule::task::TaskError::UnexpectedError;
+use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 const URL: &str = "https://www.nyse.com/api/quotes/filter";
 
@@ -38,10 +37,11 @@ impl Display for NyseInstrumentCollector {
 
 #[async_trait]
 impl Runnable for NyseInstrumentCollector {
-    async fn run(&self) -> Result<(), TaskError> {
+    async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
         load_and_store_missing_data(self.pool.clone(), self.client.clone())
-            .map_err(TaskError::UnexpectedError)
-            .await
+            .map_err(UnexpectedError)
+            .await?;
+        Ok(None)
     }
 }
 
@@ -105,7 +105,7 @@ async fn load_and_store_missing_data_given_url(
             .await?
             .text()
             .await?;
-        let instruments = utils::parse_response::<Vec<NyseInstrument>>(&response)?;
+        let instruments = action_helpers::parse_response::<Vec<NyseInstrument>>(&response)?;
         let instruments = transpose_nyse_instruments(instruments);
         sqlx::query!("INSERT INTO nyse_instruments 
         (instrument_name, instrument_type, symbol_ticker, symbol_exchange_ticker, normalized_ticker, symbol_esignal_ticker, mic_code)
@@ -156,16 +156,6 @@ fn filter_for_valid_datasets(input: Vec<NyseInstrument>) -> Vec<NyseInstrument> 
         .collect()
 }
 
-impl Collector for NyseInstrumentCollector {
-    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-        vec![sp500_fields::Fields::Nyse]
-    }
-
-    fn get_source(&self) -> collector_sources::CollectorSource {
-        collector_sources::CollectorSource::NyseInstruments
-    }
-}
-
 async fn get_amount_instruments_available(
     client: &Client,
     url: &str,
@@ -178,7 +168,7 @@ async fn get_amount_instruments_available(
         .await?
         .text()
         .await?;
-    let response = utils::parse_response::<Vec<NysePeekResponse>>(&response)?;
+    let response = action_helpers::parse_response::<Vec<NysePeekResponse>>(&response)?;
 
     match response.first() {
         Some(some) => Ok(some.total),
@@ -204,7 +194,7 @@ mod test {
     use chrono::Utc;
     use httpmock::{Method::POST, MockServer};
 
-    use crate::collectors::{source_apis::nyse_instruments::NysePeekResponse, utils};
+    use crate::actions::collect::nyse_instruments::NysePeekResponse;
     use crate::utils::test_helpers::get_test_client;
     use sqlx::{Pool, Postgres};
     use tracing_test::traced_test;
@@ -214,7 +204,7 @@ mod test {
     #[test]
     fn parse_nyse_instruments_response_with_one_result() {
         let input_json = r#"[{"total":13202,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"A","normalizedTicker":"A","symbolEsignalTicker":"A","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]"#;
-        let parsed = utils::parse_response::<Vec<NyseInstrument>>(input_json).unwrap();
+        let parsed = action_helpers::parse_response::<Vec<NyseInstrument>>(input_json).unwrap();
         let instrument = NyseInstrument {
             instrument_type: "COMMON_STOCK".to_string(),
             symbol_ticker: "A".to_string(),
@@ -230,7 +220,7 @@ mod test {
     #[test]
     fn parse_nyse_instruments_peek_response_with_one_result() {
         let input_json = r#"[{"total":13202,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"A","normalizedTicker":"A","symbolEsignalTicker":"A","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]"#;
-        let parsed = utils::parse_response::<Vec<NysePeekResponse>>(input_json).unwrap();
+        let parsed = action_helpers::parse_response::<Vec<NysePeekResponse>>(input_json).unwrap();
         let instrument = NysePeekResponse { total: 13202 };
         assert_eq!(parsed[0], instrument);
     }

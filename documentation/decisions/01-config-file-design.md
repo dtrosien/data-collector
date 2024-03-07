@@ -1,4 +1,4 @@
-# How to design the config file
+# How to design the config file [deprecated]
 
 ## Status
 

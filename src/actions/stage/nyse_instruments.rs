@@ -1,8 +1,4 @@
-use crate::collectors::collector::Collector;
-use crate::collectors::source_apis::nyse_instruments::NyseInstrumentCollector;
-use crate::collectors::stagers::Stager;
 use async_trait::async_trait;
-use reqwest::Client;
 
 use sqlx::PgPool;
 
@@ -10,9 +6,8 @@ use std::fmt::Display;
 
 use tracing::info;
 
-use crate::collectors::{collector_sources, sp500_fields};
-use crate::tasks::runnable::Runnable;
-use crate::tasks::task::TaskError;
+use crate::dag_schedule::task::TaskError::UnexpectedError;
+use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 // #[derive(Debug, Deserialize, Display, EnumIter, PartialEq)]
 // #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
@@ -71,30 +66,13 @@ impl Display for NyseInstrumentStager {
     }
 }
 
-impl Stager for NyseInstrumentStager {
-    /// Take fields from the matching collector
-    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-        NyseInstrumentCollector::new(self.pool.clone(), Client::new()).get_sp_fields()
-        // todo: do we really want to init a Collector here? (Client is only here so it can compile)
-    }
-
-    /// Take fields from the matching collector
-    fn get_source(&self) -> collector_sources::CollectorSource {
-        NyseInstrumentCollector::new(self.pool.clone(), Client::new()).get_source()
-        // todo: do we really want to init a Collector here? (Client is only here so it can compile)
-    }
-
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Stager of source: {}", Stager::get_source(self))
-    }
-}
-
 #[async_trait]
 impl Runnable for NyseInstrumentStager {
-    async fn run(&self) -> Result<(), TaskError> {
+    async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
         stage_data(self.pool.clone())
             .await
-            .map_err(TaskError::UnexpectedError)
+            .map_err(UnexpectedError)?;
+        Ok(None)
     }
 }
 
@@ -154,8 +132,8 @@ async fn mark_stock_exchange_per_stock_as_current_date(
                     where is_staged = false
                 ) as r
             where master_data.issuer_name = r.issuer_name and master_data.issue_symbol = r.issue_symbol"##)
-    .execute(connection_pool)
-    .await?;
+        .execute(connection_pool)
+        .await?;
     Ok(())
 }
 
@@ -163,7 +141,7 @@ async fn copy_instruments_to_master_data(connection_pool: &PgPool) -> Result<(),
     sqlx::query!(
         r##"
         update master_data set instrument = instrument_type
-        from (select replace(symbol_esignal_ticker,'/','-') as ni_ticker, instrument_type 
+        from (select replace(symbol_esignal_ticker,'/','-') as ni_ticker, instrument_type
                 from
                    nyse_instruments ni
                 where
@@ -182,12 +160,12 @@ async fn mark_already_staged_instruments_as_staged(
 ) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##"
-    update nyse_instruments  set is_staged = true 
-    from   (select issue_symbol  
+    update nyse_instruments  set is_staged = true
+    from   (select issue_symbol
             from master_data
             where instrument notnull
             ) as r
-    where 
+    where
         replace(symbol_esignal_ticker,'/','-') = r.issue_symbol;"##
     )
     .execute(connection_pool)
@@ -201,7 +179,7 @@ mod test {
     use sqlx::{query, Pool, Postgres};
     use tracing_test::traced_test;
 
-    use crate::collectors::staging::nyse_instruments_staging::{
+    use crate::actions::stage::nyse_instruments::{
         copy_instruments_to_master_data, mark_already_staged_instruments_as_staged,
     };
 

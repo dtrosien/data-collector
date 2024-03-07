@@ -1,4 +1,3 @@
-use crate::collectors::{self, collector_sources, sp500_fields};
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use chrono::{DateTime, Days, Utc};
@@ -19,11 +18,11 @@ use zip::ZipArchive;
 
 use tokio_stream::StreamExt;
 
-use crate::collectors::collector::Collector;
+use crate::dag_schedule::task::TaskError::UnexpectedError;
+use crate::dag_schedule::task::{Runnable, StatsMap};
+use crate::utils;
 use tracing::debug;
 
-use crate::tasks::runnable::Runnable;
-use crate::tasks::task::TaskError;
 use crate::utils::telemetry::spawn_blocking_with_tracing;
 
 const DOWNLOAD_SOURCE: &str =
@@ -89,20 +88,11 @@ impl Display for SecCompanyCollector {
 
 #[async_trait]
 impl Runnable for SecCompanyCollector {
-    async fn run(&self) -> Result<(), TaskError> {
+    async fn run(&self) -> Result<Option<StatsMap>, crate::dag_schedule::task::TaskError> {
         load_and_store_missing_data(self.pool.clone(), self.client.clone())
             .await
-            .map_err(TaskError::UnexpectedError)
-    }
-}
-
-impl Collector for SecCompanyCollector {
-    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-        vec![sp500_fields::Fields::Nyse]
-    }
-
-    fn get_source(&self) -> collector_sources::CollectorSource {
-        collector_sources::CollectorSource::SecCompanies
+            .map_err(UnexpectedError)?;
+        Ok(None)
     }
 }
 
@@ -165,7 +155,7 @@ fn search_and_shrink_zip(
             std::io::copy(&mut file, &mut cursor)?;
         }
         let output = String::from_utf8_lossy(cursor.into_inner()).to_string();
-        let infos: SecCompany = collectors::utils::parse_response(&output)?;
+        let infos: SecCompany = utils::action_helpers::parse_response(&output)?;
         if !infos.exchanges.is_empty() || !infos.tickers.is_empty() {
             found_data.push(infos);
             new_zip.raw_copy_file(zip_archive.by_index(i)?)?;
@@ -312,7 +302,7 @@ fn transpose_sec_companies(companies: Vec<SecCompany>) -> TransposedSecCompany {
 mod test {
     use std::{fs::File, path::PathBuf};
 
-    use crate::collectors::source_apis::sec_companies::{
+    use crate::actions::collect::sec_companies::{
         load_and_store_missing_data_with_targets, prepare_zip_location, TARGET_FILE_NAME,
     };
     use crate::utils::test_helpers::get_test_client;

@@ -1,13 +1,16 @@
-use crate::tasks::task::TaskError;
+use crate::dag_schedule::task::TaskError::UnexpectedError;
+use crate::dag_schedule::task::{StatsMap, TaskError};
 use anyhow::anyhow;
-use futures_util::future::{join_all, try_join_all, BoxFuture};
+use futures_util::future::{try_join_all, BoxFuture};
 use tokio::task::JoinHandle;
+
+// todo delete future utils, if not needed for error handling in the future (scnr)
 
 /// Joins all results from handles into one,
 /// if any future returns an error then all other handles will
 /// be canceled and an error will be returned immediately
 pub async fn join_handle_results_strict(
-    handles: Vec<JoinHandle<Result<(), TaskError>>>,
+    handles: Vec<JoinHandle<Result<Option<StatsMap>, TaskError>>>,
 ) -> Result<(), anyhow::Error> {
     try_join_all(handles)
         .await
@@ -18,8 +21,8 @@ pub async fn join_handle_results_strict(
 /// Joins all results from handles into one,
 /// if any future returns an error all other handles will still be processed
 pub async fn join_task_handle_results(
-    handles: Vec<JoinHandle<Result<(), TaskError>>>,
-) -> Result<(), TaskError> {
+    handles: Vec<JoinHandle<Result<Option<StatsMap>, TaskError>>>,
+) -> Result<Option<StatsMap>, TaskError> {
     let mut errors = Vec::with_capacity(handles.len());
 
     for handle in handles {
@@ -29,20 +32,20 @@ pub async fn join_task_handle_results(
                     errors.push(e);
                 }
             }
-            Err(e) => errors.push(TaskError::UnexpectedError(anyhow::Error::from(e))),
+            Err(e) => errors.push(UnexpectedError(anyhow::Error::from(e))),
         }
     }
 
     if errors.is_empty() {
-        Ok(())
+        Ok(None)
     } else {
-        Err(TaskError::from(anyhow!("One or more tasks failed"))) //todo better error logging
+        Err(UnexpectedError(anyhow!("One or more tasks failed"))) //todo better error logging
     }
 }
 
 pub async fn join_handle_results(
-    handles: Vec<JoinHandle<Result<(), TaskError>>>,
-) -> Result<(), TaskError> {
+    handles: Vec<JoinHandle<Result<Option<StatsMap>, TaskError>>>,
+) -> Result<Option<StatsMap>, TaskError> {
     let mut errors = Vec::with_capacity(handles.len());
 
     for handle in handles {
@@ -52,29 +55,29 @@ pub async fn join_handle_results(
                     errors.push(e);
                 }
             }
-            Err(e) => errors.push(TaskError::from(anyhow::Error::from(e))), // todo clean up
+            Err(e) => errors.push(UnexpectedError(anyhow::Error::from(e))), // todo clean up
         }
     }
 
     if errors.is_empty() {
-        Ok(())
+        Ok(None)
     } else {
-        Err(TaskError::from(anyhow!("One or more tasks failed"))) //todo better error logging
+        Err(UnexpectedError(anyhow!("One or more tasks failed"))) //todo better error logging
     }
 }
 
 /// fails if a single future fails and cancels all the other futures
-pub async fn join_future_results_strict(
-    futures: Vec<BoxFuture<'_, Result<(), TaskError>>>,
-) -> Result<(), TaskError> {
-    let results = join_all(futures).await;
-    results.into_iter().collect()
-}
+// pub async fn join_future_results_strict(
+//     futures: Vec<BoxFuture<'_, Result<Option<StatsMap>, TaskError>>>,
+// ) -> Result<Option<StatsMap>, TaskError> {
+//     let results = join_all(futures).await;
+//     results.into_iter().collect()
+// }
 
 /// fails if a single future fails but finishes all futures
 pub async fn join_future_results(
-    futures: Vec<BoxFuture<'_, Result<(), TaskError>>>,
-) -> Result<(), TaskError> {
+    futures: Vec<BoxFuture<'_, Result<Option<StatsMap>, TaskError>>>,
+) -> Result<Option<StatsMap>, TaskError> {
     let mut errors = Vec::with_capacity(futures.len());
     for future in futures {
         if let Err(err) = future.await {
@@ -82,7 +85,7 @@ pub async fn join_future_results(
         }
     }
     if errors.is_empty() {
-        Ok(())
+        Ok(None)
     } else {
         Err(TaskError::UnexpectedError(anyhow!(
             "One or more tasks failed"
