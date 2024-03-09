@@ -3,9 +3,11 @@ use crate::dag_schedule::task::{
     Tools,
 };
 use std::collections::HashMap;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tracing::{debug, error};
 use uuid::Uuid;
 
 // todo clean up, exchange unwraps and panic with proper error handling
@@ -24,6 +26,7 @@ pub struct Schedule {
 
 pub type TaskSpecRef = Arc<TaskSpec>;
 
+#[derive(Debug)]
 pub struct TaskSpec {
     pub id: Uuid,
     pub name: String,
@@ -48,6 +51,12 @@ impl Hash for TaskSpec {
     }
 }
 
+impl fmt::Display for TaskSpec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} (Mode: {:?})", self.name, self.execution_mode)
+    }
+}
+
 pub type TaskDependenciesSpecs = HashMap<TaskSpecRef, Vec<TaskSpecRef>>;
 
 impl Default for Schedule {
@@ -67,7 +76,7 @@ impl Schedule {
             // trigger_receiver: None,
         }
     }
-
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn create_schedule(
         &mut self,
         task_dependencies_specs: TaskDependenciesSpecs,
@@ -79,19 +88,20 @@ impl Schedule {
     }
 
     // todo proper error handling and check preconditions before running (e.g tasks must be scheduled)
+    #[tracing::instrument(skip(self))]
     pub async fn run_checks(&mut self) {
         self.check_if_source_tasks_exists().await;
         self.check_for_cycles_from_sources().await;
         // must run last because dependent on cycle check
         self.check_if_all_tasks_are_reachable().await;
     }
-
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn check_if_source_tasks_exists(&self) {
         if self.source_tasks.is_empty() {
             panic!("Not all tasks are reachable")
         }
     }
-
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn check_if_all_tasks_are_reachable(&self) {
         if self.num_reachable_tasks != self.num_tasks {
             panic!(
@@ -104,6 +114,7 @@ impl Schedule {
     /// uses an iterative dfs starting with the source tasks to identify cycles
     /// Visited counts the allowed visits for a node in case that the
     /// node should be executed multiple times repeated
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn check_for_cycles_from_sources(&mut self) {
         let mut task_stack = self.source_tasks.clone();
         while let Some(t) = task_stack.last().cloned() {
@@ -122,6 +133,7 @@ impl Schedule {
                             CycleCheck::Visited { max_allowed } => {
                                 // todo use repeat in task creation and add the tasks to its own adj list then introduce the check
                                 if max_allowed == 0 {
+                                    error!("cycle detected");
                                     panic!("cycle detected")
                                 }
                                 t.lock().await.cycle_check = CycleCheck::Visited {
@@ -147,6 +159,7 @@ impl Schedule {
     /// creates TaskRef from TaskDependenciesSpecs,
     /// counts ingoing tasks for each task and put them in a HashMap
     /// identifies source tasks and puts their reference also in a Vec for later identification and usage
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn create_tasks_from_specs(
         &mut self,
         specs: &TaskDependenciesSpecs,
@@ -168,6 +181,7 @@ impl Schedule {
     /// add outgoings to tasks
     /// looks if there is a proper task in the task map, which should be the outgoing task
     /// then reverse the direction and go through the dependencies and add the outgoing task to their outgoing tasks
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn add_outgoing_tasks_to_tasks_in_map(
         &self,
         specs: &TaskDependenciesSpecs,
@@ -185,10 +199,12 @@ impl Schedule {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn schedule_tasks(&mut self, task_dependencies_specs: TaskDependenciesSpecs) {
         self.tasks = self.create_schedule(task_dependencies_specs).await;
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn run_schedule(&mut self) {
         let (trigger_sender, mut trigger_receiver) = mpsc::channel(100);
 
@@ -198,15 +214,16 @@ impl Schedule {
         for _ in 0..self.num_reachable_tasks {
             if let Some(msg) = trigger_receiver.recv().await {
                 let (_result, tasks) = msg;
-                println!("number received next tasks: {}", tasks.len());
+                debug!("number received next tasks: {}", tasks.len());
                 self.start_outgoing_tasks(&tasks, trigger_sender.clone())
                     .await;
             }
         }
     }
-
+    #[tracing::instrument(skip(self, trigger_sender))]
     async fn start_source_tasks(&self, trigger_sender: mpsc::Sender<(bool, Vec<TaskRef>)>) {
         if self.source_tasks.is_empty() {
+            error!("No source tasks defined");
             panic!("No source tasks defined")
         }
         for task in self.source_tasks.iter() {
@@ -219,6 +236,7 @@ impl Schedule {
         }
     }
 
+    #[tracing::instrument(skip(self, trigger_sender))]
     async fn start_outgoing_tasks(
         &self,
         tasks: &Vec<TaskRef>,
@@ -230,10 +248,6 @@ impl Schedule {
                 let mut locked_task = task.lock().await;
                 locked_task.num_ingoing_tasks =
                     locked_task.num_ingoing_tasks.map(|i| i.saturating_sub(1));
-                println!(
-                    "name: {:?} current count {:?}",
-                    &locked_task.name, &locked_task.num_ingoing_tasks
-                );
             }
             if let Some(0) = task.lock().await.num_ingoing_tasks {
                 let task = task.clone();
@@ -436,7 +450,7 @@ mod test {
      * ============================ TEST UTILITIES SECTION ==============================
      * ==================================================================================
      */
-
+    #[derive(Debug)]
     struct TestRunner {}
 
     #[async_trait]

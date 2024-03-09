@@ -1,5 +1,3 @@
-// use crate::collectors::collector::Collector;
-// use crate::collectors::stagers::Stager;
 use async_trait::async_trait;
 use futures_util::TryFutureExt;
 
@@ -9,7 +7,7 @@ use std::fmt::Display;
 use crate::dag_schedule::task::TaskError::UnexpectedError;
 use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SecCompanyStager {
     pool: PgPool,
 }
@@ -114,7 +112,6 @@ async fn mark_otc_issuers_as_staged(connection_pool: &PgPool) -> Result<(), anyh
 mod test {
     use chrono::NaiveDate;
     use sqlx::{Pool, Postgres};
-    use tracing_test::traced_test;
 
     use crate::actions::stage::sec_companies::{
         derive_country_from_sec_code, mark_otc_issuers_as_staged, stage_data,
@@ -158,7 +155,6 @@ mod test {
         suspension_date: Option<NaiveDate>,
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_unstaged.sql")
@@ -190,7 +186,6 @@ mod test {
         );
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_unstaged.sql", "sec_companies_staged.sql")
@@ -229,7 +224,6 @@ mod test {
         assert_eq!(md_result.len(), 0);
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_unstaged.sql", "master_data_without_otc_category.sql")
@@ -260,7 +254,6 @@ mod test {
         assert_eq!(md_result.instrument.as_deref(), Some("OTC"));
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts(
@@ -307,7 +300,6 @@ mod test {
         assert_eq!(md_result.instrument.as_deref(), Some("OTC"));
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_unstaged.sql", "master_data_without_country_code.sql")
@@ -335,7 +327,6 @@ mod test {
         assert_eq!(md_result.location.as_deref(), Some("USA"));
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_staged.sql", "master_data_without_country_code.sql")
@@ -364,7 +355,6 @@ mod test {
         assert_eq!(md_result.location, None);
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_unstaged.sql", "master_data_without_country_code.sql")
@@ -398,7 +388,6 @@ mod test {
         assert_eq!(sc_result.is_staged, true);
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_unstaged.sql")
@@ -440,7 +429,6 @@ mod test {
         assert_eq!(sc_result.is_staged, true);
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_staged.sql")

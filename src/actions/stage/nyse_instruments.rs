@@ -49,7 +49,7 @@ use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 //     }
 // }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NyseInstrumentStager {
     pool: PgPool,
 }
@@ -177,7 +177,6 @@ async fn mark_already_staged_instruments_as_staged(
 mod test {
     use chrono::{NaiveDate, Utc};
     use sqlx::{query, Pool, Postgres};
-    use tracing_test::traced_test;
 
     use crate::actions::stage::nyse_instruments::{
         copy_instruments_to_master_data, mark_already_staged_instruments_as_staged,
@@ -209,7 +208,6 @@ mod test {
         suspension_date: Option<NaiveDate>,
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts("nyse_instruments_unstaged.sql")
@@ -235,7 +233,6 @@ mod test {
         assert_eq!(instruments_result.is_staged, true);
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts(
@@ -333,7 +330,6 @@ mod test {
                 && row.start_cboe.unwrap().eq(&current_date)));
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts(
@@ -376,7 +372,6 @@ mod test {
     // Leave unstaged instrument as unstaged
     // Already staged instrument gets ignored
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts(
@@ -413,7 +408,6 @@ mod test {
         assert_eq!(md_result.instrument.unwrap(), "PREFERRED_STOCK");
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts(
@@ -448,7 +442,6 @@ mod test {
         assert_eq!(md_result.instrument, None);
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts("nyse_instruments_unstaged.sql", "master_data_with_company.sql")
@@ -479,7 +472,6 @@ mod test {
     }
 
     // Leave unstaged instrument as unstaged
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts(
@@ -520,7 +512,6 @@ mod test {
     }
 
     /// Already staged instrument gets ignored
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts(

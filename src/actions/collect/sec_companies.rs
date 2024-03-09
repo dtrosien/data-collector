@@ -32,7 +32,7 @@ const TARGET_SUBDIRECTORIES: &str = "data-collector/sec_companies";
 const TARGET_FILE_NAME: &str = "submissions.zip";
 const TARGET_TMP_FILE_NAME: &str = "submissions.zip.tmp";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SecCompanyCollector {
     pool: PgPool,
     client: Client,
@@ -381,7 +381,7 @@ mod test {
         let time = Utc::now()
             .checked_sub_days(Days::new(7))
             .unwrap()
-            .checked_add_signed(Duration::minutes(10))
+            .checked_add_signed(Duration::try_minutes(10).unwrap())
             .unwrap()
             .timestamp();
         filetime::set_file_mtime(&file_path, FileTime::from_unix_time(time, 0)).unwrap();

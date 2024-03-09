@@ -17,7 +17,7 @@ use tracing::{debug, info, warn};
 
 const NYSE_EVENT_URL: &str = "https://listingmanager.nyse.com/api/corpax/";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NyseEventCollector {
     pool: PgPool,
     client: Client,
@@ -312,7 +312,6 @@ mod test {
     use chrono::{NaiveDate, TimeZone, Utc};
     use httpmock::{Method::GET, MockServer};
     use sqlx::{Pool, Postgres};
-    use tracing_test::traced_test;
 
     use crate::actions::collect::nyse_events::*;
     use crate::utils::test_helpers::get_test_client;
@@ -520,7 +519,6 @@ mod test {
         assert_eq!(expected, result);
     }
 
-    #[traced_test]
     #[sqlx::test]
     async fn query_http_and_write_to_db(pool: PgPool) {
         // Start a lightweight mock server.

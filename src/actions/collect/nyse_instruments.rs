@@ -17,7 +17,7 @@ use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 const URL: &str = "https://www.nyse.com/api/quotes/filter";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NyseInstrumentCollector {
     pool: PgPool,
     client: Client,
@@ -197,7 +197,6 @@ mod test {
     use crate::actions::collect::nyse_instruments::NysePeekResponse;
     use crate::utils::test_helpers::get_test_client;
     use sqlx::{Pool, Postgres};
-    use tracing_test::traced_test;
 
     use super::*;
 
@@ -232,7 +231,6 @@ mod test {
         assert_eq!(expected, build);
     }
 
-    #[traced_test]
     #[sqlx::test]
     async fn query_http_and_write_to_db(pool: Pool<Postgres>) -> Result<(), anyhow::Error> {
         // Start a lightweight mock server.
