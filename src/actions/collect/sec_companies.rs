@@ -88,6 +88,7 @@ impl Display for SecCompanyCollector {
 
 #[async_trait]
 impl Runnable for SecCompanyCollector {
+    #[tracing::instrument(name = "Run SecCompanyCollector", skip(self))]
     async fn run(&self) -> Result<Option<StatsMap>, crate::dag_schedule::task::TaskError> {
         load_and_store_missing_data(self.pool.clone(), self.client.clone())
             .await
@@ -96,6 +97,7 @@ impl Runnable for SecCompanyCollector {
     }
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn load_and_store_missing_data(
     connection_pool: PgPool,
     client: Client,
@@ -110,6 +112,7 @@ pub async fn load_and_store_missing_data(
     .await
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn load_and_store_missing_data_with_targets(
     connection_pool: PgPool,
     client: Client,
@@ -137,6 +140,7 @@ pub async fn load_and_store_missing_data_with_targets(
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn search_and_shrink_zip(
     mut zip_archive: ZipArchive<File>,
     target_location: &PathBuf,
@@ -174,6 +178,7 @@ fn search_and_shrink_zip(
     Ok(found_data)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn compute_tmp_location(target_location: &Path) -> PathBuf {
     let mut tmp_location = PathBuf::from(target_location);
     tmp_location.pop();
@@ -181,12 +186,14 @@ fn compute_tmp_location(target_location: &Path) -> PathBuf {
     tmp_location
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn get_zip_file(target_location: &Path) -> Result<ZipArchive<File>, anyhow::Error> {
     let file = File::open(target_location.to_str().unwrap())?;
     let zip_archive = ZipArchive::new(file)?;
     Ok(zip_archive)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn download_archive_if_needed(
     client: Client,
     target_location: &PathBuf,
@@ -200,6 +207,7 @@ async fn download_archive_if_needed(
 }
 
 ///A download is needed, if either the file has 0 bytes or is strictly older than 7 days
+#[tracing::instrument(level = "debug", skip_all)]
 fn is_download_needed(target_location: &PathBuf) -> bool {
     match fs::metadata(target_location) {
         Ok(metadata) => {
@@ -212,6 +220,7 @@ fn is_download_needed(target_location: &PathBuf) -> bool {
 }
 
 /// Creates directories if needed and return the location to the zip file, independent, if it is existing or not.
+#[tracing::instrument(level = "debug", skip_all)]
 fn prepare_generic_zip_location(filename: &str) -> Result<PathBuf, anyhow::Error> {
     prepare_zip_location(
         home::home_dir().unwrap().to_str().unwrap(),
@@ -221,6 +230,7 @@ fn prepare_generic_zip_location(filename: &str) -> Result<PathBuf, anyhow::Error
 }
 
 /// Creates directories if needed and return the location to the zip file, independent, if it is existing or not.
+#[tracing::instrument(level = "debug", skip_all)]
 fn prepare_zip_location(
     root_path: &str,
     intermediate_path: &str,
@@ -238,6 +248,7 @@ fn prepare_zip_location(
     Ok(path_buf)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn download_url(client: Client, url: &str, destination: &str) -> Result<(), anyhow::Error> {
     let mut response = client
         .get(url)
@@ -272,6 +283,7 @@ async fn download_url(client: Client, url: &str, destination: &str) -> Result<()
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn transpose_sec_companies(companies: Vec<SecCompany>) -> TransposedSecCompany {
     let mut result = TransposedSecCompany::new();
     for company in companies {

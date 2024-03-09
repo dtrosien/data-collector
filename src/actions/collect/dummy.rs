@@ -20,7 +20,7 @@ impl Default for DummyCollector {
 
 #[async_trait]
 impl Runnable for DummyCollector {
-    #[tracing::instrument(name = "Run dummy collector", skip(self))]
+    #[tracing::instrument(name = "Run DummyCollector", skip(self))]
     async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
         dummy_function(8).await;
         Ok(None)
