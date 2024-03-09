@@ -148,7 +148,7 @@ migrate cloud db (might require disabling trusted sources temporarily https://do
 
 
 
-### How to use Jaeger to visualize traces and logs provided via open_telemetry tracing
+### How to use Jaeger to visualize traces provided via open_telemetry tracing
 Run Jaeger docker (Port 4317 is used for grpc to transport the traces)
 
     docker run -d --name jaeger -e COLLECTOR_OTLP_ENABLED=true -e JAEGER_DISABLED=true -p 16686:16686 -p 4317:4317 -p 4318:4318 jaegertracing/all-in-one:latest
