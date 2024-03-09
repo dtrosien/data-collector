@@ -17,7 +17,7 @@ use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 const URL: &str = "https://www.nyse.com/api/quotes/filter";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NyseInstrumentCollector {
     pool: PgPool,
     client: Client,
@@ -37,6 +37,7 @@ impl Display for NyseInstrumentCollector {
 
 #[async_trait]
 impl Runnable for NyseInstrumentCollector {
+    #[tracing::instrument(name = "Run NyseInstrumentCollector", skip(self))]
     async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
         load_and_store_missing_data(self.pool.clone(), self.client.clone())
             .map_err(UnexpectedError)
@@ -79,6 +80,7 @@ struct TransposedNyseInstrument {
     pub mic_code: Vec<String>,
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn load_and_store_missing_data(
     connection_pool: PgPool,
     client: Client,
@@ -86,6 +88,7 @@ pub async fn load_and_store_missing_data(
     load_and_store_missing_data_given_url(connection_pool, client, URL).await
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
     client: Client,
@@ -122,6 +125,7 @@ async fn load_and_store_missing_data_given_url(
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn transpose_nyse_instruments(instruments: Vec<NyseInstrument>) -> TransposedNyseInstrument {
     let mut result = TransposedNyseInstrument {
         instrument_type: vec![],
@@ -149,6 +153,7 @@ fn transpose_nyse_instruments(instruments: Vec<NyseInstrument>) -> TransposedNys
     result
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn filter_for_valid_datasets(input: Vec<NyseInstrument>) -> Vec<NyseInstrument> {
     input
         .into_iter()
@@ -156,6 +161,7 @@ fn filter_for_valid_datasets(input: Vec<NyseInstrument>) -> Vec<NyseInstrument> 
         .collect()
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn get_amount_instruments_available(
     client: &Client,
     url: &str,
@@ -197,7 +203,6 @@ mod test {
     use crate::actions::collect::nyse_instruments::NysePeekResponse;
     use crate::utils::test_helpers::get_test_client;
     use sqlx::{Pool, Postgres};
-    use tracing_test::traced_test;
 
     use super::*;
 
@@ -232,7 +237,6 @@ mod test {
         assert_eq!(expected, build);
     }
 
-    #[traced_test]
     #[sqlx::test]
     async fn query_http_and_write_to_db(pool: Pool<Postgres>) -> Result<(), anyhow::Error> {
         // Start a lightweight mock server.

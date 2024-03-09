@@ -17,7 +17,7 @@ use tracing::{debug, info, warn};
 
 const NYSE_EVENT_URL: &str = "https://listingmanager.nyse.com/api/corpax/";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NyseEventCollector {
     pool: PgPool,
     client: Client,
@@ -37,6 +37,7 @@ impl Display for NyseEventCollector {
 
 #[async_trait]
 impl Runnable for NyseEventCollector {
+    #[tracing::instrument(name = "Run NyseEventCollector", skip(self))]
     async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
         load_and_store_missing_data(self.pool.clone(), self.client.clone())
             .map_err(UnexpectedError)
@@ -108,6 +109,7 @@ impl NyseRequest {
     }
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn load_and_store_missing_data(
     connection_pool: PgPool,
     client: Client,
@@ -121,6 +123,7 @@ pub async fn load_and_store_missing_data(
     .await
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn load_and_store_missing_data_given_url(
     connection_pool: PgPool,
     client: Client,
@@ -154,9 +157,8 @@ async fn load_and_store_missing_data_given_url(
     Ok(())
 }
 
-///
 /// Transforms the given vector into its components as vectors. The filter will remove all NyseData which contain a None.
-///
+#[tracing::instrument(level = "debug", skip_all)]
 fn transpose_nyse_data_and_filter(input: Vec<NyseData>) -> CleanedTransposedNyseData {
     let mut result = CleanedTransposedNyseData {
         action_date: vec![],
@@ -198,6 +200,7 @@ fn convert_string_to_naive_date(data: String) -> NaiveDate {
 }
 
 ///A valid dataset consists out of entries with no NULL entries and the dates are either in the past or today.
+#[tracing::instrument(level = "debug", skip_all)]
 fn filter_for_valid_datasets(input: Vec<NyseData>) -> Vec<NyseData> {
     let today = Utc::now().date_naive();
     let input: Vec<NyseData> = input
@@ -217,6 +220,7 @@ fn filter_for_valid_datasets(input: Vec<NyseData>) -> Vec<NyseData> {
     input
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn load_missing_week(
     client: &Client,
     date: &NaiveDate,
@@ -250,6 +254,7 @@ async fn peek_number_results(
     Ok(peek_response.count)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn request_nyse(
     client: &Client,
     url: &str,
@@ -282,6 +287,7 @@ async fn request_nyse(
 }
 
 /// Function will query DB and check for the newest date available and return that. If the date is not available, the earliest possible date for the NYSE API is returned. If the date is in the future, the current date will be returned; since this indicates an error in data mangement.
+#[tracing::instrument(level = "debug", skip_all)]
 async fn latest_date_available(connection_pool: &PgPool) -> NaiveDate {
     let earliest_date =
         NaiveDate::parse_from_str("2015-12-07", "%Y-%m-%d").expect("Parsing constant.");
@@ -312,7 +318,6 @@ mod test {
     use chrono::{NaiveDate, TimeZone, Utc};
     use httpmock::{Method::GET, MockServer};
     use sqlx::{Pool, Postgres};
-    use tracing_test::traced_test;
 
     use crate::actions::collect::nyse_events::*;
     use crate::utils::test_helpers::get_test_client;
@@ -520,7 +525,6 @@ mod test {
         assert_eq!(expected, result);
     }
 
-    #[traced_test]
     #[sqlx::test]
     async fn query_http_and_write_to_db(pool: PgPool) {
         // Start a lightweight mock server.

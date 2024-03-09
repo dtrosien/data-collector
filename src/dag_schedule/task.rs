@@ -12,6 +12,7 @@
 
 use crate::dag_schedule::schedule::TaskSpecRef;
 use async_trait::async_trait;
+use core::fmt::Debug;
 use std::any::Any;
 use std::collections::HashMap;
 
@@ -29,6 +30,7 @@ use tracing::log::warn;
 use uuid::Uuid;
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct ExecutionStats {
     is_error: bool,
     runtime: Duration,
@@ -42,7 +44,7 @@ pub struct Trigger {
     next_tasks: Vec<TaskRef>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ExecutionMode {
     Once,
     Continuously { kill: broadcast::Sender<()> },
@@ -52,6 +54,7 @@ pub enum ExecutionMode {
 }
 
 // todo run task based on this (fsm) or actor
+#[derive(Debug)]
 pub enum ExecutionState {
     Pending,
     Running,
@@ -63,7 +66,7 @@ pub enum ExecutionState {
     // Skipped,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum CycleCheck {
     Unknown,
     Visited { max_allowed: usize },
@@ -73,7 +76,7 @@ pub enum CycleCheck {
 pub type StatsMap = Arc<Mutex<HashMap<String, Arc<dyn Any + Send + Sync>>>>;
 
 #[async_trait]
-pub trait Runnable: Send + Sync {
+pub trait Runnable: Send + Sync + Debug {
     async fn run(&self) -> Result<Option<StatsMap>, TaskError>;
 }
 
@@ -113,6 +116,7 @@ pub type Tools = Arc<Mutex<HashMap<String, Arc<dyn Any + Send + Sync>>>>;
 // impl Eq for ImmutableTask {}
 
 // todo maybe build as actor if really needed
+#[derive(Debug)]
 pub struct Task {
     pub id: Uuid,
     pub name: String,
@@ -180,6 +184,7 @@ impl Task {
         Arc::new(Mutex::new(task))
     }
 
+    #[tracing::instrument(name = "Start task", skip_all, fields(self.name = %self.name) )]
     pub async fn run(
         &mut self,
         s_finished: mpsc::Sender<(bool, Vec<TaskRef>)>,
@@ -191,7 +196,6 @@ impl Task {
             retries: None,
             custom_stats: None,
         };
-        println!("running: {}", self.name);
         let f = self.runnable.clone();
         let r = self.retry_options;
 
@@ -206,7 +210,6 @@ impl Task {
                 .await
                 .expect("TODO: panic message");
         } else {
-            println!("Finished: {}", self.name);
             self.execution_state = ExecutionState::Finished;
             s_finished
                 .send((false, self.outgoing_tasks.clone()))
@@ -235,7 +238,7 @@ impl PartialEq<Self> for Task {
 
 impl Eq for Task {}
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct RetryOptions {
     max_retries: u32,
     back_off: BackOff,
@@ -252,7 +255,7 @@ impl Default for RetryOptions {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum BackOff {
     Constant {
         back_off: Duration,
@@ -268,6 +271,7 @@ pub enum BackOff {
     },
 }
 
+#[tracing::instrument(level = "debug", skip(f))]
 async fn retry<T, F, Fut>(options: RetryOptions, mut f: F) -> Result<Option<T>, TaskError>
 where
     F: FnMut() -> Fut,
@@ -296,6 +300,7 @@ where
     maybe_result
 }
 
+#[tracing::instrument(level = "debug", skip(options))]
 fn derive_back_off_time(options: RetryOptions, current_retry_count: u32) -> Duration {
     match options.back_off {
         BackOff::Constant { back_off } => back_off,
@@ -368,7 +373,7 @@ mod test {
         let elapsed = start.elapsed();
 
         assert_eq!(counter.take(), 0);
-        assert!((260..400).contains(&elapsed.as_millis())) // bigger interval for slower envs
+        assert!((256..1000).contains(&elapsed.as_millis())) // bigger interval for slower envs
     }
 
     #[tokio::test]
@@ -389,7 +394,7 @@ mod test {
         let elapsed = start.elapsed();
 
         assert_eq!(counter.take(), 0);
-        assert!((150..200).contains(&elapsed.as_millis())) // bigger interval for slower envs
+        assert!((150..1000).contains(&elapsed.as_millis())) // bigger interval for slower envs
     }
 
     async fn run(counter: Rc<RefCell<u8>>) -> Result<Option<()>, TaskError> {

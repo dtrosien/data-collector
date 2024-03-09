@@ -33,7 +33,7 @@ impl Application {
         }
     }
 
-    #[tracing::instrument(name = "Start running tasks", skip(self))]
+    #[tracing::instrument(name = "Run application", skip(self))]
     pub async fn run(&self) -> Result<(), anyhow::Error> {
         // init specs from config
         let task_specs = build_task_specs(
@@ -45,11 +45,6 @@ impl Application {
 
         // build adj list from specs
         let task_dep_specs = add_dependencies_to_task_specs(task_specs, &self.task_dependencies);
-
-        // todo remove after proper logging
-        // task_dep_specs
-        //     .iter()
-        //     .for_each(|(a, b)| b.iter().for_each(|c| println!("{}:{}", a.name, c.name)));
 
         // schedule, check resulting dag and run
         let mut schedule = Schedule::new();
