@@ -157,4 +157,20 @@ The UI is then running at: http://localhost:16686
 
 ****
 
+https://grafana.com/docs/grafana-cloud/monitor-applications/application-observability/setup/collector/opentelemetry-collector/
 
+https://bademeister.grafana.net/connections/add-new-connection/collector-open-telemetry
+
+    docker run -d --name opentelemetry-collector otel/opentelemetry-collector-contrib:latest
+
+    docker run -d --name opentelemetry-collector -v .grafana/config.yaml -p 1888:1888 -p 8888:8888 -p 8889:8889 -p 13133:13133 -p 4317:4317 -p 4318:4318 -p 55679:55679 otel/opentelemetry-collector-contrib:latest
+
+ports:
+
+- 1888:1888 # pprof extension
+- 8888:8888 # Prometheus metrics exposed by the Collector
+- 8889:8889 # Prometheus exporter metrics
+- 13133:13133 # health_check extension
+- 4317:4317 # OTLP gRPC receiver
+- 4318:4318 # OTLP http receiver
+- 55679:55679 # zpages extension
