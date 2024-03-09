@@ -17,3 +17,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     Ok(())
 }
+// my request: https://api.polygon.io/v1/open-close/AAMC/2022-12-16?adjusted=true&apiKey=iMX3MwHNhuj_RAHRG1zkor2o4WyZqp2U
+// thread 'tokio-runtime-worker' panicked at 'called `Option::unwrap()` on a `None` value', src/collectors/source_apis/polygon_open_close.rs:159:50
+// stack backtrace:
+//    0: rust_begin_unwind
+//              at /rustc/5680fa18feaa87f3ff04063800aec256c3d4b4be/library/std/src/panicking.rs:593:5
+
+// my request: https://api.polygon.io/v1/open-close/AAME/2023-09-27?adjusted=true&apiKey=iMX3MwHNhuj_RAHRG1zkor2o4WyZqp2U
+// thread 'tokio-runtime-worker' panicked at 'called `Option::unwrap()` on a `None` value', src/collectors/source_apis/polygon_open_close.rs:159:50

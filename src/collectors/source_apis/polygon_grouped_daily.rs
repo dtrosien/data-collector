@@ -20,15 +20,15 @@ use crate::tasks::task::TaskError;
 const URL: &str = "https://api.polygon.io/v1/open-close";
 
 #[derive(Clone)]
-pub struct PolygonOpenCloseCollector {
+pub struct PolygonGroupedDailyCollector {
     pool: PgPool,
     client: Client,
     api_key: String,
 }
 
-impl PolygonOpenCloseCollector {
+impl PolygonGroupedDailyCollector {
     pub fn new(pool: PgPool, client: Client, api_key: String) -> Self {
-        PolygonOpenCloseCollector {
+        PolygonGroupedDailyCollector {
             pool,
             client,
             api_key,
@@ -36,14 +36,14 @@ impl PolygonOpenCloseCollector {
     }
 }
 
-impl Display for PolygonOpenCloseCollector {
+impl Display for PolygonGroupedDailyCollector {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "PloygonOpenCloseCollector struct.")
+        write!(f, "PolygonGroupedDailyCollector struct.")
     }
 }
 
 #[async_trait]
-impl Runnable for PolygonOpenCloseCollector {
+impl Runnable for PolygonGroupedDailyCollector {
     async fn run(&self) -> Result<(), TaskError> {
         load_and_store_missing_data(self.pool.clone(), self.client.clone(), &self.api_key)
             .map_err(TaskError::UnexpectedError)
@@ -53,33 +53,48 @@ impl Runnable for PolygonOpenCloseCollector {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PolygonOpenClose {
-    #[serde(alias = "from")]
-    business_date: Option<NaiveDate>,
-    after_hours: Option<f64>,
-    close: Option<f64>,
-    high: Option<f64>,
-    low: Option<f64>,
-    open: Option<f64>,
+pub struct PolygonGroupedDaily {
+    adjusted: bool,
+    query_count: i64,
+    results: Option<Vec<DailyValue>>,
+    results_count: i64,
     status: String,
-    pre_market: Option<f64>,
-    symbol: Option<String>,
-    volume: Option<f64>,
-    message: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DailyValue {
+    #[serde(rename = "T")]
+    symbol: String,
+    #[serde(rename = "c")]
+    close: f64,
+    #[serde(rename = "h")]
+    high: f64,
+    #[serde(rename = "l")]
+    low: f64,
+    #[serde(rename = "n")]
+    stock_volume: Option<i64>,
+    #[serde(rename = "o")]
+    open: f64,
+    #[serde(rename = "t")]
+    unix_timestamp: i64,
+    #[serde(rename = "v")]
+    traded_volume: f64,
+    #[serde(rename = "vw")]
+    volume_weighted_average_price: Option<f64>,
 }
 
 #[derive(Default, Deserialize, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct TransposedPolygonOpenClose {
-    pub after_hours: Vec<Option<f64>>,
     pub close: Vec<f64>,
     pub business_date: Vec<NaiveDate>,
     pub high: Vec<f64>,
     pub low: Vec<f64>,
     pub open: Vec<f64>,
-    pub pre_market: Vec<Option<f64>>,
     pub symbol: Vec<String>,
-    pub volume: Vec<f64>,
+    pub stock_volume: Vec<Option<i64>>,
+    pub traded_volume: Vec<f64>,
+    pub volume_weighted_average_price: Vec<Option<f64>>,
 }
 
 pub async fn load_and_store_missing_data(
@@ -96,78 +111,90 @@ async fn load_and_store_missing_data_given_url(
     api_key: &str,
     _url: &str,
 ) -> Result<(), anyhow::Error> {
-    info!("Starting to load Polygon open close.");
+    info!("Starting to load Polygon grouped daily.");
 
-    let mut result  = sqlx::query!("select issue_symbol from master_data_eligible mde where issue_symbol not in (select distinct(symbol) from polygon_open_close poc ) order by issue_symbol").fetch_one(&connection_pool).await?.issue_symbol;
-    // let mut result = Some("AAME".to_string());
-    while result.is_some() {
-        let mut current_check_date = earliest_date();
-        // let mut current_check_date =
-        //     NaiveDate::parse_from_str("2023-09-25", "%Y-%m-%d").expect("Parsing constant.");
-        let test = result.clone().unwrap();
-        while current_check_date.lt(&Utc::now().date_naive()) {
-            let request = create_polygon_open_close_request(&test, current_check_date, api_key);
-            println!("my request: {}", request);
-            let response = client
-                .get(request)
-                .send()
-                .await
-                .unwrap()
-                .text()
-                .await
-                .unwrap();
-            let open_close = vec![utils::parse_response::<PolygonOpenClose>(&response).unwrap()];
-            if open_close[0].status.eq("OK") {
-                let open_close = transpose_polygon_open_close(open_close);
-                // INSERT INTO polygon_open_close (after_hours, "close", business_date, high, low, "open", pre_market, symbol, volume) VALUES(0, 0, '', 0, 0, 0, 0, '', 0);
-                sqlx::query!(r#"INSERT INTO polygon_open_close
-                (after_hours, "close", business_date, high, low, "open", pre_market, symbol, volume)
-                Select * from UNNEST ($1::float[], $2::float[], $3::date[], $4::float[], $5::float[], $6::float[], $7::float[], $8::text[], $9::float[]) on conflict do nothing"#,
-                &open_close.after_hours[..] as _,
+    let result =
+        sqlx::query!("select max(business_date) as business_date  from polygon_grouped_daily")
+            .fetch_one(&connection_pool)
+            .await?
+            .business_date;
+
+    let mut current_check_date = get_start_date(result);
+
+    while current_check_date.lt(&Utc::now().date_naive()) {
+        let request = create_polygon_open_close_request(current_check_date, api_key);
+        println!("my request: {}", request);
+        let response = client
+            .get(request)
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        let open_close = utils::parse_response::<PolygonGroupedDaily>(&response).unwrap();
+
+        if open_close.results.is_some() {
+            let open_close =
+                transpose_polygon_grouped_daily(open_close.results.unwrap(), current_check_date);
+
+            // INSERT INTO public.polygon_grouped_daily ("close", business_date, high, low, "open", symbol, stock_volume, traded_volume, volume_weighted_average_price) VALUES(0, '', 0, 0, 0, '', 0, 0, 0);
+            sqlx::query!(r#"INSERT INTO public.polygon_grouped_daily ("close", business_date, high, low, "open", symbol, stock_volume, traded_volume, volume_weighted_average_price)
+                Select * from UNNEST ($1::float[], $2::date[], $3::float[], $4::float[], $5::float[], $6::text[], $7::float[], $8::float[], $9::float[]) on conflict do nothing"#,
                 &open_close.close[..],
                 &open_close.business_date[..],
                 &open_close.high[..],
                 &open_close.low[..],
                 &open_close.open[..],
-                &open_close.pre_market[..] as _,
                 &open_close.symbol[..],
-                &open_close.volume[..],
-        ).execute(&connection_pool).await?;
-            }
-            current_check_date = current_check_date.checked_add_days(Days::new(1)).unwrap();
-            let thirteen_secs = time::Duration::from_secs(13);
-            thread::sleep(thirteen_secs);
+                &open_close.stock_volume[..] as _,
+                &open_close.traded_volume[..],
+                &open_close.volume_weighted_average_price[..] as _,
+        ).execute(&connection_pool).await.unwrap();
         }
-        result  = sqlx::query!("select issue_symbol from master_data_eligible mde where issue_symbol not in (select distinct(symbol) from polygon_open_close poc ) order by issue_symbol").fetch_one(&connection_pool).await?.issue_symbol;
+        current_check_date = current_check_date.checked_add_days(Days::new(1)).unwrap();
+        let thirteen_secs = time::Duration::from_secs(13);
+        thread::sleep(thirteen_secs);
     }
+
     Ok(())
 }
 
-fn transpose_polygon_open_close(instruments: Vec<PolygonOpenClose>) -> TransposedPolygonOpenClose {
+fn get_start_date(result: Option<NaiveDate>) -> NaiveDate {
+    if result.is_some() {
+        return result.unwrap().checked_add_days(Days::new(1)).unwrap();
+    }
+    earliest_date()
+}
+
+fn transpose_polygon_grouped_daily(
+    instruments: Vec<DailyValue>,
+    business_date: NaiveDate,
+) -> TransposedPolygonOpenClose {
     let mut result = TransposedPolygonOpenClose {
-        after_hours: vec![],
         close: vec![],
         business_date: vec![],
         high: vec![],
         low: vec![],
         open: vec![],
-        pre_market: vec![],
         symbol: vec![],
-        volume: vec![],
+        traded_volume: vec![],
+        volume_weighted_average_price: vec![],
+        stock_volume: vec![],
     };
 
-    //my request: https://api.polygon.io/v1/open-close/AACI/2022-06-06?adjusted=true&apiKey=iMX3MwHNhuj_RAHRG1zkor2o4WyZqp2U
-    // thread 'tokio-runtime-worker' panicked at 'called `Option::unwrap()` on a `None` value', src/collectors/source_apis/polygon_open_close.rs:152:50
     for data in instruments {
-        result.after_hours.push(data.after_hours);
-        result.close.push(data.close.unwrap());
-        result.business_date.push(data.business_date.unwrap());
-        result.high.push(data.high.unwrap());
-        result.low.push(data.low.unwrap());
-        result.open.push(data.open.unwrap());
-        result.pre_market.push(data.pre_market);
-        result.symbol.push(data.symbol.unwrap());
-        result.volume.push(data.volume.unwrap());
+        result.close.push(data.close);
+        result.business_date.push(business_date);
+        result.high.push(data.high);
+        result.low.push(data.low);
+        result.open.push(data.open);
+        result.symbol.push(data.symbol);
+        result.traded_volume.push(data.traded_volume);
+        result
+            .volume_weighted_average_price
+            .push(data.volume_weighted_average_price);
+        result.stock_volume.push(data.stock_volume)
     }
     result
 }
@@ -188,7 +215,7 @@ fn earliest_date() -> NaiveDate {
 //         .collect()
 // }
 
-impl Collector for PolygonOpenCloseCollector {
+impl Collector for PolygonGroupedDailyCollector {
     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
         vec![
             sp500_fields::Fields::OpenClose,
@@ -197,7 +224,7 @@ impl Collector for PolygonOpenCloseCollector {
     }
 
     fn get_source(&self) -> collector_sources::CollectorSource {
-        collector_sources::CollectorSource::PolygonOpenClose
+        collector_sources::CollectorSource::PolygonGroupedDaily
     }
 }
 
@@ -224,14 +251,8 @@ impl Collector for PolygonOpenCloseCollector {
 // }
 
 // https://api.polygon.io/v1/open-close/AAPL/2023-01-09?adjusted=true&apiKey=PutYourKeyHere
-fn create_polygon_open_close_request(
-    ticker_symbol: &str,
-    date: NaiveDate,
-    api_key: &str,
-) -> String {
-    let request_url = "https://api.polygon.io/v1/open-close/".to_string()
-        + ticker_symbol
-        + "/"
+fn create_polygon_open_close_request(date: NaiveDate, api_key: &str) -> String {
+    let request_url = "https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/".to_string()
         + date.to_string().as_str()
         + "?adjusted=true"
         + "&apiKey="
@@ -253,41 +274,46 @@ mod test {
 
     use chrono::NaiveDate;
 
-    use crate::collectors::{source_apis::polygon_open_close::PolygonOpenClose, utils};
+    use crate::collectors::{
+        source_apis::{
+            polygon_grouped_daily::PolygonGroupedDaily, polygon_open_close::PolygonOpenClose,
+        },
+        utils,
+    };
 
-    #[test]
-    fn parse_nyse_instruments_response_with_one_result() {
-        // let input_json = r#"{"total":13202,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"A","normalizedTicker":"A","symbolEsignalTicker":"A","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}"#;
-        let input_json = r#"{
-            "afterHours": 183.95,
-            "close": 184.37,
-            "from": "2024-02-22",
-            "status": "OK",
-            "symbol": "AAPL",
-            "open": 183.48,
-            "high": 184.955,
-            "low": 182.46,
-            "volume": 5.2284192e+07,
-            "preMarket": 183.8
-        }"#;
-        let parsed = utils::parse_response::<PolygonOpenClose>(input_json).unwrap();
-        let instrument = PolygonOpenClose {
-            after_hours: Some(183.95),
-            close: Some(184.37),
-            business_date: Some(
-                NaiveDate::parse_from_str("2024-02-22", "%Y-%m-%d").expect("Parsing constant."),
-            ),
-            high: Some(184.955),
-            low: Some(182.46),
-            open: Some(183.48),
-            status: "OK".to_string(),
-            pre_market: Some(183.8),
-            symbol: Some("AAPL".to_string()),
-            volume: Some(52284192.0),
-            message: None,
-        };
-        assert_eq!(parsed, instrument);
-    }
+    // #[test]
+    // fn parse_nyse_instruments_response_with_one_result() {
+    //     // let input_json = r#"{"total":13202,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"A","normalizedTicker":"A","symbolEsignalTicker":"A","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}"#;
+    //     let input_json = r#"{
+    //         "afterHours": 183.95,
+    //         "close": 184.37,
+    //         "from": "2024-02-22",
+    //         "status": "OK",
+    //         "symbol": "AAPL",
+    //         "open": 183.48,
+    //         "high": 184.955,
+    //         "low": 182.46,
+    //         "volume": 5.2284192e+07,
+    //         "preMarket": 183.8
+    //     }"#;
+    //     let parsed = utils::parse_response::<PolygonOpenClose>(input_json).unwrap();
+    //     let instrument = PolygonGroupedDaily {
+    //         after_hours: Some(183.95),
+    //         close: Some(184.37),
+    //         business_date: Some(
+    //             NaiveDate::parse_from_str("2024-02-22", "%Y-%m-%d").expect("Parsing constant."),
+    //         ),
+    //         high: Some(184.955),
+    //         low: Some(182.46),
+    //         open: Some(183.48),
+    //         status: "OK".to_string(),
+    //         pre_market: Some(183.8),
+    //         symbol: Some("AAPL".to_string()),
+    //         volume: Some(52284192.0),
+    //         message: None,
+    //     };
+    //     assert_eq!(parsed, instrument);
+    // }
 
     //     #[test]
     //     fn parse_nyse_instruments_response_with_one_result() {
