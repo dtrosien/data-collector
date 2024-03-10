@@ -1,26 +1,36 @@
 # data-collector
 
-- [Requirements](#requirements)
-- [Developer Setup - Tools](#developer-setup---tools)
-	- [SQLX:](#sqlx)
-	- [Postgres Docker:](#postgres-docker)
-	- [PSQL:](#psql)
-	- [Setup Git Hook](#setup-git-hook)
-- [Developer Setup - Building](#developer-setup---building)
-	- [Start postgres, create database and migrate:](#start-postgres-create-database-and-migrate)
-	- [Migration](#migration)
-	- [Env File (.env)](#env-file-env)
-- [Deployment](#deployment)
-	- [Build Docker Image](#build-docker-image)
-		- [update sqlx cli](#update-sqlx-cli)
-		- [Prepare sqlx meta for offline mode](#prepare-sqlx-meta-for-offline-mode)
-		- [In Case of Error or no file output etc:](#in-case-of-error-or-no-file-output-etc)
-		- [Run Docker Build](#run-docker-build)
-		- [Deploy on Digital Ocean (only required for repo owner):](#deploy-on-digital-ocean-only-required-for-repo-owner)
+<!-- TOC -->
+* [data-collector](#data-collector)
+  * [Requirements](#requirements)
+  * [Developer Setup - Tools](#developer-setup---tools)
+    * [SQLX:](#sqlx)
+    * [Postgres Docker:](#postgres-docker)
+    * [PSQL:](#psql)
+    * [Setup Git Hook](#setup-git-hook)
+  * [Developer Setup - Building](#developer-setup---building)
+    * [Start postgres, create database and migrate:](#start-postgres-create-database-and-migrate)
+    * [Migration](#migration)
+    * [Env File (.env)](#env-file-env)
+  * [Deployment](#deployment)
+    * [Build Docker Image](#build-docker-image)
+      * [update sqlx cli](#update-sqlx-cli)
+      * [Prepare sqlx meta for offline mode](#prepare-sqlx-meta-for-offline-mode)
+      * [In Case of Error or no file output etc:](#in-case-of-error-or-no-file-output-etc)
+      * [Run Docker Build](#run-docker-build)
+      * [Deploy on Digital Ocean (only required for repo owner):](#deploy-on-digital-ocean-only-required-for-repo-owner)
+  * [Export Traces, Logs, Metrics via open_telemetry (OTLP)](#export-traces-logs-metrics-via-open_telemetry-otlp)
+    * [How to export traces to Jaeger to visualize traces provided via open_telemetry tracing](#how-to-export-traces-to-jaeger-to-visualize-traces-provided-via-open_telemetry-tracing)
+    * [How to export traces to Grafana Cloud via a opentelemetry-collector](#how-to-export-traces-to-grafana-cloud-via-a-opentelemetry-collector)
+    * [How to export traces to Honeycomb.io via a opentelemetry-collector](#how-to-export-traces-to-honeycombio-via-a-opentelemetry-collector)
+<!-- TOC -->
 
+****
 
 ## Requirements
 Have docker installed
+
+****
 
 ## Developer Setup - Tools
 Follow the sections below for installation details or run all Linux commands for developer setup at once.
@@ -79,6 +89,8 @@ cargo install cargo-udeps --locked
 ~~~
 Now ``cargo fmt`` and  ``cargo +nightly udeps --all-targets`` will be executed before each commit statement and `cargo fix --bin "data_collector" --allow-dirty` after the commit. See [rusty hook config file](.rusty-hook.toml) for details.
 
+****
+
 ## Developer Setup - Building
 
 
@@ -102,6 +114,8 @@ contains db information needed for compiling sqlx:
 * sqlx reaches out to Postgres at compile-time to check that queries are well-formed. Just like sqlx-cli commands, it relies on the DATABASE_URL environment variable to know where to find the database.
 * sqlx will read DATABASE_URL from it and save us the hassle of re-exporting the environment variable every single time.
 * this is only needed for compiling, during runtime the configuration.yaml is used to change the db connection
+
+****
 
 ## Deployment
 
@@ -146,9 +160,11 @@ migrate cloud db (might require disabling trusted sources temporarily https://do
 
     DATABASE_URL=YOUR-DIGITAL-OCEAN-DB-CONNECTION-STRING sqlx migrate run
 
-# Export Traces, Logs, Metrics via open_telemetry OTLP
+****
 
-## How to export traces to Jaeger to visualize traces provided via open_telemetry tracing
+## Export Traces, Logs, Metrics via open_telemetry (OTLP)
+
+### How to export traces to Jaeger to visualize traces provided via open_telemetry tracing
 Run Jaeger docker (Port 4317 is used for grpc to transport the traces)
 
     docker run -d --name jaeger -e COLLECTOR_OTLP_ENABLED=true -p 16686:16686 -p 4317:4317 -p 4318:4318 jaegertracing/all-in-one:latest
@@ -156,9 +172,11 @@ Run Jaeger docker (Port 4317 is used for grpc to transport the traces)
 The UI is then running at: http://localhost:16686
 
 
-## How to export traces to Grafana Cloud via a opentelemetry-collector
+### How to export traces to Grafana Cloud via a opentelemetry-collector
 
 Grafana cloud provides Loki (Logs), Tempo (traces) and Prometheus (metrics) as backends for Grafana Dashboards.
+Currently Loki does not support ingesting logs directly via OTLP, so the collector needs to ingest logs from file or sdtout.
+(see: https://github.com/grafana/loki/issues/5346)
 
 How to set up a collector is described here:
 
@@ -188,5 +206,13 @@ The container uses the following ports:
 Grafana datasources are listed here:
 
 https://bademeister.grafana.net/connections/datasources
+
+### How to export traces to Honeycomb.io via a opentelemetry-collector
+https://docs.honeycomb.io/getting-data-in/opentelemetry-overview/
+
+https://docs.honeycomb.io/getting-data-in/opentelemetry-overview/#using-the-honeycomb-opentelemetry-endpoint
+
+
+todo!
 
 ****
