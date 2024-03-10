@@ -1,6 +1,7 @@
 use chrono::{Days, Months, NaiveDate, Utc};
 use std::fmt::Display;
-use std::{thread, time};
+use std::time;
+use tokio::time::sleep;
 
 use crate::{collectors::utils, tasks::runnable::Runnable};
 
@@ -11,13 +12,13 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use sqlx::PgPool;
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::collectors::collector::Collector;
 use crate::collectors::{collector_sources, sp500_fields};
 use crate::tasks::task::TaskError;
 
-const URL: &str = "https://api.polygon.io/v1/open-close";
+const URL: &str = "https://api.polygon.io/v1/open-close/";
 
 #[derive(Clone)]
 pub struct PolygonOpenCloseCollector {
@@ -94,51 +95,63 @@ async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
     client: Client,
     api_key: &str,
-    _url: &str,
+    url: &str,
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Polygon open close.");
 
-    let mut result  = sqlx::query!("select issue_symbol from master_data_eligible mde where issue_symbol not in (select distinct(symbol) from polygon_open_close poc ) order by issue_symbol").fetch_one(&connection_pool).await?.issue_symbol;
-    // let mut result = Some("AAME".to_string());
+    let mut result = sqlx::query!(
+        "select issue_symbol
+        from master_data_eligible mde
+        where issue_symbol not in 
+          (select distinct(symbol) 
+           from polygon_open_close poc)
+        order by issue_symbol"
+    )
+    .fetch_one(&connection_pool)
+    .await?
+    .issue_symbol;
     while result.is_some() {
         let mut current_check_date = earliest_date();
-        // let mut current_check_date =
-        //     NaiveDate::parse_from_str("2023-09-25", "%Y-%m-%d").expect("Parsing constant.");
         let test = result.clone().unwrap();
         while current_check_date.lt(&Utc::now().date_naive()) {
-            let request = create_polygon_open_close_request(&test, current_check_date, api_key);
-            println!("my request: {}", request);
-            let response = client
-                .get(request)
-                .send()
-                .await
-                .unwrap()
-                .text()
-                .await
-                .unwrap();
-            let open_close = vec![utils::parse_response::<PolygonOpenClose>(&response).unwrap()];
+            let request =
+                create_polygon_open_close_request(url, &test, current_check_date, api_key);
+            debug!("Polygon open close request: {}", request);
+            let response = client.get(request).send().await?.text().await?;
+            let open_close = vec![utils::parse_response::<PolygonOpenClose>(&response)?];
             if open_close[0].status.eq("OK") {
-                let open_close = transpose_polygon_open_close(open_close);
-                // INSERT INTO polygon_open_close (after_hours, "close", business_date, high, low, "open", pre_market, symbol, volume) VALUES(0, 0, '', 0, 0, 0, 0, '', 0);
+                let open_close_data = transpose_polygon_open_close(open_close);
                 sqlx::query!(r#"INSERT INTO polygon_open_close
                 (after_hours, "close", business_date, high, low, "open", pre_market, symbol, volume)
                 Select * from UNNEST ($1::float[], $2::float[], $3::date[], $4::float[], $5::float[], $6::float[], $7::float[], $8::text[], $9::float[]) on conflict do nothing"#,
-                &open_close.after_hours[..] as _,
-                &open_close.close[..],
-                &open_close.business_date[..],
-                &open_close.high[..],
-                &open_close.low[..],
-                &open_close.open[..],
-                &open_close.pre_market[..] as _,
-                &open_close.symbol[..],
-                &open_close.volume[..],
-        ).execute(&connection_pool).await?;
+                &open_close_data.after_hours[..] as _,
+                &open_close_data.close[..],
+                &open_close_data.business_date[..],
+                &open_close_data.high[..],
+                &open_close_data.low[..],
+                &open_close_data.open[..],
+                &open_close_data.pre_market[..] as _,
+                &open_close_data.symbol[..],
+                &open_close_data.volume[..],)
+                .execute(&connection_pool)
+                .await?;
             }
-            current_check_date = current_check_date.checked_add_days(Days::new(1)).unwrap();
-            let thirteen_secs = time::Duration::from_secs(13);
-            thread::sleep(thirteen_secs);
+            current_check_date = current_check_date
+                .checked_add_days(Days::new(1))
+                .expect("Adding one day must always work, given the operating date context.");
+            sleep(time::Duration::from_secs(13)).await;
         }
-        result  = sqlx::query!("select issue_symbol from master_data_eligible mde where issue_symbol not in (select distinct(symbol) from polygon_open_close poc ) order by issue_symbol").fetch_one(&connection_pool).await?.issue_symbol;
+        result = sqlx::query!(
+            "select issue_symbol 
+            from master_data_eligible mde 
+            where issue_symbol not in 
+              (select distinct(symbol) 
+               from polygon_open_close poc) 
+            order by issue_symbol"
+        )
+        .fetch_one(&connection_pool)
+        .await?
+        .issue_symbol;
     }
     Ok(())
 }
@@ -156,8 +169,6 @@ fn transpose_polygon_open_close(instruments: Vec<PolygonOpenClose>) -> Transpose
         volume: vec![],
     };
 
-    //my request: https://api.polygon.io/v1/open-close/AACI/2022-06-06?adjusted=true&apiKey=iMX3MwHNhuj_RAHRG1zkor2o4WyZqp2U
-    // thread 'tokio-runtime-worker' panicked at 'called `Option::unwrap()` on a `None` value', src/collectors/source_apis/polygon_open_close.rs:152:50
     for data in instruments {
         result.after_hours.push(data.after_hours);
         result.close.push(data.close.unwrap());
@@ -181,13 +192,6 @@ fn earliest_date() -> NaiveDate {
         .expect("Adding 1 day should always work")
 }
 
-// fn filter_for_valid_datasets(input: Vec<NyseInstrument>) -> Vec<NyseInstrument> {
-//     input
-//         .into_iter()
-//         .filter(|instrument| instrument.instrument_name.is_some())
-//         .collect()
-// }
-
 impl Collector for PolygonOpenCloseCollector {
     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
         vec![
@@ -201,35 +205,13 @@ impl Collector for PolygonOpenCloseCollector {
     }
 }
 
-// async fn get_amount_instruments_available(
-//     client: &Client,
-//     url: &str,
-// ) -> Result<u32, anyhow::Error> {
-//     let response = client
-//         .post(url)
-//         .header("content-type", "application/json")
-//         .body(create_nyse_instruments_request(1, 1))
-//         .send()
-//         .await?
-//         .text()
-//         .await?;
-//     let response = utils::parse_response::<Vec<NysePeekResponse>>(&response)?;
-
-//     match response.first() {
-//         Some(some) => Ok(some.total),
-//         None => Err(anyhow!(
-//             "Error while receiving amount of NYSE instruments. Option was None."
-//         )),
-//     }
-// }
-
-// https://api.polygon.io/v1/open-close/AAPL/2023-01-09?adjusted=true&apiKey=PutYourKeyHere
 fn create_polygon_open_close_request(
+    base_url: &str,
     ticker_symbol: &str,
     date: NaiveDate,
     api_key: &str,
 ) -> String {
-    let request_url = "https://api.polygon.io/v1/open-close/".to_string()
+    let request_url = base_url.to_string()
         + ticker_symbol
         + "/"
         + date.to_string().as_str()
@@ -241,23 +223,13 @@ fn create_polygon_open_close_request(
 
 #[cfg(test)]
 mod test {
-    //     use chrono::Utc;
-    //     use httpmock::{Method::POST, MockServer};
-
-    //     use crate::collectors::{source_apis::nyse_instruments::NysePeekResponse, utils};
-    //     use crate::utils::test_helpers::get_test_client;
-    //     use sqlx::{Pool, Postgres};
-    //     use tracing_test::traced_test;
-
-    //     use super::*;
 
     use chrono::NaiveDate;
 
     use crate::collectors::{source_apis::polygon_open_close::PolygonOpenClose, utils};
 
     #[test]
-    fn parse_nyse_instruments_response_with_one_result() {
-        // let input_json = r#"{"total":13202,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"A","normalizedTicker":"A","symbolEsignalTicker":"A","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}"#;
+    fn parse_polygon_open_close_response_with_one_result() {
         let input_json = r#"{
             "afterHours": 183.95,
             "close": 184.37,
@@ -288,70 +260,4 @@ mod test {
         };
         assert_eq!(parsed, instrument);
     }
-
-    //     #[test]
-    //     fn parse_nyse_instruments_response_with_one_result() {
-    //         let input_json = r#"[{"total":13202,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"A","normalizedTicker":"A","symbolEsignalTicker":"A","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]"#;
-    //         let parsed = utils::parse_response::<Vec<NyseInstrument>>(input_json).unwrap();
-    //         let instrument = NyseInstrument {
-    //             instrument_type: "COMMON_STOCK".to_string(),
-    //             symbol_ticker: "A".to_string(),
-    //             symbol_exchange_ticker: "A".to_string(),
-    //             normalized_ticker: "A".to_string(),
-    //             symbol_esignal_ticker: "A".to_string(),
-    //             instrument_name: Some("AGILENT TECHNOLOGIES INC".to_string()),
-    //             mic_code: "XNYS".to_string(),
-    //         };
-    //         assert_eq!(parsed[0], instrument);
-    //     }
-
-    //     #[test]
-    //     fn parse_nyse_instruments_peek_response_with_one_result() {
-    //         let input_json = r#"[{"total":13202,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"A","normalizedTicker":"A","symbolEsignalTicker":"A","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]"#;
-    //         let parsed = utils::parse_response::<Vec<NysePeekResponse>>(input_json).unwrap();
-    //         let instrument = NysePeekResponse { total: 13202 };
-    //         assert_eq!(parsed[0], instrument);
-    //     }
-
-    //     #[test]
-    //     fn create_request_statement() {
-    //         let expected = r#"{"filterToken":"","maxResultsPerPage":2,"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC"}"#;
-    //         let build = create_nyse_instruments_request(1, 1);
-    //         assert_eq!(expected, build);
-    //     }
-
-    //     #[traced_test]
-    //     #[sqlx::test]
-    //     async fn query_http_and_write_to_db(pool: Pool<Postgres>) -> Result<(), anyhow::Error> {
-    //         // Start a lightweight mock server.
-    //         let server = MockServer::start();
-    //         let url = server.base_url();
-    //         let request_json = r#"{"filterToken":"","maxResultsPerPage":2,"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC"}"#;
-    //         let response_json = r#"[{"total":1,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"B","normalizedTicker":"C","symbolEsignalTicker":"D","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]"#;
-
-    //         server.mock(|when, then| {
-    //             when.method(POST)
-    //                 .header("content-type", "application/json")
-    //                 .body(request_json);
-    //             then.status(200)
-    //                 .header("content-type", "application/json")
-    //                 .body(response_json);
-    //         });
-
-    //         let client = get_test_client();
-
-    //         load_and_store_missing_data_given_url(pool.clone(), client, &url).await?;
-
-    //         let saved = sqlx::query!("SELECT instrument_name, instrument_type, symbol_ticker, symbol_exchange_ticker, normalized_ticker, symbol_esignal_ticker, mic_code, dateloaded, is_staged FROM public.nyse_instruments;").fetch_one(&pool).await?;
-    //         assert_eq!(saved.instrument_name, "AGILENT TECHNOLOGIES INC");
-    //         assert_eq!(saved.instrument_type, "COMMON_STOCK");
-    //         assert_eq!(saved.symbol_ticker, "A");
-    //         assert_eq!(saved.symbol_exchange_ticker.unwrap(), "B");
-    //         assert_eq!(saved.normalized_ticker.unwrap(), "C");
-    //         assert_eq!(saved.symbol_esignal_ticker.unwrap(), "D");
-    //         assert_eq!(saved.mic_code, "XNYS");
-    //         assert_eq!(saved.dateloaded.unwrap(), Utc::now().date_naive());
-    //         assert_eq!(saved.is_staged, false);
-    //         Ok(())
-    //     }
 }
