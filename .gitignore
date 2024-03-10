@@ -5,3 +5,4 @@ configuration/base_copy.yaml
 
 /.vscode/
 Cargo.lock
+/.grafana/
