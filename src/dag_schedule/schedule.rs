@@ -7,7 +7,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{debug, error};
+use tracing::{debug, error, Instrument};
 use uuid::Uuid;
 
 // todo clean up, exchange unwraps and panic with proper error handling
@@ -229,9 +229,10 @@ impl Schedule {
         for task in self.source_tasks.iter() {
             let trigger_sender = trigger_sender.clone();
             let task = task.clone();
+            let span = tracing::Span::current();
             tokio::spawn(async move {
                 let mut task = task.lock().await;
-                task.run(trigger_sender).await.unwrap();
+                task.run(trigger_sender).instrument(span).await.unwrap();
             });
         }
     }
@@ -252,8 +253,14 @@ impl Schedule {
             if let Some(0) = task.lock().await.num_ingoing_tasks {
                 let task = task.clone();
                 let trigger_sender = trigger_sender.clone();
+                let span = tracing::Span::current();
                 tokio::spawn(async move {
-                    task.lock().await.run(trigger_sender).await.unwrap();
+                    task.lock()
+                        .await
+                        .run(trigger_sender)
+                        .instrument(span)
+                        .await
+                        .unwrap();
                 });
             }
         }

@@ -27,6 +27,7 @@ use tokio::sync::mpsc;
 use tokio::sync::{broadcast, Mutex};
 use tokio::task::JoinHandle;
 use tracing::log::warn;
+use tracing::Instrument;
 use uuid::Uuid;
 
 #[allow(dead_code)]
@@ -199,7 +200,9 @@ impl Task {
         let f = self.runnable.clone();
         let r = self.retry_options;
 
-        let result = tokio::spawn(async move { retry(r, || f.run()).await })
+        let span = tracing::Span::current();
+
+        let result = tokio::spawn(async move { retry(r, || f.run()).instrument(span).await })
             .await
             .map_err(|e| TaskError::UnexpectedError(Error::from(e)))?;
 
