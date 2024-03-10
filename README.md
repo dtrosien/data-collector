@@ -146,27 +146,36 @@ migrate cloud db (might require disabling trusted sources temporarily https://do
 
     DATABASE_URL=YOUR-DIGITAL-OCEAN-DB-CONNECTION-STRING sqlx migrate run
 
+# Export Traces, Logs, Metrics via open_telemetry OTLP
 
-
-### How to use Jaeger to visualize traces provided via open_telemetry tracing
+## How to export traces to Jaeger to visualize traces provided via open_telemetry tracing
 Run Jaeger docker (Port 4317 is used for grpc to transport the traces)
 
     docker run -d --name jaeger -e COLLECTOR_OTLP_ENABLED=true -p 16686:16686 -p 4317:4317 -p 4318:4318 jaegertracing/all-in-one:latest
 
 The UI is then running at: http://localhost:16686
 
-****
+
+## How to export traces to Grafana Cloud via a opentelemetry-collector
+
+Grafana cloud provides Loki (Logs), Tempo (traces) and Prometheus (metrics) as backends for Grafana Dashboards.
+
+How to set up a collector is described here:
 
 https://grafana.com/docs/grafana-cloud/monitor-applications/application-observability/setup/collector/opentelemetry-collector/
 
+A config for a collector can be generated here:
+
 https://bademeister.grafana.net/connections/add-new-connection/collector-open-telemetry
 
-    docker run -d --name opentelemetry-collector otel/opentelemetry-collector-contrib:latest
+After the config is created, run the collector in a docker via the following command:
 
-    docker run -d --name opentelemetry-collector -v .grafana/config.yaml -p 1888:1888 -p 8888:8888 -p 8889:8889 -p 13133:13133 -p 4317:4317 -p 4318:4318 -p 55679:55679 otel/opentelemetry-collector-contrib:latest
+    docker run -d --name opentelemetry-collector -v $(pwd)/.grafana/config.yaml:/etc/otelcol-contrib/config.yaml -p 1888:1888 -p 8888:8888 -p 8889:8889 -p 13133:13133 -p 4317:4317 -p 4318:4318 -p 55679:55679 otel/opentelemetry-collector-contrib:0.96.0
 
-ports:
+The working directory requires a directory ".grafana" where the config.yaml (generated from the link above, with the access tokens etc) is stored.
 
+
+The container uses the following ports:
 - 1888:1888 # pprof extension
 - 8888:8888 # Prometheus metrics exposed by the Collector
 - 8889:8889 # Prometheus exporter metrics
@@ -174,3 +183,10 @@ ports:
 - 4317:4317 # OTLP gRPC receiver
 - 4318:4318 # OTLP http receiver
 - 55679:55679 # zpages extension
+
+
+Grafana datasources are listed here:
+
+https://bademeister.grafana.net/connections/datasources
+
+****
