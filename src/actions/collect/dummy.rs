@@ -2,7 +2,9 @@ use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 use async_trait::async_trait;
 use core::fmt::{Display, Formatter};
-use tracing::debug;
+use rand::random;
+use tracing::{debug, error, info};
+
 #[derive(Debug)]
 pub struct DummyCollector {}
 
@@ -27,9 +29,15 @@ impl Runnable for DummyCollector {
     }
 }
 
+/// used to test tracing
 #[tracing::instrument]
 async fn dummy_function(some_input: u8) {
     debug!("do stuff: {}", some_input);
+    let rand_bool: bool = random();
+    if rand_bool {
+        info!("wow i am logging");
+        error!("unbelievable stuff happened")
+    }
 }
 
 impl Display for DummyCollector {
