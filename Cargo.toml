@@ -36,6 +36,7 @@ uuid = { version = "1", features = ["v4"] }
 zip = "0.6.6"
 thiserror = "1"
 anyhow = "1"
+rand = "0.8.5"
 
 opentelemetry = "0.22"
 opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
