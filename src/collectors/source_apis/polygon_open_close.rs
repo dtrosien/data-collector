@@ -99,7 +99,7 @@ async fn load_and_store_missing_data_given_url(
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Polygon open close.");
 
-    let mut result = sqlx::query!(
+    let mut issue_symbol_candidate: Option<String> = sqlx::query!(
         "select issue_symbol
         from master_data_eligible mde
         where issue_symbol not in 
@@ -110,12 +110,12 @@ async fn load_and_store_missing_data_given_url(
     .fetch_one(&connection_pool)
     .await?
     .issue_symbol;
-    while result.is_some() {
+    while let Some(issue_symbol) = issue_symbol_candidate {
         let mut current_check_date = earliest_date();
-        let test = result.clone().unwrap();
+
         while current_check_date.lt(&Utc::now().date_naive()) {
             let request =
-                create_polygon_open_close_request(url, &test, current_check_date, api_key);
+                create_polygon_open_close_request(url, &issue_symbol, current_check_date, api_key);
             debug!("Polygon open close request: {}", request);
             let response = client.get(request).send().await?.text().await?;
             let open_close = vec![utils::parse_response::<PolygonOpenClose>(&response)?];
@@ -141,7 +141,7 @@ async fn load_and_store_missing_data_given_url(
                 .expect("Adding one day must always work, given the operating date context.");
             sleep(time::Duration::from_secs(13)).await;
         }
-        result = sqlx::query!(
+        issue_symbol_candidate = sqlx::query!(
             "select issue_symbol 
             from master_data_eligible mde 
             where issue_symbol not in 
@@ -171,14 +171,35 @@ fn transpose_polygon_open_close(instruments: Vec<PolygonOpenClose>) -> Transpose
 
     for data in instruments {
         result.after_hours.push(data.after_hours);
-        result.close.push(data.close.unwrap());
-        result.business_date.push(data.business_date.unwrap());
-        result.high.push(data.high.unwrap());
-        result.low.push(data.low.unwrap());
-        result.open.push(data.open.unwrap());
+        result.close.push(
+            data.close
+                .expect("Value exists or error must have been caught before"),
+        );
+        result.business_date.push(
+            data.business_date
+                .expect("Value exists or error must have been caught before"),
+        );
+        result.high.push(
+            data.high
+                .expect("Value exists or error must have been caught before"),
+        );
+        result.low.push(
+            data.low
+                .expect("Value exists or error must have been caught before"),
+        );
+        result.open.push(
+            data.open
+                .expect("Value exists or error must have been caught before"),
+        );
         result.pre_market.push(data.pre_market);
-        result.symbol.push(data.symbol.unwrap());
-        result.volume.push(data.volume.unwrap());
+        result.symbol.push(
+            data.symbol
+                .expect("Value exists or error must have been caught before"),
+        );
+        result.volume.push(
+            data.volume
+                .expect("Value exists or error must have been caught before"),
+        );
     }
     result
 }

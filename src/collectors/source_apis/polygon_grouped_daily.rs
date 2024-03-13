@@ -155,9 +155,6 @@ async fn load_and_store_missing_data_given_url(
 }
 
 fn get_start_date(result: Option<NaiveDate>) -> NaiveDate {
-    // if result.is_some() {
-    //     return result.unwrap().checked_add_days(Days::new(1)).unwrap();
-    // }
     if let Some(date) = result {
         return date
             .checked_add_days(Days::new(1))
