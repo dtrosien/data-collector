@@ -19,6 +19,7 @@ use crate::collectors::{collector_sources, sp500_fields};
 use crate::tasks::task::TaskError;
 
 const URL: &str = "https://api.polygon.io/v1/open-close/";
+const ERROR_MSG_VALUE_EXISTS: &str = "Value exists or error must have been caught before";
 
 #[derive(Clone)]
 pub struct PolygonOpenCloseCollector {
@@ -171,35 +172,20 @@ fn transpose_polygon_open_close(instruments: Vec<PolygonOpenClose>) -> Transpose
 
     for data in instruments {
         result.after_hours.push(data.after_hours);
-        result.close.push(
-            data.close
-                .expect("Value exists or error must have been caught before"),
-        );
-        result.business_date.push(
-            data.business_date
-                .expect("Value exists or error must have been caught before"),
-        );
-        result.high.push(
-            data.high
-                .expect("Value exists or error must have been caught before"),
-        );
-        result.low.push(
-            data.low
-                .expect("Value exists or error must have been caught before"),
-        );
-        result.open.push(
-            data.open
-                .expect("Value exists or error must have been caught before"),
-        );
+        result.close.push(data.close.expect(ERROR_MSG_VALUE_EXISTS));
+        result
+            .business_date
+            .push(data.business_date.expect(ERROR_MSG_VALUE_EXISTS));
+        result.high.push(data.high.expect(ERROR_MSG_VALUE_EXISTS));
+        result.low.push(data.low.expect(ERROR_MSG_VALUE_EXISTS));
+        result.open.push(data.open.expect(ERROR_MSG_VALUE_EXISTS));
         result.pre_market.push(data.pre_market);
-        result.symbol.push(
-            data.symbol
-                .expect("Value exists or error must have been caught before"),
-        );
-        result.volume.push(
-            data.volume
-                .expect("Value exists or error must have been caught before"),
-        );
+        result
+            .symbol
+            .push(data.symbol.expect(ERROR_MSG_VALUE_EXISTS));
+        result
+            .volume
+            .push(data.volume.expect(ERROR_MSG_VALUE_EXISTS));
     }
     result
 }

@@ -55,10 +55,10 @@ impl Runnable for PolygonGroupedDailyCollector {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PolygonGroupedDaily {
-    adjusted: bool,
-    query_count: i64,
+    adjusted: Option<bool>,
+    query_count: Option<i64>,
     results: Option<Vec<DailyValue>>,
-    results_count: i64,
+    results_count: Option<i64>,
     status: String,
 }
 
@@ -127,7 +127,7 @@ async fn load_and_store_missing_data_given_url(
     while current_check_date.lt(&Utc::now().date_naive()) {
         let request = create_polygon_open_close_request(url, current_check_date, api_key);
         debug!("Polygon grouped daily request: {}", request);
-        let response = client.get(request).send().await?.text().await?;
+        let response = client.get(&request).send().await?.text().await?;
         let open_close = utils::parse_response::<PolygonGroupedDaily>(&response)?;
 
         if let Some(results) = open_close.results {
@@ -146,10 +146,18 @@ async fn load_and_store_missing_data_given_url(
                 &open_close.volume_weighted_average_price[..] as _,)
             .execute(&connection_pool).await?;
         }
-        current_check_date = current_check_date
-            .checked_add_days(Days::new(1))
-            .expect("Adding one day must always work, given the operating date context.");
-        sleep(time::Duration::from_secs(13)).await;
+        if open_close.status != "ERROR".to_string() {
+            current_check_date = current_check_date
+                .checked_add_days(Days::new(1))
+                .expect("Adding one day must always work, given the operating date context.");
+            sleep(time::Duration::from_secs(13)).await;
+        } else {
+            info!(
+                "Failed with request {} and got response {}",
+                request, response
+            );
+            sleep(time::Duration::from_secs(1)).await;
+        }
     }
     Ok(())
 }
