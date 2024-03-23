@@ -146,7 +146,7 @@ async fn load_and_store_missing_data_given_url(
                 &open_close.volume_weighted_average_price[..] as _,)
             .execute(&connection_pool).await?;
         }
-        if open_close.status != "ERROR".to_string() {
+        if open_close.status != *"ERROR" {
             current_check_date = current_check_date
                 .checked_add_days(Days::new(1))
                 .expect("Adding one day must always work, given the operating date context.");
@@ -156,7 +156,7 @@ async fn load_and_store_missing_data_given_url(
                 "Failed with request {} and got response {}",
                 request, response
             );
-            sleep(time::Duration::from_secs(1)).await;
+            sleep(time::Duration::from_secs(13)).await;
         }
     }
     Ok(())

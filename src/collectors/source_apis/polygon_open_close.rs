@@ -121,7 +121,7 @@ async fn load_and_store_missing_data_given_url(
             let response = client.get(request).send().await?.text().await?;
             let open_close = vec![utils::parse_response::<PolygonOpenClose>(&response)?];
             if open_close[0].status.eq("OK") {
-                let open_close_data = transpose_polygon_open_close(open_close);
+                let open_close_data = transpose_polygon_open_close(&open_close);
                 sqlx::query!(r#"INSERT INTO polygon_open_close
                 (after_hours, "close", business_date, high, low, "open", pre_market, symbol, volume)
                 Select * from UNNEST ($1::float[], $2::float[], $3::date[], $4::float[], $5::float[], $6::float[], $7::float[], $8::text[], $9::float[]) on conflict do nothing"#,
@@ -137,9 +137,11 @@ async fn load_and_store_missing_data_given_url(
                 .execute(&connection_pool)
                 .await?;
             }
-            current_check_date = current_check_date
-                .checked_add_days(Days::new(1))
-                .expect("Adding one day must always work, given the operating date context.");
+            if open_close[0].status.ne("ERROR") {
+                current_check_date = current_check_date
+                    .checked_add_days(Days::new(1))
+                    .expect("Adding one day must always work, given the operating date context.");
+            }
             sleep(time::Duration::from_secs(13)).await;
         }
         issue_symbol_candidate = sqlx::query!(
@@ -157,7 +159,7 @@ async fn load_and_store_missing_data_given_url(
     Ok(())
 }
 
-fn transpose_polygon_open_close(instruments: Vec<PolygonOpenClose>) -> TransposedPolygonOpenClose {
+fn transpose_polygon_open_close(instruments: &Vec<PolygonOpenClose>) -> TransposedPolygonOpenClose {
     let mut result = TransposedPolygonOpenClose {
         after_hours: vec![],
         close: vec![],
@@ -169,7 +171,7 @@ fn transpose_polygon_open_close(instruments: Vec<PolygonOpenClose>) -> Transpose
         symbol: vec![],
         volume: vec![],
     };
-
+    println!("Data: {:?}", instruments);
     for data in instruments {
         result.after_hours.push(data.after_hours);
         result.close.push(data.close.expect(ERROR_MSG_VALUE_EXISTS));
@@ -180,9 +182,12 @@ fn transpose_polygon_open_close(instruments: Vec<PolygonOpenClose>) -> Transpose
         result.low.push(data.low.expect(ERROR_MSG_VALUE_EXISTS));
         result.open.push(data.open.expect(ERROR_MSG_VALUE_EXISTS));
         result.pre_market.push(data.pre_market);
-        result
-            .symbol
-            .push(data.symbol.expect(ERROR_MSG_VALUE_EXISTS));
+        result.symbol.push(
+            data.symbol
+                .as_ref()
+                .expect(ERROR_MSG_VALUE_EXISTS)
+                .to_string(),
+        );
         result
             .volume
             .push(data.volume.expect(ERROR_MSG_VALUE_EXISTS));
