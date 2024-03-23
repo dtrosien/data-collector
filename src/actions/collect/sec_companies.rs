@@ -393,7 +393,7 @@ mod test {
         let time = Utc::now()
             .checked_sub_days(Days::new(7))
             .unwrap()
-            .checked_add_signed(Duration::try_minutes(10).unwrap())
+            .checked_add_signed(Duration::minutes(10))
             .unwrap()
             .timestamp();
         filetime::set_file_mtime(&file_path, FileTime::from_unix_time(time, 0)).unwrap();

@@ -3,10 +3,8 @@ use std::fmt::Display;
 use std::time;
 use tokio::time::sleep;
 
-use crate::{collectors::utils, tasks::runnable::Runnable};
 
-use async_trait::async_trait;
-use futures_util::TryFutureExt;
+
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -14,9 +12,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{debug, info};
 
-use crate::collectors::collector::Collector;
-use crate::collectors::{collector_sources, sp500_fields};
-use crate::tasks::task::TaskError;
+
+
 
 const URL: &str = "https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/";
 
@@ -43,14 +40,14 @@ impl Display for PolygonGroupedDailyCollector {
     }
 }
 
-#[async_trait]
-impl Runnable for PolygonGroupedDailyCollector {
-    async fn run(&self) -> Result<(), TaskError> {
-        load_and_store_missing_data(self.pool.clone(), self.client.clone(), &self.api_key)
-            .map_err(TaskError::UnexpectedError)
-            .await
-    }
-}
+// #[async_trait]
+// impl Runnable for PolygonGroupedDailyCollector {
+//     async fn run(&self) -> Result<(), TaskError> {
+//         load_and_store_missing_data(self.pool.clone(), self.client.clone(), &self.api_key)
+//             .map_err(TaskError::UnexpectedError)
+//             .await
+//     }
+// }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -128,7 +125,9 @@ async fn load_and_store_missing_data_given_url(
         let request = create_polygon_open_close_request(url, current_check_date, api_key);
         debug!("Polygon grouped daily request: {}", request);
         let response = client.get(&request).send().await?.text().await?;
-        let open_close = utils::parse_response::<PolygonGroupedDaily>(&response)?;
+
+        let open_close =
+            crate::utils::action_helpers::parse_response::<PolygonGroupedDaily>(&response)?;
 
         if let Some(results) = open_close.results {
             let open_close = transpose_polygon_grouped_daily(results, current_check_date);
@@ -212,18 +211,18 @@ fn earliest_date() -> NaiveDate {
         .expect("Adding 1 day should always work")
 }
 
-impl Collector for PolygonGroupedDailyCollector {
-    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-        vec![
-            sp500_fields::Fields::OpenClose,
-            sp500_fields::Fields::MonthTradingVolume,
-        ]
-    }
+// impl Collector for PolygonGroupedDailyCollector {
+//     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
+//         vec![
+//             sp500_fields::Fields::OpenClose,
+//             sp500_fields::Fields::MonthTradingVolume,
+//         ]
+//     }
 
-    fn get_source(&self) -> collector_sources::CollectorSource {
-        collector_sources::CollectorSource::PolygonGroupedDaily
-    }
-}
+//     fn get_source(&self) -> collector_sources::CollectorSource {
+//         collector_sources::CollectorSource::PolygonGroupedDaily
+//     }
+// }
 
 ///  Example output https://api.polygon.io/v1/open-close/AAPL/2023-01-09?adjusted=true&apiKey=PutYourKeyHere
 fn create_polygon_open_close_request(base_url: &str, date: NaiveDate, api_key: &str) -> String {

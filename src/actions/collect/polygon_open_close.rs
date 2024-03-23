@@ -3,20 +3,17 @@ use std::fmt::Display;
 use std::time;
 use tokio::time::sleep;
 
-use crate::{collectors::utils, tasks::runnable::Runnable};
 
-use async_trait::async_trait;
-use futures_util::TryFutureExt;
+
+
+
+
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use sqlx::PgPool;
 use tracing::{debug, info};
-
-use crate::collectors::collector::Collector;
-use crate::collectors::{collector_sources, sp500_fields};
-use crate::tasks::task::TaskError;
 
 const URL: &str = "https://api.polygon.io/v1/open-close/";
 const ERROR_MSG_VALUE_EXISTS: &str = "Value exists or error must have been caught before";
@@ -44,14 +41,14 @@ impl Display for PolygonOpenCloseCollector {
     }
 }
 
-#[async_trait]
-impl Runnable for PolygonOpenCloseCollector {
-    async fn run(&self) -> Result<(), TaskError> {
-        load_and_store_missing_data(self.pool.clone(), self.client.clone(), &self.api_key)
-            .map_err(TaskError::UnexpectedError)
-            .await
-    }
-}
+// #[async_trait]
+// impl Runnable for PolygonOpenCloseCollector {
+//     async fn run(&self) -> Result<(), TaskError> {
+//         load_and_store_missing_data(self.pool.clone(), self.client.clone(), &self.api_key)
+//             .map_err(TaskError::UnexpectedError)
+//             .await
+//     }
+// }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -119,7 +116,9 @@ async fn load_and_store_missing_data_given_url(
                 create_polygon_open_close_request(url, &issue_symbol, current_check_date, api_key);
             debug!("Polygon open close request: {}", request);
             let response = client.get(request).send().await?.text().await?;
-            let open_close = vec![utils::parse_response::<PolygonOpenClose>(&response)?];
+            let open_close = vec![crate::utils::action_helpers::parse_response::<
+                PolygonOpenClose,
+            >(&response)?];
             if open_close[0].status.eq("OK") {
                 let open_close_data = transpose_polygon_open_close(&open_close);
                 sqlx::query!(r#"INSERT INTO polygon_open_close
@@ -204,18 +203,18 @@ fn earliest_date() -> NaiveDate {
         .expect("Adding 1 day should always work")
 }
 
-impl Collector for PolygonOpenCloseCollector {
-    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-        vec![
-            sp500_fields::Fields::OpenClose,
-            sp500_fields::Fields::MonthTradingVolume,
-        ]
-    }
+// impl Collector for PolygonOpenCloseCollector {
+//     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
+//         vec![
+//             sp500_fields::Fields::OpenClose,
+//             sp500_fields::Fields::MonthTradingVolume,
+//         ]
+//     }
 
-    fn get_source(&self) -> collector_sources::CollectorSource {
-        collector_sources::CollectorSource::PolygonOpenClose
-    }
-}
+//     fn get_source(&self) -> collector_sources::CollectorSource {
+//         collector_sources::CollectorSource::PolygonOpenClose
+//     }
+// }
 
 fn create_polygon_open_close_request(
     base_url: &str,
@@ -236,9 +235,8 @@ fn create_polygon_open_close_request(
 #[cfg(test)]
 mod test {
 
+    use crate::actions::collect::polygon_open_close::PolygonOpenClose;
     use chrono::NaiveDate;
-
-    use crate::collectors::{source_apis::polygon_open_close::PolygonOpenClose, utils};
 
     #[test]
     fn parse_polygon_open_close_response_with_one_result() {
@@ -254,7 +252,8 @@ mod test {
             "volume": 5.2284192e+07,
             "preMarket": 183.8
         }"#;
-        let parsed = utils::parse_response::<PolygonOpenClose>(input_json).unwrap();
+        let parsed =
+            crate::utils::action_helpers::parse_response::<PolygonOpenClose>(input_json).unwrap();
         let instrument = PolygonOpenClose {
             after_hours: Some(183.95),
             close: Some(184.37),

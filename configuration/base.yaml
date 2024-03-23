@@ -20,35 +20,12 @@ application:
   
   
   tasks:
-    - comment: Helpful comment
-      actions: [Collect]
-      sp500_fields:
-        - NYSE
-      execution_sequence_position: 1
-      include_sources:
-        - ALL
-    - comment: Helpful comment
-      actions: [Stage]
-      sp500_fields:
-        - NYSE
-      priority: 2
-      include_sources:
-        - ALL
-    # - comment: Helpful comment1
-    #   actions: [Collect]
-    #   sp500_fields:
-    #     - MARKET_CAP
-    #     - MONTH_TRADING_VOLUME 
-    #   priority: 2
-    #   include_sources:
-    #     - ALL
-    #   exclude_sources:
-    #     - NYSE_EVENTS
-    # - comment: Helpful comment1
-    #   actions: [Collect,Stage]
-    #   sp500_fields:
-    #     - LOCATION
-    #   priority: 2
-    #   include_sources:
-    #     - NYSE_EVENTS
-...
+    - name: task_1
+      task_type: Dummy
+      comment: Helpful comment
+    - name: task_2
+      task_type: Dummy
+      comment: Helpful comment
+    - name: task_3
+      task_type: Dummy
+      comment: Helpful comment
