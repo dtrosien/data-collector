@@ -1,8 +1,4 @@
-use crate::collectors::collector::Collector;
-use crate::collectors::source_apis::nyse_instruments::NyseInstrumentCollector;
-use crate::collectors::stagers::Stager;
 use async_trait::async_trait;
-use reqwest::Client;
 
 use sqlx::PgPool;
 
@@ -10,9 +6,8 @@ use std::fmt::Display;
 
 use tracing::info;
 
-use crate::collectors::{collector_sources, sp500_fields};
-use crate::tasks::runnable::Runnable;
-use crate::tasks::task::TaskError;
+use crate::dag_schedule::task::TaskError::UnexpectedError;
+use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 // #[derive(Debug, Deserialize, Display, EnumIter, PartialEq)]
 // #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
@@ -54,7 +49,7 @@ use crate::tasks::task::TaskError;
 //     }
 // }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NyseInstrumentStager {
     pool: PgPool,
 }
@@ -71,33 +66,18 @@ impl Display for NyseInstrumentStager {
     }
 }
 
-impl Stager for NyseInstrumentStager {
-    /// Take fields from the matching collector
-    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-        NyseInstrumentCollector::new(self.pool.clone(), Client::new()).get_sp_fields()
-        // todo: do we really want to init a Collector here? (Client is only here so it can compile)
-    }
-
-    /// Take fields from the matching collector
-    fn get_source(&self) -> collector_sources::CollectorSource {
-        NyseInstrumentCollector::new(self.pool.clone(), Client::new()).get_source()
-        // todo: do we really want to init a Collector here? (Client is only here so it can compile)
-    }
-
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Stager of source: {}", Stager::get_source(self))
-    }
-}
-
 #[async_trait]
 impl Runnable for NyseInstrumentStager {
-    async fn run(&self) -> Result<(), TaskError> {
+    #[tracing::instrument(name = "Run NyseInstrumentStager", skip(self))]
+    async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
         stage_data(self.pool.clone())
             .await
-            .map_err(TaskError::UnexpectedError)
+            .map_err(UnexpectedError)?;
+        Ok(None)
     }
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn stage_data(connection_pool: PgPool) -> Result<(), anyhow::Error> {
     info!("Start staging of Nyse Instrument");
     //Mark test data as staged
@@ -115,6 +95,7 @@ pub async fn stage_data(connection_pool: PgPool) -> Result<(), anyhow::Error> {
 }
 
 /// Mark all nyse instrument entries with instrument type 'TEST' as staged.
+#[tracing::instrument(level = "debug", skip_all)]
 async fn mark_test_data_as_staged(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##"
@@ -133,6 +114,7 @@ async fn mark_test_data_as_staged(connection_pool: &PgPool) -> Result<(), anyhow
 /// Query design: Combine the tables nyse_instruments and master_data. The column symbol_esignal_ticker in nyse_instruments is almost the same as in master_data.issue_symbol; / and - must be exchanged.
 /// Join nyse_instruments and master_data by issuer_symbol, ignore already staged entries in nyse_instruments and keep the mic code (Id for stock exchanges).
 /// Update master_data depending on mic_code accordingly.
+#[tracing::instrument(level = "debug", skip_all)]
 async fn mark_stock_exchange_per_stock_as_current_date(
     connection_pool: &PgPool,
 ) -> Result<(), anyhow::Error> {
@@ -154,16 +136,17 @@ async fn mark_stock_exchange_per_stock_as_current_date(
                     where is_staged = false
                 ) as r
             where master_data.issuer_name = r.issuer_name and master_data.issue_symbol = r.issue_symbol"##)
-    .execute(connection_pool)
-    .await?;
+        .execute(connection_pool)
+        .await?;
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn copy_instruments_to_master_data(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##"
         update master_data set instrument = instrument_type
-        from (select replace(symbol_esignal_ticker,'/','-') as ni_ticker, instrument_type 
+        from (select replace(symbol_esignal_ticker,'/','-') as ni_ticker, instrument_type
                 from
                    nyse_instruments ni
                 where
@@ -177,17 +160,18 @@ async fn copy_instruments_to_master_data(connection_pool: &PgPool) -> Result<(),
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn mark_already_staged_instruments_as_staged(
     connection_pool: &PgPool,
 ) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##"
-    update nyse_instruments  set is_staged = true 
-    from   (select issue_symbol  
+    update nyse_instruments  set is_staged = true
+    from   (select issue_symbol
             from master_data
             where instrument notnull
             ) as r
-    where 
+    where
         replace(symbol_esignal_ticker,'/','-') = r.issue_symbol;"##
     )
     .execute(connection_pool)
@@ -199,9 +183,8 @@ async fn mark_already_staged_instruments_as_staged(
 mod test {
     use chrono::{NaiveDate, Utc};
     use sqlx::{query, Pool, Postgres};
-    use tracing_test::traced_test;
 
-    use crate::collectors::staging::nyse_instruments_staging::{
+    use crate::actions::stage::nyse_instruments::{
         copy_instruments_to_master_data, mark_already_staged_instruments_as_staged,
     };
 
@@ -231,7 +214,6 @@ mod test {
         suspension_date: Option<NaiveDate>,
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts("nyse_instruments_unstaged.sql")
@@ -257,7 +239,6 @@ mod test {
         assert_eq!(instruments_result.is_staged, true);
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts(
@@ -355,7 +336,6 @@ mod test {
                 && row.start_cboe.unwrap().eq(&current_date)));
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts(
@@ -398,7 +378,6 @@ mod test {
     // Leave unstaged instrument as unstaged
     // Already staged instrument gets ignored
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts(
@@ -435,7 +414,6 @@ mod test {
         assert_eq!(md_result.instrument.unwrap(), "PREFERRED_STOCK");
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts(
@@ -470,7 +448,6 @@ mod test {
         assert_eq!(md_result.instrument, None);
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts("nyse_instruments_unstaged.sql", "master_data_with_company.sql")
@@ -501,7 +478,6 @@ mod test {
     }
 
     // Leave unstaged instrument as unstaged
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts(
@@ -542,7 +518,6 @@ mod test {
     }
 
     /// Already staged instrument gets ignored
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
         scripts(

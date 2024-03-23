@@ -1,17 +1,13 @@
-use crate::collectors::collector::Collector;
-use crate::collectors::stagers::Stager;
 use async_trait::async_trait;
 use futures_util::TryFutureExt;
-use reqwest::Client;
+
 use sqlx::PgPool;
 use std::fmt::Display;
 
-use crate::collectors::source_apis::sec_companies::SecCompanyCollector;
-use crate::collectors::{collector_sources, sp500_fields};
-use crate::tasks::runnable::Runnable;
-use crate::tasks::task::TaskError;
+use crate::dag_schedule::task::TaskError::UnexpectedError;
+use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SecCompanyStager {
     pool: PgPool,
 }
@@ -28,33 +24,18 @@ impl Display for SecCompanyStager {
     }
 }
 
-impl Stager for SecCompanyStager {
-    /// Take fields from the matching collector
-    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-        SecCompanyCollector::new(self.pool.clone(), Client::new()).get_sp_fields()
-        // todo: do we really want to init a Collector here? (Client is only here so it can compile)
-    }
-
-    /// Take fields from the matching collector
-    fn get_source(&self) -> collector_sources::CollectorSource {
-        SecCompanyCollector::new(self.pool.clone(), Client::new()).get_source()
-        // todo: do we really want to init a Collector here? (Client is only here so it can compile)
-    }
-
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Stager of source: {}", Stager::get_source(self))
-    }
-}
-
 #[async_trait]
 impl Runnable for SecCompanyStager {
-    async fn run(&self) -> Result<(), TaskError> {
+    #[tracing::instrument(name = "Run SecCompanyStager", skip(self))]
+    async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
         stage_data(self.pool.clone())
-            .map_err(TaskError::UnexpectedError)
-            .await
+            .map_err(UnexpectedError)
+            .await?;
+        Ok(None)
     }
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn stage_data(connection_pool: PgPool) -> Result<(), anyhow::Error> {
     println!("Staging entered");
     //Derive data
@@ -67,17 +48,19 @@ pub async fn stage_data(connection_pool: PgPool) -> Result<(), anyhow::Error> {
 }
 
 /// Move all unstaged issuers from the sec_companies table to the master data table.
+#[tracing::instrument(level = "debug", skip_all)]
 async fn move_issuers_to_master_data(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     sqlx::query!("insert into master_data (issuer_name, issue_symbol) select name , ticker from sec_companies where is_staged = false on conflict do nothing").execute(connection_pool).await?;
     Ok(())
 }
 
 /// Filter for all issuers with category 'OTC' (over the counter), match them with the master data and mark corresponding master data as non-company with category 'OTC'.
+#[tracing::instrument(level = "debug", skip_all)]
 async fn move_otc_issues_to_master_data(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##" update master_data 
     set
-      instrument = 'OTC' 
+      instrument = 'OTC'
     from 
      (select sc.exchange as exchange, sc.ticker as ticker, sc.name as sec_name from sec_companies sc
         join master_data md on
@@ -94,6 +77,7 @@ async fn move_otc_issues_to_master_data(connection_pool: &PgPool) -> Result<(), 
 }
 
 ///Take the SIC code from the sec_companies table (state_of_incorporation column), match it with the countries table and write the ISO 3 country codes to the master data table.
+#[tracing::instrument(level = "debug", skip_all)]
 async fn derive_country_from_sec_code(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     sqlx::query!(r##"
     update master_data set 
@@ -104,12 +88,13 @@ async fn derive_country_from_sec_code(connection_pool: &PgPool) -> Result<(), an
            on c.sec_code = sc.state_of_incorporation  
        where is_staged = false) a
     where issuer_name = c_name and issue_symbol = ticker"##)
-    .execute(connection_pool)
-    .await?;
+        .execute(connection_pool)
+        .await?;
     Ok(())
 }
 
 ///Select the master data with category 'OTC' and non-null company and mark corresponding rows in sec_companies as staged (true).
+#[tracing::instrument(level = "debug", skip_all)]
 async fn mark_otc_issuers_as_staged(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##" 
@@ -133,9 +118,8 @@ async fn mark_otc_issuers_as_staged(connection_pool: &PgPool) -> Result<(), anyh
 mod test {
     use chrono::NaiveDate;
     use sqlx::{Pool, Postgres};
-    use tracing_test::traced_test;
 
-    use crate::collectors::staging::sec_companies_staging::{
+    use crate::actions::stage::sec_companies::{
         derive_country_from_sec_code, mark_otc_issuers_as_staged, stage_data,
     };
 
@@ -177,7 +161,6 @@ mod test {
         suspension_date: Option<NaiveDate>,
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_unstaged.sql")
@@ -209,7 +192,6 @@ mod test {
         );
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_unstaged.sql", "sec_companies_staged.sql")
@@ -248,7 +230,6 @@ mod test {
         assert_eq!(md_result.len(), 0);
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_unstaged.sql", "master_data_without_otc_category.sql")
@@ -263,7 +244,7 @@ mod test {
                 .await
                 .unwrap();
         assert_eq!(
-            is_row_in_master_data("VIVEVE MEDICAL, INC.", "VIVE", Some("USA"), None, md_result),
+            is_row_in_master_data("VIVEVE MEDICAL, INC.", "VIVE", Some("USA"), None, md_result,),
             true
         );
         //Stage OTC info to master data
@@ -279,7 +260,6 @@ mod test {
         assert_eq!(md_result.instrument.as_deref(), Some("OTC"));
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts(
@@ -326,7 +306,6 @@ mod test {
         assert_eq!(md_result.instrument.as_deref(), Some("OTC"));
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_unstaged.sql", "master_data_without_country_code.sql")
@@ -354,7 +333,6 @@ mod test {
         assert_eq!(md_result.location.as_deref(), Some("USA"));
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_staged.sql", "master_data_without_country_code.sql")
@@ -383,7 +361,6 @@ mod test {
         assert_eq!(md_result.location, None);
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_unstaged.sql", "master_data_without_country_code.sql")
@@ -417,7 +394,6 @@ mod test {
         assert_eq!(sc_result.is_staged, true);
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_unstaged.sql")
@@ -459,7 +435,6 @@ mod test {
         assert_eq!(sc_result.is_staged, true);
     }
 
-    #[traced_test]
     #[sqlx::test(fixtures(
         path = "../../../tests/resources/collectors/staging/sec_companies_staging",
         scripts("sec_companies_staged.sql")

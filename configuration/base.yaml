@@ -7,6 +7,18 @@ database:
 application:
   http_client:
     timeout_milliseconds: 1000000
+  # Defines tasks eligible for execution.
+  # Note: Tasks listed as dependencies of others must also be explicitly included here to be considered.
+  # If a task is referenced in a dependency list but not present in this list, it will be ignored.
+  task_dependencies:
+    - name: task_1
+      dependencies: [ ]
+    - name: task_2
+      dependencies: [ ]
+    - name: task_3
+      dependencies: [ task_1, task_2 ]
+  
+  
   tasks:
     - comment: Helpful comment
       actions: [Collect]
@@ -19,23 +31,24 @@ application:
       actions: [Stage]
       sp500_fields:
         - NYSE
-      execution_sequence_position: 2
+      priority: 2
       include_sources:
         - ALL
-    - comment: Helpful comment1
-      actions: [Collect]
-      sp500_fields:
-        - MARKET_CAP
-        - MONTH_TRADING_VOLUME 
-      execution_sequence_position: 3
-      include_sources:
-        - POLYGON_GROUPED_DAILY
-    - comment: Helpful comment1
-      actions: [Collect]
-      sp500_fields:
-        - MARKET_CAP
-        - MONTH_TRADING_VOLUME 
-      execution_sequence_position: 4
-      include_sources:
-        - POLYGON_OPEN_CLOSE
+    # - comment: Helpful comment1
+    #   actions: [Collect]
+    #   sp500_fields:
+    #     - MARKET_CAP
+    #     - MONTH_TRADING_VOLUME 
+    #   priority: 2
+    #   include_sources:
+    #     - ALL
+    #   exclude_sources:
+    #     - NYSE_EVENTS
+    # - comment: Helpful comment1
+    #   actions: [Collect,Stage]
+    #   sp500_fields:
+    #     - LOCATION
+    #   priority: 2
+    #   include_sources:
+    #     - NYSE_EVENTS
 ...

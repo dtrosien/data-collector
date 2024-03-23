@@ -1,0 +1,55 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  hostmetrics:
+    # Optional. Host Metrics Receiver added as an example of Infra Monitoring capabilities of the OpenTelemetry Collector
+    # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/hostmetricsreceiver
+    scrapers:
+      load:
+      memory:
+
+processors:
+  batch:
+  resourcedetection:
+    # Enriches telemetry data with resource information from the host
+    # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/resourcedetectionprocessor
+    detectors: [ "env", "system" ]
+    override: false
+  transform/add_resource_attributes_as_metric_attributes:
+    # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/transformprocessor
+    error_mode: ignore
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(attributes["deployment.environment"], resource.attributes["deployment.environment"])
+          - set(attributes["service.version"], resource.attributes["service.version"])
+
+exporters:
+  otlp:
+    endpoint: "api.honeycomb.io:443"
+    headers:
+      "x-honeycomb-team": "API_KEY"
+  otlp/metrics:
+    endpoint: "api.honeycomb.io:443" # US instance
+    headers:
+      "x-honeycomb-team": "API_KEY"
+      "x-honeycomb-dataset": "METRICS_DATASET"
+
+service:
+  pipelines:
+    traces:
+      receivers: [ otlp ]
+      processors: [ resourcedetection, batch ]
+      exporters: [ otlp ]
+    metrics:
+      receivers: [ otlp, hostmetrics ]
+      processors: [ resourcedetection, transform/add_resource_attributes_as_metric_attributes, batch ]
+      exporters: [ otlp/metrics ]
+    logs:
+      receivers: [ otlp ]
+      processors: [ resourcedetection, batch ]
+      exporters: [ otlp ]

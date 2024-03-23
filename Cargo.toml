@@ -17,7 +17,7 @@ path = "src/main.rs"
 [dependencies]
 async-trait = "0.1.74"
 chrono = { version = "0.4.31", default-features = false, features = ["clock", "serde"] }
-config = "0.13"
+config = "0.14.0"
 filetime = "0.2.23"
 futures-util = "0.3.28"
 home = "0.5.9"
@@ -32,11 +32,17 @@ tracing-bunyan-formatter = "0.3" # uses layer trait from tracing subscriber to b
 tracing-log = "0.2" # redirect logs to tracing
 tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] } # to actually print traces
 tracing = { version = "0.1", features = ["log"] } # facade to generate traces
-tracing-test = "0.2.4"
 uuid = { version = "1", features = ["v4"] }
 zip = "0.6.6"
 thiserror = "1"
 anyhow = "1"
+rand = "0.8.5"
+
+opentelemetry = "0.22"
+opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
+#opentelemetry-stdout = { version = "0.3", features = ["trace"] }
+opentelemetry-otlp = { version = "0.15.0", features = ["metrics", "grpc-tonic", "tls-roots"] }
+tracing-opentelemetry = "0.23"
 
 [dev-dependencies]
 filetime = "0.2.23"

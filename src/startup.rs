@@ -1,13 +1,21 @@
 use reqwest::Client;
+use std::collections::HashMap;
+use std::sync::Arc;
 
-use crate::configuration::{DatabaseSettings, HttpClientSettings, Settings, TaskSetting};
+use crate::configuration::{
+    DatabaseSettings, HttpClientSettings, Settings, TaskDependency, TaskName, TaskSetting,
+};
 
-use crate::scheduler::Scheduler;
+use crate::actions::action::create_action;
+use crate::dag_schedule::schedule::{Schedule, TaskDependenciesSpecs, TaskSpec, TaskSpecRef};
+use crate::dag_schedule::task::{ExecutionMode, RetryOptions};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
+use uuid::Uuid;
 
 pub struct Application {
     pool: PgPool,
+    task_dependencies: Vec<TaskDependency>,
     task_settings: Vec<TaskSetting>,
     client: Client,
 }
@@ -19,19 +27,80 @@ impl Application {
         let client = build_http_client(configuration.application.http_client);
         Application {
             pool: connection_pool,
+            task_dependencies: configuration.application.task_dependencies,
             task_settings: configuration.application.tasks,
             client,
         }
     }
 
-    #[tracing::instrument(name = "Start running tasks", skip(self))]
+    #[tracing::instrument(name = "Run application", skip(self))]
     pub async fn run(&self) -> Result<(), anyhow::Error> {
-        let scheduler = Scheduler::build(&self.task_settings, &self.pool, &self.client);
-        let results = scheduler.build_execution_sequence().run_all().await;
-        // todo handle and log errors etc
-        results.into_iter().try_for_each(|r| r)?;
+        // init specs from config
+        let task_specs = build_task_specs(
+            &self.task_settings,
+            &self.task_dependencies,
+            &self.pool,
+            &self.client,
+        );
+
+        // build adj list from specs
+        let task_dep_specs = add_dependencies_to_task_specs(task_specs, &self.task_dependencies);
+
+        // schedule, check resulting dag and run
+        let mut schedule = Schedule::new();
+        schedule.schedule_tasks(task_dep_specs).await;
+        schedule.run_checks().await;
+        schedule.run_schedule().await;
         Ok(())
     }
+}
+
+fn build_task_specs(
+    task_settings: &[TaskSetting],
+    task_dependencies: &[TaskDependency],
+    pool: &PgPool,
+    client: &Client,
+) -> HashMap<TaskName, TaskSpecRef> {
+    let required_tasks: Vec<TaskName> = task_dependencies.iter().map(|t| t.name.clone()).collect();
+
+    task_settings
+        .iter()
+        // only tasks in the dependency list shall be executed
+        .filter(|ts| required_tasks.contains(&ts.name))
+        .map(|ts| {
+            let task_name: TaskName = ts.name.clone();
+            let action = create_action(&ts.task_type, pool, client);
+            let task_spec = TaskSpec {
+                id: Uuid::new_v4(),
+                name: task_name.clone(),
+                retry_options: RetryOptions::default(), // todo read from config
+                execution_mode: ExecutionMode::Once,
+                tools: Arc::new(Default::default()),
+                runnable: action,
+            };
+            let task_spec_ref: TaskSpecRef = TaskSpecRef::from(task_spec);
+            (task_name, task_spec_ref)
+        })
+        .collect()
+}
+
+fn add_dependencies_to_task_specs(
+    task_specs_map: HashMap<TaskName, TaskSpecRef>,
+    task_dependencies: &[TaskDependency],
+) -> TaskDependenciesSpecs {
+    task_specs_map
+        .values()
+        .map(|task_specs_ref| {
+            let deps: Vec<TaskSpecRef> = task_dependencies
+                .iter()
+                .filter(|task_dependency| task_dependency.name == task_specs_ref.name)
+                .flat_map(|task_dependency| &task_dependency.dependencies)
+                .filter_map(|task_name| task_specs_map.get(task_name))
+                .cloned()
+                .collect();
+            (task_specs_ref.clone(), deps)
+        })
+        .collect()
 }
 
 pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {

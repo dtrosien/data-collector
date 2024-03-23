@@ -1,4 +1,3 @@
-use crate::collectors::{self, collector_sources, sp500_fields};
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use chrono::{DateTime, Days, Utc};
@@ -19,11 +18,11 @@ use zip::ZipArchive;
 
 use tokio_stream::StreamExt;
 
-use crate::collectors::collector::Collector;
+use crate::dag_schedule::task::TaskError::UnexpectedError;
+use crate::dag_schedule::task::{Runnable, StatsMap};
+use crate::utils;
 use tracing::debug;
 
-use crate::tasks::runnable::Runnable;
-use crate::tasks::task::TaskError;
 use crate::utils::telemetry::spawn_blocking_with_tracing;
 
 const DOWNLOAD_SOURCE: &str =
@@ -33,7 +32,7 @@ const TARGET_SUBDIRECTORIES: &str = "data-collector/sec_companies";
 const TARGET_FILE_NAME: &str = "submissions.zip";
 const TARGET_TMP_FILE_NAME: &str = "submissions.zip.tmp";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SecCompanyCollector {
     pool: PgPool,
     client: Client,
@@ -89,23 +88,16 @@ impl Display for SecCompanyCollector {
 
 #[async_trait]
 impl Runnable for SecCompanyCollector {
-    async fn run(&self) -> Result<(), TaskError> {
+    #[tracing::instrument(name = "Run SecCompanyCollector", skip(self))]
+    async fn run(&self) -> Result<Option<StatsMap>, crate::dag_schedule::task::TaskError> {
         load_and_store_missing_data(self.pool.clone(), self.client.clone())
             .await
-            .map_err(TaskError::UnexpectedError)
+            .map_err(UnexpectedError)?;
+        Ok(None)
     }
 }
 
-impl Collector for SecCompanyCollector {
-    fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-        vec![sp500_fields::Fields::Nyse]
-    }
-
-    fn get_source(&self) -> collector_sources::CollectorSource {
-        collector_sources::CollectorSource::SecCompanies
-    }
-}
-
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn load_and_store_missing_data(
     connection_pool: PgPool,
     client: Client,
@@ -120,6 +112,7 @@ pub async fn load_and_store_missing_data(
     .await
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn load_and_store_missing_data_with_targets(
     connection_pool: PgPool,
     client: Client,
@@ -147,6 +140,7 @@ pub async fn load_and_store_missing_data_with_targets(
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn search_and_shrink_zip(
     mut zip_archive: ZipArchive<File>,
     target_location: &PathBuf,
@@ -165,7 +159,7 @@ fn search_and_shrink_zip(
             std::io::copy(&mut file, &mut cursor)?;
         }
         let output = String::from_utf8_lossy(cursor.into_inner()).to_string();
-        let infos: SecCompany = collectors::utils::parse_response(&output)?;
+        let infos: SecCompany = utils::action_helpers::parse_response(&output)?;
         if !infos.exchanges.is_empty() || !infos.tickers.is_empty() {
             found_data.push(infos);
             new_zip.raw_copy_file(zip_archive.by_index(i)?)?;
@@ -184,6 +178,7 @@ fn search_and_shrink_zip(
     Ok(found_data)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn compute_tmp_location(target_location: &Path) -> PathBuf {
     let mut tmp_location = PathBuf::from(target_location);
     tmp_location.pop();
@@ -191,12 +186,14 @@ fn compute_tmp_location(target_location: &Path) -> PathBuf {
     tmp_location
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn get_zip_file(target_location: &Path) -> Result<ZipArchive<File>, anyhow::Error> {
     let file = File::open(target_location.to_str().unwrap())?;
     let zip_archive = ZipArchive::new(file)?;
     Ok(zip_archive)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn download_archive_if_needed(
     client: Client,
     target_location: &PathBuf,
@@ -210,6 +207,7 @@ async fn download_archive_if_needed(
 }
 
 ///A download is needed, if either the file has 0 bytes or is strictly older than 7 days
+#[tracing::instrument(level = "debug", skip_all)]
 fn is_download_needed(target_location: &PathBuf) -> bool {
     match fs::metadata(target_location) {
         Ok(metadata) => {
@@ -222,6 +220,7 @@ fn is_download_needed(target_location: &PathBuf) -> bool {
 }
 
 /// Creates directories if needed and return the location to the zip file, independent, if it is existing or not.
+#[tracing::instrument(level = "debug", skip_all)]
 fn prepare_generic_zip_location(filename: &str) -> Result<PathBuf, anyhow::Error> {
     prepare_zip_location(
         home::home_dir().unwrap().to_str().unwrap(),
@@ -231,6 +230,7 @@ fn prepare_generic_zip_location(filename: &str) -> Result<PathBuf, anyhow::Error
 }
 
 /// Creates directories if needed and return the location to the zip file, independent, if it is existing or not.
+#[tracing::instrument(level = "debug", skip_all)]
 fn prepare_zip_location(
     root_path: &str,
     intermediate_path: &str,
@@ -248,6 +248,7 @@ fn prepare_zip_location(
     Ok(path_buf)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn download_url(client: Client, url: &str, destination: &str) -> Result<(), anyhow::Error> {
     let mut response = client
         .get(url)
@@ -282,6 +283,7 @@ async fn download_url(client: Client, url: &str, destination: &str) -> Result<()
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn transpose_sec_companies(companies: Vec<SecCompany>) -> TransposedSecCompany {
     let mut result = TransposedSecCompany::new();
     for company in companies {
@@ -312,7 +314,7 @@ fn transpose_sec_companies(companies: Vec<SecCompany>) -> TransposedSecCompany {
 mod test {
     use std::{fs::File, path::PathBuf};
 
-    use crate::collectors::source_apis::sec_companies::{
+    use crate::actions::collect::sec_companies::{
         load_and_store_missing_data_with_targets, prepare_zip_location, TARGET_FILE_NAME,
     };
     use crate::utils::test_helpers::get_test_client;
@@ -391,7 +393,7 @@ mod test {
         let time = Utc::now()
             .checked_sub_days(Days::new(7))
             .unwrap()
-            .checked_add_signed(Duration::minutes(10))
+            .checked_add_signed(Duration::try_minutes(10).unwrap())
             .unwrap()
             .timestamp();
         filetime::set_file_mtime(&file_path, FileTime::from_unix_time(time, 0)).unwrap();
