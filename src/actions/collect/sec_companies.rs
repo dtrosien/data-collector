@@ -21,7 +21,7 @@ use tokio_stream::StreamExt;
 use crate::dag_schedule::task::TaskError::UnexpectedError;
 use crate::dag_schedule::task::{Runnable, StatsMap};
 use crate::utils;
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::utils::telemetry::spawn_blocking_with_tracing;
 
@@ -119,6 +119,7 @@ pub async fn load_and_store_missing_data_with_targets(
     url: &str,
     zip_file_location_ref: &PathBuf,
 ) -> Result<(), anyhow::Error> {
+    info!("Starting SEC collecting.");
     download_archive_if_needed(client, zip_file_location_ref, url).await?;
     let zip_file_location = zip_file_location_ref.clone();
     let transposed_data = spawn_blocking_with_tracing(move || -> anyhow::Result<_> {

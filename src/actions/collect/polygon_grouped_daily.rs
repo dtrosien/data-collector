@@ -1,10 +1,9 @@
+use async_trait::async_trait;
 use chrono::{Days, Months, NaiveDate, Utc};
+use futures_util::TryFutureExt;
 use std::fmt::Display;
 use std::time;
 use tokio::time::sleep;
-
-
-
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -12,12 +11,11 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{debug, info};
 
-
-
+use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 const URL: &str = "https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PolygonGroupedDailyCollector {
     pool: PgPool,
     client: Client,
@@ -40,14 +38,15 @@ impl Display for PolygonGroupedDailyCollector {
     }
 }
 
-// #[async_trait]
-// impl Runnable for PolygonGroupedDailyCollector {
-//     async fn run(&self) -> Result<(), TaskError> {
-//         load_and_store_missing_data(self.pool.clone(), self.client.clone(), &self.api_key)
-//             .map_err(TaskError::UnexpectedError)
-//             .await
-//     }
-// }
+#[async_trait]
+impl Runnable for PolygonGroupedDailyCollector {
+    async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
+        load_and_store_missing_data(self.pool.clone(), self.client.clone(), &self.api_key)
+            .map_err(TaskError::UnexpectedError)
+            .await?;
+        Ok(None)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

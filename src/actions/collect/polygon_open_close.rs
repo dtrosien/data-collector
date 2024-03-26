@@ -1,13 +1,9 @@
+use async_trait::async_trait;
 use chrono::{Days, Months, NaiveDate, Utc};
+use futures_util::TryFutureExt;
 use std::fmt::Display;
 use std::time;
 use tokio::time::sleep;
-
-
-
-
-
-
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -15,10 +11,12 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{debug, info};
 
+use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
+
 const URL: &str = "https://api.polygon.io/v1/open-close/";
 const ERROR_MSG_VALUE_EXISTS: &str = "Value exists or error must have been caught before";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PolygonOpenCloseCollector {
     pool: PgPool,
     client: Client,
@@ -41,14 +39,15 @@ impl Display for PolygonOpenCloseCollector {
     }
 }
 
-// #[async_trait]
-// impl Runnable for PolygonOpenCloseCollector {
-//     async fn run(&self) -> Result<(), TaskError> {
-//         load_and_store_missing_data(self.pool.clone(), self.client.clone(), &self.api_key)
-//             .map_err(TaskError::UnexpectedError)
-//             .await
-//     }
-// }
+#[async_trait]
+impl Runnable for PolygonOpenCloseCollector {
+    async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
+        load_and_store_missing_data(self.pool.clone(), self.client.clone(), &self.api_key)
+            .map_err(TaskError::UnexpectedError)
+            .await?;
+        Ok(None)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
