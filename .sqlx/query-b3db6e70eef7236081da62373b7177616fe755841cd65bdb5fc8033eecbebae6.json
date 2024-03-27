@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO polygon_open_close\n                (after_hours, \"close\", business_date, high, low, \"open\", pre_market, symbol, volume)\n                Select * from UNNEST ($1::float[], $2::float[], $3::date[], $4::float[], $5::float[], $6::float[], $7::float[], $8::text[], $9::float[]) on conflict do nothing",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Float8Array",
+        "Float8Array",
+        "DateArray",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "TextArray",
+        "Float8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b3db6e70eef7236081da62373b7177616fe755841cd65bdb5fc8033eecbebae6"
+}

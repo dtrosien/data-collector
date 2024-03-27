@@ -12,6 +12,8 @@ pub enum CollectorSource {
     NyseEvents,
     NyseInstruments,
     SecCompanies,
+    PolygonOpenClose,
+    PolygonGroupedDaily,
     Unknown,
 }
 

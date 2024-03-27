@@ -12,6 +12,9 @@ use serde::Deserialize;
 use sqlx::PgPool;
 use std::sync::Arc;
 
+use super::collect::polygon_grouped_daily::PolygonGroupedDailyCollector;
+use super::collect::polygon_open_close::PolygonOpenCloseCollector;
+
 /// Action is a boxed trait object of Runnable.
 pub type Action = Arc<dyn Runnable + Send + Sync>;
 
@@ -30,6 +33,16 @@ pub fn create_action(action_type: &ActionType, pool: &PgPool, client: &Client) -
         ActionType::NyseInstrumentsStage => Arc::new(NyseInstrumentStager::new(pool.clone())),
         ActionType::SecCompaniesStage => Arc::new(SecCompanyStager::new(pool.clone())),
         ActionType::Dummy => Arc::new(DummyCollector::new()),
+        ActionType::PolygonGroupedDaily => Arc::new(PolygonGroupedDailyCollector::new(
+            pool.clone(),
+            client.clone(),
+            "secret".to_string(),
+        )),
+        ActionType::PolygonOpenClose => Arc::new(PolygonOpenCloseCollector::new(
+            pool.clone(),
+            client.clone(),
+            "secret".to_string(),
+        )),
     }
 }
 
@@ -41,6 +54,8 @@ pub enum ActionType {
     SecCompaniesCollect,
     NyseInstrumentsStage,
     SecCompaniesStage,
+    PolygonGroupedDaily,
+    PolygonOpenClose,
     Dummy,
 }
 

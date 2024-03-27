@@ -2,17 +2,29 @@ digraph regexp {
  fontname="Helvetica,Arial,sans-serif"
  node [fontname="Helvetica,Arial,sans-serif"]
  rankdir="LR";
- n0 [label="NYSE event collect"];
- n1 [label="NYSE event staging"];
- n2 [label="NYSE instrument collect"];
- n3 [label="NYSE instrument staging"];
- n4 [label="SEC collect"];
- n5 [label="SEC staging"];
- n0 -> n1
- n2 -> n3
- n4 -> n5
- n5 -> n3
- n5 -> n1
-}
+ NyseEventsCollect      [label="NYSE event collect", style=filled, fillcolor=chartreuse];
+ n1                     [label="NYSE event staging"];
+ NyseInstrumentsCollect [label="NYSE instrument collect", style=filled, fillcolor=chartreuse];
+ NyseInstrumentsStage   [label="NYSE instrument staging"];
+ SecCompaniesCollect    [label="SEC collect", style=filled, fillcolor=chartreuse];
+ SecCompaniesStage      [label="SEC staging"];
+ PolygonGroupedDaily    [label="Polygon grouped daily", style=filled, fillcolor=chartreuse];
+ PolygonOpenClose       [label="Polygon open close"];
+
+ NyseEventsCollect -> n1
+ NyseInstrumentsCollect -> NyseInstrumentsStage
+ SecCompaniesCollect -> SecCompaniesStage
+ SecCompaniesStage -> NyseInstrumentsStage
+ SecCompaniesStage -> n1
+ PolygonGroupedDaily -> PolygonOpenClose
+ NyseInstrumentsStage -> PolygonOpenClose
+ }
 //sudo apt install graphviz
 //dot -Tsvg dependencies.dot > output.svg
+
+
+
+
+
+
+
