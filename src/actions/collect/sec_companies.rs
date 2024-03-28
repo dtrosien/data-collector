@@ -369,6 +369,12 @@ mod test {
         std::fs::copy(d, &file).unwrap();
         let file_path = PathBuf::from(file.path());
 
+        filetime::set_file_mtime(
+            &file_path,
+            FileTime::from_unix_time(Utc::now().timestamp(), 0),
+        )
+        .unwrap();
+
         assert_eq!(is_download_needed(&file_path), false);
     }
 
@@ -472,6 +478,11 @@ mod test {
         d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
         std::fs::copy(d, &file).unwrap();
         let file_path = PathBuf::from(file.path());
+        filetime::set_file_mtime(
+            &file_path,
+            FileTime::from_unix_time(Utc::now().timestamp(), 0),
+        )
+        .unwrap();
 
         //Read file from resources
         let mut file_content: Vec<u8> = vec![];
