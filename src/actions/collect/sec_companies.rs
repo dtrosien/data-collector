@@ -360,7 +360,6 @@ mod test {
         (server, url)
     }
 
-    #[ignore]
     #[test]
     fn given_new_file_when_checked_then_returns_false() {
         let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
@@ -368,12 +367,7 @@ mod test {
         d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
         std::fs::copy(d, &file).unwrap();
         let file_path = PathBuf::from(file.path());
-
-        filetime::set_file_mtime(
-            &file_path,
-            FileTime::from_unix_time(Utc::now().timestamp(), 0),
-        )
-        .unwrap();
+        set_file_time_to_now(&file_path);
 
         assert_eq!(is_download_needed(&file_path), false);
     }
@@ -470,7 +464,6 @@ mod test {
         assert_eq!(file_path.metadata().unwrap().len(), 3109);
     }
 
-    #[ignore]
     #[tokio::test]
     async fn file_is_not_loaded_when_new() {
         let (file, _tmp_dir) = create_named_tmp_file_in_tmp_dir();
@@ -478,11 +471,7 @@ mod test {
         d.push("tests/resources/SEC_companies_1_of_3_with_stock_and_exchange.zip");
         std::fs::copy(d, &file).unwrap();
         let file_path = PathBuf::from(file.path());
-        filetime::set_file_mtime(
-            &file_path,
-            FileTime::from_unix_time(Utc::now().timestamp(), 0),
-        )
-        .unwrap();
+        set_file_time_to_now(&file_path);
 
         //Read file from resources
         let mut file_content: Vec<u8> = vec![];
@@ -598,5 +587,14 @@ mod test {
             tempfile::Builder::new().tempfile_in(&tmp_dir).unwrap(),
             tmp_dir,
         )
+    }
+
+    /// Sets the file time to the current time. This function is introduced, since Windows and iOS copy metadata AND file content, while Linux only copies file content.
+    fn set_file_time_to_now(file_path: &PathBuf) {
+        filetime::set_file_mtime(
+            file_path,
+            FileTime::from_unix_time(Utc::now().timestamp(), 0),
+        )
+        .unwrap();
     }
 }
