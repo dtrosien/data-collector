@@ -2,9 +2,12 @@ use anyhow::Error;
 use async_trait::async_trait;
 use chrono::{Days, Months, NaiveDate, Utc};
 use futures_util::TryFutureExt;
-use secrecy::{ExposeSecret, Secret};
-use std::fmt::Display;
+use secrecy::{ExposeSecret, Secret, Zeroize};
+use std::borrow::BorrowMut;
+use std::fmt::Debug;
+use std::ops::Deref;
 use std::time;
+use std::{fmt::Display, ops::DerefMut};
 use tokio::time::sleep;
 
 use reqwest::Client;
@@ -17,6 +20,25 @@ use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 const URL: &str = "https://api.polygon.io/v1/open-close/";
 const ERROR_MSG_VALUE_EXISTS: &str = "Value exists or error must have been caught before";
+
+#[derive(Clone, Debug)]
+struct PolygonOpenCloseRequest {
+    base: String,
+    api_key: Secret<String>,
+}
+
+impl PolygonOpenCloseRequest {
+    fn expose_secret(&self) -> String {
+        self.base.clone() + self.api_key.expose_secret()
+    }
+}
+
+impl Display for PolygonOpenCloseRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.base)?;
+        Secret::fmt(&self.api_key, f)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct PolygonOpenCloseCollector {
@@ -37,7 +59,7 @@ impl PolygonOpenCloseCollector {
 
 impl Display for PolygonOpenCloseCollector {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "PloygonOpenCloseCollector struct.")
+        write!(f, "PolygonOpenCloseCollector struct.")
     }
 }
 
@@ -121,8 +143,13 @@ async fn load_and_store_missing_data_given_url(
         while current_check_date.lt(&Utc::now().date_naive()) {
             let request =
                 create_polygon_open_close_request(url, &issue_symbol, current_check_date, api_key);
-            debug!("Polygon open close request: {}", request);
-            let response = client.get(request).send().await?.text().await?;
+            info!("Polygon open close request: {}", request);
+            let response = client
+                .get(request.expose_secret())
+                .send()
+                .await?
+                .text()
+                .await?;
             let open_close = vec![crate::utils::action_helpers::parse_response::<
                 PolygonOpenClose,
             >(&response)?];
@@ -228,15 +255,19 @@ fn create_polygon_open_close_request(
     ticker_symbol: &str,
     date: NaiveDate,
     api_key: &Secret<String>,
-) -> String {
-    let request_url = base_url.to_string()
+) -> PolygonOpenCloseRequest {
+    let base_request_url = base_url.to_string()
         + ticker_symbol
         + "/"
         + date.to_string().as_str()
         + "?adjusted=true"
-        + "&apiKey="
-        + api_key.expose_secret();
-    request_url
+        + "&apiKey=";
+    PolygonOpenCloseRequest {
+        base: base_request_url,
+        api_key: api_key.clone(),
+    }
+    //      api_key.expose_secret();
+    // base_request_url
 }
 
 #[cfg(test)]

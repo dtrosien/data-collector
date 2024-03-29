@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use chrono::{Days, Months, NaiveDate, Utc};
 use futures_util::TryFutureExt;
 use secrecy::{ExposeSecret, Secret};
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::time;
 use tokio::time::sleep;
 
@@ -16,6 +16,25 @@ use tracing::{debug, info};
 use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 const URL: &str = "https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/";
+
+#[derive(Clone, Debug)]
+struct PolygonGroupedDailyRequest {
+    base: String,
+    api_key: Secret<String>,
+}
+
+impl PolygonGroupedDailyRequest {
+    fn expose_secret(&self) -> String {
+        self.base.clone() + self.api_key.expose_secret()
+    }
+}
+
+impl Display for PolygonGroupedDailyRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.base)?;
+        Secret::fmt(&self.api_key, f)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct PolygonGroupedDailyCollector {
@@ -129,9 +148,14 @@ async fn load_and_store_missing_data_given_url(
     let mut current_check_date = get_start_date(result);
 
     while current_check_date.lt(&Utc::now().date_naive()) {
-        let request = create_polygon_open_close_request(url, current_check_date, api_key);
+        let request = create_polygon_grouped_daily_request(url, current_check_date, api_key);
         debug!("Polygon grouped daily request: {}", request);
-        let response = client.get(&request).send().await?.text().await?;
+        let response = client
+            .get(&request.expose_secret())
+            .send()
+            .await?
+            .text()
+            .await?;
 
         let open_close =
             crate::utils::action_helpers::parse_response::<PolygonGroupedDaily>(&response)?;
@@ -232,17 +256,19 @@ fn earliest_date() -> NaiveDate {
 // }
 
 ///  Example output https://api.polygon.io/v1/open-close/AAPL/2023-01-09?adjusted=true&apiKey=PutYourKeyHere
-fn create_polygon_open_close_request(
+fn create_polygon_grouped_daily_request(
     base_url: &str,
     date: NaiveDate,
     api_key: &Secret<String>,
-) -> String {
-    let request_url = base_url.to_string()
-        + date.to_string().as_str()
-        + "?adjusted=true"
-        + "&apiKey="
-        + api_key.expose_secret();
-    request_url
+) -> PolygonGroupedDailyRequest {
+    let base_request_url =
+        base_url.to_string() + date.to_string().as_str() + "?adjusted=true" + "&apiKey=";
+    PolygonGroupedDailyRequest {
+        base: base_request_url,
+        api_key: api_key.clone(),
+    }
+    //     + api_key.expose_secret();
+    // base_request_url
 }
 
 #[cfg(test)]
