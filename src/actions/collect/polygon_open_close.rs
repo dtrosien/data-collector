@@ -1,20 +1,20 @@
+use crate::utils::action_helpers::parse_response;
 use anyhow::Error;
 use async_trait::async_trait;
 use chrono::{Days, Months, NaiveDate, Utc};
 use futures_util::TryFutureExt;
-use secrecy::{ExposeSecret, Secret, Zeroize};
-use std::borrow::BorrowMut;
+use secrecy::{ExposeSecret, Secret};
 use std::fmt::Debug;
-use std::ops::Deref;
+use tracing::{debug, info};
+
+use std::fmt::Display;
 use std::time;
-use std::{fmt::Display, ops::DerefMut};
 use tokio::time::sleep;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use sqlx::PgPool;
-use tracing::{debug, info};
 
 use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
@@ -143,16 +143,14 @@ async fn load_and_store_missing_data_given_url(
         while current_check_date.lt(&Utc::now().date_naive()) {
             let request =
                 create_polygon_open_close_request(url, &issue_symbol, current_check_date, api_key);
-            info!("Polygon open close request: {}", request);
+            debug!("Polygon open close request: {}", request);
             let response = client
                 .get(request.expose_secret())
                 .send()
                 .await?
                 .text()
                 .await?;
-            let open_close = vec![crate::utils::action_helpers::parse_response::<
-                PolygonOpenClose,
-            >(&response)?];
+            let open_close = vec![parse_response::<PolygonOpenClose>(&response)?];
             if open_close[0].status.eq("OK") {
                 let open_close_data = transpose_polygon_open_close(&open_close);
                 sqlx::query!(r#"INSERT INTO polygon_open_close
