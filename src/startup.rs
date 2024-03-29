@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::configuration::{
-    DatabaseSettings, HttpClientSettings, Settings, TaskDependency, TaskName, TaskSetting,
+    DatabaseSettings, HttpClientSettings, SecretKeys, Settings, TaskDependency, TaskName,
+    TaskSetting,
 };
 
 use crate::actions::action::create_action;
@@ -18,6 +19,7 @@ pub struct Application {
     task_dependencies: Vec<TaskDependency>,
     task_settings: Vec<TaskSetting>,
     client: Client,
+    secrets: Option<SecretKeys>,
 }
 
 impl Application {
@@ -30,6 +32,7 @@ impl Application {
             task_dependencies: configuration.application.task_dependencies,
             task_settings: configuration.application.tasks,
             client,
+            secrets: configuration.application.secrets,
         }
     }
 
@@ -41,6 +44,7 @@ impl Application {
             &self.task_dependencies,
             &self.pool,
             &self.client,
+            &self.secrets,
         );
 
         // build adj list from specs
@@ -60,6 +64,7 @@ fn build_task_specs(
     task_dependencies: &[TaskDependency],
     pool: &PgPool,
     client: &Client,
+    secrets: &Option<SecretKeys>,
 ) -> HashMap<TaskName, TaskSpecRef> {
     let required_tasks: Vec<TaskName> = task_dependencies.iter().map(|t| t.name.clone()).collect();
 
@@ -69,7 +74,7 @@ fn build_task_specs(
         .filter(|ts| required_tasks.contains(&ts.name))
         .map(|ts| {
             let task_name: TaskName = ts.name.clone();
-            let action = create_action(&ts.task_type, pool, client);
+            let action = create_action(&ts.task_type, pool, client, secrets);
             let task_spec = TaskSpec {
                 id: Uuid::new_v4(),
                 name: task_name.clone(),

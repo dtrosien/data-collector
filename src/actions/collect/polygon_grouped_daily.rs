@@ -1,6 +1,8 @@
+use anyhow::Error;
 use async_trait::async_trait;
 use chrono::{Days, Months, NaiveDate, Utc};
 use futures_util::TryFutureExt;
+use secrecy::{ExposeSecret, Secret};
 use std::fmt::Display;
 use std::time;
 use tokio::time::sleep;
@@ -19,11 +21,11 @@ const URL: &str = "https://api.polygon.io/v2/aggs/grouped/locale/us/market/stock
 pub struct PolygonGroupedDailyCollector {
     pool: PgPool,
     client: Client,
-    api_key: String,
+    api_key: Option<Secret<String>>,
 }
 
 impl PolygonGroupedDailyCollector {
-    pub fn new(pool: PgPool, client: Client, api_key: String) -> Self {
+    pub fn new(pool: PgPool, client: Client, api_key: Option<Secret<String>>) -> Self {
         PolygonGroupedDailyCollector {
             pool,
             client,
@@ -41,9 +43,15 @@ impl Display for PolygonGroupedDailyCollector {
 #[async_trait]
 impl Runnable for PolygonGroupedDailyCollector {
     async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
-        load_and_store_missing_data(self.pool.clone(), self.client.clone(), &self.api_key)
-            .map_err(TaskError::UnexpectedError)
-            .await?;
+        if let Some(key) = &self.api_key {
+            load_and_store_missing_data(self.pool.clone(), self.client.clone(), key)
+                .map_err(TaskError::UnexpectedError)
+                .await?;
+        } else {
+            return Err(TaskError::UnexpectedError(Error::msg(
+                "Api key not provided for PolygonGroupedDailyCollector",
+            )));
+        }
         Ok(None)
     }
 }
@@ -97,7 +105,7 @@ struct TransposedPolygonOpenClose {
 pub async fn load_and_store_missing_data(
     connection_pool: PgPool,
     client: Client,
-    api_key: &str,
+    api_key: &Secret<String>,
 ) -> Result<(), anyhow::Error> {
     load_and_store_missing_data_given_url(connection_pool, client, api_key, URL).await
 }
@@ -105,7 +113,7 @@ pub async fn load_and_store_missing_data(
 async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
     client: Client,
-    api_key: &str,
+    api_key: &Secret<String>,
     url: &str,
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Polygon grouped daily.");
@@ -224,9 +232,16 @@ fn earliest_date() -> NaiveDate {
 // }
 
 ///  Example output https://api.polygon.io/v1/open-close/AAPL/2023-01-09?adjusted=true&apiKey=PutYourKeyHere
-fn create_polygon_open_close_request(base_url: &str, date: NaiveDate, api_key: &str) -> String {
-    let request_url =
-        base_url.to_string() + date.to_string().as_str() + "?adjusted=true" + "&apiKey=" + api_key;
+fn create_polygon_open_close_request(
+    base_url: &str,
+    date: NaiveDate,
+    api_key: &Secret<String>,
+) -> String {
+    let request_url = base_url.to_string()
+        + date.to_string().as_str()
+        + "?adjusted=true"
+        + "&apiKey="
+        + api_key.expose_secret();
     request_url
 }
 

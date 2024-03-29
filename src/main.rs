@@ -5,6 +5,8 @@ use data_collector::utils::telemetry::{get_open_telemetry_subscriber, init_subsc
 
 use data_collector::startup::Application;
 use opentelemetry::global::shutdown_tracer_provider;
+use secrecy::ExposeSecret;
+use std::borrow::{Borrow, BorrowMut};
 use std::error::Error;
 
 #[tokio::main]
@@ -14,6 +16,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     init_subscriber(subscriber);
 
     let configuration = get_configuration().expect("Failed to read configuration.");
+    let test = &configuration.application.secrets.as_ref().unwrap();
+    println!(
+        "My secret: {}",
+        test.polygon.as_ref().unwrap().borrow().expose_secret()
+    );
+    // export APP_APPLICATION__SECRETS__POLYGON=myTest
 
     Application::build(configuration).await.run().await?;
 
