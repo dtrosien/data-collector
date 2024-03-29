@@ -5,6 +5,7 @@ use data_collector::utils::telemetry::{get_open_telemetry_subscriber, init_subsc
 
 use data_collector::startup::Application;
 use opentelemetry::global::shutdown_tracer_provider;
+
 use std::error::Error;
 
 #[tokio::main]

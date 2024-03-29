@@ -1,4 +1,5 @@
 use secrecy::{ExposeSecret, Secret};
+use serde::Deserialize;
 use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 
@@ -6,13 +7,13 @@ use crate::actions::action::ActionType;
 use crate::actions::collector_sources::CollectorSource;
 use crate::actions::sp500_fields;
 
-#[derive(serde::Deserialize)]
+#[derive(Deserialize)]
 pub struct Settings {
     pub database: DatabaseSettings,
     pub application: ApplicationSettings,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Deserialize)]
 pub struct DatabaseSettings {
     pub username: String,
     pub password: Secret<String>,
@@ -23,14 +24,15 @@ pub struct DatabaseSettings {
     pub require_ssl: bool,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Deserialize)]
 pub struct ApplicationSettings {
     pub task_dependencies: Vec<TaskDependency>,
     pub tasks: Vec<TaskSetting>,
     pub http_client: HttpClientSettings,
+    pub secrets: Option<SecretKeys>,
 }
 
-#[derive(serde::Deserialize, Clone)]
+#[derive(Deserialize, Clone)]
 pub struct TaskDependency {
     pub name: TaskName,
     pub dependencies: Vec<TaskName>,
@@ -38,7 +40,7 @@ pub struct TaskDependency {
 
 pub type TaskName = String;
 
-#[derive(serde::Deserialize, Clone)]
+#[derive(Deserialize, Clone)]
 pub struct TaskSetting {
     pub name: TaskName,
     pub comment: Option<String>,
@@ -51,9 +53,14 @@ pub struct TaskSetting {
     pub exclude_sources: Vec<CollectorSource>,
 }
 
-#[derive(serde::Deserialize, Clone)]
+#[derive(Deserialize, Clone)]
 pub struct HttpClientSettings {
     pub timeout_milliseconds: u64,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct SecretKeys {
+    pub polygon: Option<Secret<String>>,
 }
 
 impl HttpClientSettings {

@@ -5,9 +5,11 @@ use crate::actions::collect::sec_companies::SecCompanyCollector;
 use crate::actions::stage::nyse_instruments::NyseInstrumentStager;
 use crate::actions::stage::sec_companies::SecCompanyStager;
 
+use crate::configuration::SecretKeys;
 use crate::dag_schedule::task::Runnable;
 
 use reqwest::Client;
+use secrecy::Secret;
 use serde::Deserialize;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -19,7 +21,12 @@ use super::collect::polygon_open_close::PolygonOpenCloseCollector;
 pub type Action = Arc<dyn Runnable + Send + Sync>;
 
 /// create_action creates a boxed trait object of Action from a ActionType.
-pub fn create_action(action_type: &ActionType, pool: &PgPool, client: &Client) -> Action {
+pub fn create_action(
+    action_type: &ActionType,
+    pool: &PgPool,
+    client: &Client,
+    secrets: &Option<SecretKeys>,
+) -> Action {
     match action_type {
         ActionType::NyseEventsCollect => {
             Arc::new(NyseEventCollector::new(pool.clone(), client.clone()))
@@ -33,17 +40,45 @@ pub fn create_action(action_type: &ActionType, pool: &PgPool, client: &Client) -
         ActionType::NyseInstrumentsStage => Arc::new(NyseInstrumentStager::new(pool.clone())),
         ActionType::SecCompaniesStage => Arc::new(SecCompanyStager::new(pool.clone())),
         ActionType::Dummy => Arc::new(DummyCollector::new()),
-        ActionType::PolygonGroupedDaily => Arc::new(PolygonGroupedDailyCollector::new(
-            pool.clone(),
-            client.clone(),
-            "secret".to_string(),
-        )),
-        ActionType::PolygonOpenClose => Arc::new(PolygonOpenCloseCollector::new(
-            pool.clone(),
-            client.clone(),
-            "secret".to_string(),
-        )),
+        ActionType::PolygonGroupedDaily => {
+            create_action_polygon_grouped_daily(pool, client, secrets)
+        }
+        ActionType::PolygonOpenClose => create_action_polygon_open_close(pool, client, secrets),
     }
+}
+
+fn create_action_polygon_grouped_daily(
+    pool: &sqlx::Pool<sqlx::Postgres>,
+    client: &Client,
+    secrets: &Option<SecretKeys>,
+) -> Arc<PolygonGroupedDailyCollector> {
+    let mut polygon_key = Option::<Secret<String>>::None;
+    if let Some(secret) = secrets {
+        polygon_key = secret.polygon.clone();
+    }
+
+    Arc::new(PolygonGroupedDailyCollector::new(
+        pool.clone(),
+        client.clone(),
+        polygon_key,
+    ))
+}
+
+fn create_action_polygon_open_close(
+    pool: &sqlx::Pool<sqlx::Postgres>,
+    client: &Client,
+    secrets: &Option<SecretKeys>,
+) -> Arc<PolygonOpenCloseCollector> {
+    let mut polygon_key = Option::<Secret<String>>::None;
+    if let Some(secret) = secrets {
+        polygon_key = secret.polygon.clone();
+    }
+
+    Arc::new(PolygonOpenCloseCollector::new(
+        pool.clone(),
+        client.clone(),
+        polygon_key,
+    ))
 }
 
 /// Possible Actions

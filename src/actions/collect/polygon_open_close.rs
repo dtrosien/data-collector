@@ -1,6 +1,12 @@
+use crate::utils::action_helpers::parse_response;
+use anyhow::Error;
 use async_trait::async_trait;
 use chrono::{Days, Months, NaiveDate, Utc};
 use futures_util::TryFutureExt;
+use secrecy::{ExposeSecret, Secret};
+use std::fmt::Debug;
+use tracing::{debug, info};
+
 use std::fmt::Display;
 use std::time;
 use tokio::time::sleep;
@@ -9,7 +15,6 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use sqlx::PgPool;
-use tracing::{debug, info};
 
 use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
@@ -17,14 +22,33 @@ const URL: &str = "https://api.polygon.io/v1/open-close/";
 const ERROR_MSG_VALUE_EXISTS: &str = "Value exists or error must have been caught before";
 
 #[derive(Clone, Debug)]
+struct PolygonOpenCloseRequest {
+    base: String,
+    api_key: Secret<String>,
+}
+
+impl PolygonOpenCloseRequest {
+    fn expose_secret(&self) -> String {
+        self.base.clone() + self.api_key.expose_secret()
+    }
+}
+
+impl Display for PolygonOpenCloseRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.base)?;
+        Secret::fmt(&self.api_key, f)
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct PolygonOpenCloseCollector {
     pool: PgPool,
     client: Client,
-    api_key: String,
+    api_key: Option<Secret<String>>,
 }
 
 impl PolygonOpenCloseCollector {
-    pub fn new(pool: PgPool, client: Client, api_key: String) -> Self {
+    pub fn new(pool: PgPool, client: Client, api_key: Option<Secret<String>>) -> Self {
         PolygonOpenCloseCollector {
             pool,
             client,
@@ -35,16 +59,22 @@ impl PolygonOpenCloseCollector {
 
 impl Display for PolygonOpenCloseCollector {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "PloygonOpenCloseCollector struct.")
+        write!(f, "PolygonOpenCloseCollector struct.")
     }
 }
 
 #[async_trait]
 impl Runnable for PolygonOpenCloseCollector {
     async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
-        load_and_store_missing_data(self.pool.clone(), self.client.clone(), &self.api_key)
-            .map_err(TaskError::UnexpectedError)
-            .await?;
+        if let Some(key) = &self.api_key {
+            load_and_store_missing_data(self.pool.clone(), self.client.clone(), key)
+                .map_err(TaskError::UnexpectedError)
+                .await?;
+        } else {
+            return Err(TaskError::UnexpectedError(Error::msg(
+                "Api key not provided for PolygonOpenCloseCollector",
+            )));
+        }
         Ok(None)
     }
 }
@@ -83,7 +113,7 @@ struct TransposedPolygonOpenClose {
 pub async fn load_and_store_missing_data(
     connection_pool: PgPool,
     client: Client,
-    api_key: &str,
+    api_key: &Secret<String>,
 ) -> Result<(), anyhow::Error> {
     load_and_store_missing_data_given_url(connection_pool, client, api_key, URL).await
 }
@@ -91,7 +121,7 @@ pub async fn load_and_store_missing_data(
 async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
     client: Client,
-    api_key: &str,
+    api_key: &Secret<String>,
     url: &str,
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Polygon open close.");
@@ -114,10 +144,13 @@ async fn load_and_store_missing_data_given_url(
             let request =
                 create_polygon_open_close_request(url, &issue_symbol, current_check_date, api_key);
             debug!("Polygon open close request: {}", request);
-            let response = client.get(request).send().await?.text().await?;
-            let open_close = vec![crate::utils::action_helpers::parse_response::<
-                PolygonOpenClose,
-            >(&response)?];
+            let response = client
+                .get(request.expose_secret())
+                .send()
+                .await?
+                .text()
+                .await?;
+            let open_close = vec![parse_response::<PolygonOpenClose>(&response)?];
             if open_close[0].status.eq("OK") {
                 let open_close_data = transpose_polygon_open_close(&open_close);
                 sqlx::query!(r#"INSERT INTO polygon_open_close
@@ -219,16 +252,20 @@ fn create_polygon_open_close_request(
     base_url: &str,
     ticker_symbol: &str,
     date: NaiveDate,
-    api_key: &str,
-) -> String {
-    let request_url = base_url.to_string()
+    api_key: &Secret<String>,
+) -> PolygonOpenCloseRequest {
+    let base_request_url = base_url.to_string()
         + ticker_symbol
         + "/"
         + date.to_string().as_str()
         + "?adjusted=true"
-        + "&apiKey="
-        + api_key;
-    request_url
+        + "&apiKey=";
+    PolygonOpenCloseRequest {
+        base: base_request_url,
+        api_key: api_key.clone(),
+    }
+    //      api_key.expose_secret();
+    // base_request_url
 }
 
 #[cfg(test)]

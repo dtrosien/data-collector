@@ -7,6 +7,8 @@ database:
 application:
   http_client:
     timeout_milliseconds: 1000000
+  # secrets:
+  #   polygon: "test"
   # Defines tasks eligible for execution.
   # Note: Tasks listed as dependencies of others must also be explicitly included here to be considered.
   # If a task is referenced in a dependency list but not present in this list, it will be ignored.
