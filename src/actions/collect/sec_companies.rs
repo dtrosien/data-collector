@@ -202,7 +202,9 @@ async fn download_archive_if_needed(
 ) -> Result<(), anyhow::Error> {
     if is_download_needed(target_location) {
         debug!("Downloading {}", url);
-        download_url(client, url, target_location.to_str().unwrap()).await?;
+        let tmp_location = compute_tmp_location(target_location);
+        download_url(client, url, tmp_location.to_str().unwrap()).await?;
+        fs::rename(tmp_location, target_location)?;
     }
     Ok(())
 }
