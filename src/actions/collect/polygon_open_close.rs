@@ -48,6 +48,7 @@ pub struct PolygonOpenCloseCollector {
 }
 
 impl PolygonOpenCloseCollector {
+    #[tracing::instrument(name = "Run Polygon open close collector", skip_all)]
     pub fn new(pool: PgPool, client: Client, api_key: Option<Secret<String>>) -> Self {
         PolygonOpenCloseCollector {
             pool,
@@ -65,6 +66,7 @@ impl Display for PolygonOpenCloseCollector {
 
 #[async_trait]
 impl Runnable for PolygonOpenCloseCollector {
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
         if let Some(key) = &self.api_key {
             load_and_store_missing_data(self.pool.clone(), self.client.clone(), key)
@@ -110,6 +112,7 @@ struct TransposedPolygonOpenClose {
     pub volume: Vec<f64>,
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn load_and_store_missing_data(
     connection_pool: PgPool,
     client: Client,
@@ -118,6 +121,7 @@ pub async fn load_and_store_missing_data(
     load_and_store_missing_data_given_url(connection_pool, client, api_key, URL).await
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
     client: Client,
@@ -190,6 +194,7 @@ async fn load_and_store_missing_data_given_url(
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn transpose_polygon_open_close(instruments: &Vec<PolygonOpenClose>) -> TransposedPolygonOpenClose {
     let mut result = TransposedPolygonOpenClose {
         after_hours: vec![],
@@ -226,6 +231,7 @@ fn transpose_polygon_open_close(instruments: &Vec<PolygonOpenClose>) -> Transpos
     result
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn earliest_date() -> NaiveDate {
     Utc::now()
         .date_naive()
@@ -248,6 +254,7 @@ fn earliest_date() -> NaiveDate {
 //     }
 // }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn create_polygon_open_close_request(
     base_url: &str,
     ticker_symbol: &str,

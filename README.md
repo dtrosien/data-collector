@@ -209,7 +209,7 @@ A config for a collector can be generated here:
 
 https://bademeister.grafana.net/connections/add-new-connection/collector-open-telemetry
 
-After the config is created, run the collector in a docker via the following command:
+After the config is created, run the collector in a docker via the following command starting from the project root directory:
 
     docker run -d --name opentelemetry-collector -v $(pwd)/.grafana/config.yaml:/etc/otelcol-contrib/config.yaml -p 1888:1888 -p 8888:8888 -p 8889:8889 -p 13133:13133 -p 4317:4317 -p 4318:4318 -p 55679:55679 otel/opentelemetry-collector-contrib:0.96.0
 
@@ -232,7 +232,7 @@ https://bademeister.grafana.net/connections/datasources
 
 ### How to export traces to Honeycomb.io via a opentelemetry-collector
 
-add API key to .honeycomb/config.yaml and run opentelemetry-collector with following settings:
+add API key to .honeycomb/config.yaml and run opentelemetry-collector with following settings tarting from the project root directory:
 
     docker run -d --name opentelemetry-collector_honey -p 14268:14268 -p 4317-4318:4317-4318 -v $(pwd)/.honeycomb/config.yaml:/etc/otelcol-contrib/config.yaml otel/opentelemetry-collector-contrib:latest
 
