@@ -44,6 +44,7 @@ pub struct PolygonGroupedDailyCollector {
 }
 
 impl PolygonGroupedDailyCollector {
+    #[tracing::instrument(level = "debug", skip_all)]
     pub fn new(pool: PgPool, client: Client, api_key: Option<Secret<String>>) -> Self {
         PolygonGroupedDailyCollector {
             pool,
@@ -61,6 +62,7 @@ impl Display for PolygonGroupedDailyCollector {
 
 #[async_trait]
 impl Runnable for PolygonGroupedDailyCollector {
+    #[tracing::instrument(name = "Run PolygonGroupedDailyCollector", skip_all)]
     async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
         if let Some(key) = &self.api_key {
             load_and_store_missing_data(self.pool.clone(), self.client.clone(), key)
@@ -121,6 +123,7 @@ struct TransposedPolygonOpenClose {
     pub volume_weighted_average_price: Vec<Option<f64>>,
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn load_and_store_missing_data(
     connection_pool: PgPool,
     client: Client,
@@ -129,6 +132,7 @@ pub async fn load_and_store_missing_data(
     load_and_store_missing_data_given_url(connection_pool, client, api_key, URL).await
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
     client: Client,
@@ -192,6 +196,7 @@ async fn load_and_store_missing_data_given_url(
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn get_start_date(result: Option<NaiveDate>) -> NaiveDate {
     if let Some(date) = result {
         return date
@@ -201,6 +206,7 @@ fn get_start_date(result: Option<NaiveDate>) -> NaiveDate {
     earliest_date()
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn transpose_polygon_grouped_daily(
     instruments: Vec<DailyValue>,
     business_date: NaiveDate,
@@ -233,6 +239,7 @@ fn transpose_polygon_grouped_daily(
     result
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn earliest_date() -> NaiveDate {
     Utc::now()
         .date_naive()
@@ -256,6 +263,7 @@ fn earliest_date() -> NaiveDate {
 // }
 
 ///  Example output https://api.polygon.io/v1/open-close/AAPL/2023-01-09?adjusted=true&apiKey=PutYourKeyHere
+#[tracing::instrument(level = "debug", skip_all)]
 fn create_polygon_grouped_daily_request(
     base_url: &str,
     date: NaiveDate,
