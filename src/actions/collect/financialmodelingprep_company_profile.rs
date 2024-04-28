@@ -4,6 +4,8 @@ use chrono::{Days, Months, NaiveDate, Utc};
 use futures_util::TryFutureExt;
 use secrecy::{ExposeSecret, Secret};
 use serde_json::from_str;
+
+use serde_with::{serde_as, DisplayFromStr, NoneAsEmptyString};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::str::FromStr;
@@ -15,7 +17,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use sqlx::PgPool;
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
@@ -73,8 +75,9 @@ impl Runnable for FinancialmodelingprepCompanyProfileColletor {
                 .await
                 .map_err(TaskError::UnexpectedError)?;
         } else {
+            error!("No Api key provided for FinancialmodelingprepCompanyProfileColletor");
             return Err(TaskError::UnexpectedError(Error::msg(
-                "FinancialmodelingprepCompanyProfileColletor",
+                "FinancialmodelingprepCompanyProfileColletor key not provided",
             )));
         }
         Ok(None)
@@ -91,8 +94,16 @@ impl Runnable for FinancialmodelingprepCompanyProfileColletor {
 //     status: String,
 // }
 
-pub type CompanyProfile = Vec<CompanyProfileElement>;
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompanyProfile {
+    #[serde(rename = "Error Message")]
+    error_message: Option<String>,
+    company_profile_elements: Option<Vec<CompanyProfileElement>>,
+}
 
+#[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompanyProfileElement {
@@ -117,7 +128,8 @@ pub struct CompanyProfileElement {
     ceo: Option<String>,
     sector: Option<String>,
     country: Option<String>,
-    full_time_employees: Option<String>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    full_time_employees: Option<i32>,
     phone: Option<String>,
     address: Option<String>,
     city: Option<String>,
@@ -126,6 +138,7 @@ pub struct CompanyProfileElement {
     dcf_diff: Option<f64>,
     dcf: Option<f64>,
     image: Option<String>,
+    #[serde_as(as = "NoneAsEmptyString")]
     ipo_date: Option<NaiveDate>,
     default_image: Option<bool>,
     is_etf: Option<bool>,
@@ -178,12 +191,12 @@ async fn load_and_store_missing_data_given_url(
     .issue_symbol;
 
     // let mut current_check_date = get_start_date(result);
-
+    let mut successful_request_counter: u16 = 0;
     while let Some(issue_sybmol) = result.as_ref() {
         println!("#########################{}####", issue_sybmol);
         let request = create_polygon_grouped_daily_request(url, issue_sybmol, api_key);
         println!("##########{}", request.expose_secret());
-        info!("Polygon grouped daily request: {}", request);
+        info!("Financialmodelingprep Company request: {}", request);
         let response = client
             .get(&request.expose_secret())
             .send()
@@ -191,12 +204,14 @@ async fn load_and_store_missing_data_given_url(
             .text()
             .await?;
         println!("Repsonse: {}", response);
-        let company_profile =
-            crate::utils::action_helpers::parse_response::<Vec<CompanyProfileElement>>(&response)?;
-        println!("open_close: {:?}", company_profile);
-        // INSERT INTO public.financialmodelingprep_company_profile (symbol, price, beta, vol_avg, mkt_cap, last_div, "range", changes, company_name, currency, cik, isin, cusip, exchange, exchange_short_name, industry, website, description, ceo, sector, country, full_time_employees, phone, address, city, state, zip, dcf_diff, dcf, image, ipo_date, default_image, is_etf, is_actively_trading, is_adr, is_fund, is_staged, date_loaded) VALUES('', 0, 0, 0, 0, 0, '', 0, '', '', '', '', '', '', '', '', '', '', '', '', '', 0, '', '', '', '', '', 0, 0, '', '', '', false, false, false, false, false, CURRENT_DATE);
-        sqlx::query!(r#"INSERT INTO financialmodelingprep_company_profile (symbol, price, beta, vol_avg, mkt_cap, last_div, "range", changes, company_name, currency, cik, isin, cusip, exchange, exchange_short_name, industry, website, description, ceo, sector, country, full_time_employees, phone, address, city, state, zip, dcf_diff, dcf, image, ipo_date, default_image, is_etf, is_actively_trading, is_adr, is_fund)
-                     Select * from UNNEST ($1::text[], $2::float[], $3::float[], $4::integer[], $5::float[], $6::float[], $7::text[], $8::float[], $9::text[], $10::text[], $11::text[], $12::text[], $13::text[], $14::text[], $15::text[], $16::text[], $17::text[], $18::text[], $19::text[], $20::text[], $21::text[], $22::text[], $23::text[], $24::text[], $25::text[], $26::text[], $27::text[], $28::float[], $29::float[], $30::text[], $31::date[], $32::bool[], $33::bool[], $34::bool[], $35::bool[], $36::bool[]) on conflict do nothing"#,
+        let company_profile_response =
+            crate::utils::action_helpers::parse_response::<CompanyProfile>(&response)?;
+
+        println!("company_profile: {:?}", company_profile_response);
+        if let Some(company_profile) = company_profile_response.company_profile_elements {
+            successful_request_counter += 1;
+            sqlx::query!(r#"INSERT INTO financialmodelingprep_company_profile (symbol, price, beta, vol_avg, mkt_cap, last_div, "range", changes, company_name, currency, cik, isin, cusip, exchange, exchange_short_name, industry, website, description, ceo, sector, country, full_time_employees, phone, address, city, state, zip, dcf_diff, dcf, image, ipo_date, default_image, is_etf, is_actively_trading, is_adr, is_fund)
+                     Select * from UNNEST ($1::text[], $2::float[], $3::float[], $4::integer[], $5::float[], $6::float[], $7::text[], $8::float[], $9::text[], $10::text[], $11::text[], $12::text[], $13::text[], $14::text[], $15::text[], $16::text[], $17::text[], $18::text[], $19::text[], $20::text[], $21::text[], $22::integer[], $23::text[], $24::text[], $25::text[], $26::text[], $27::text[], $28::float[], $29::float[], $30::text[], $31::date[], $32::bool[], $33::bool[], $34::bool[], $35::bool[], $36::bool[]) on conflict do nothing"#,
                     &vec![company_profile[0].symbol.to_string()],
                     &vec![company_profile[0].price] as _,
                     &vec![company_profile[0].beta] as _,
@@ -235,19 +250,32 @@ async fn load_and_store_missing_data_given_url(
                     &vec![company_profile[0].is_fund] as _
                 )
                 .execute(&connection_pool).await?;
-        //     }
-        //     if open_close.status != *"ERROR" {
-        //         current_check_date = current_check_date
-        //             .checked_add_days(Days::new(1))
-        //             .expect("Adding one day must always work, given the operating date context.");
-        //         sleep(time::Duration::from_secs(13)).await;
-        //     } else {
-        //         info!(
-        //             "Failed with request {} and got response {}",
-        //             request, response
-        //         );
-        //         sleep(time::Duration::from_secs(13)).await;
-
+            //     }
+            //     if open_close.status != *"ERROR" {
+            //         current_check_date = current_check_date
+            //             .checked_add_days(Days::new(1))
+            //             .expect("Adding one day must always work, given the operating date context.");
+            //         sleep(time::Duration::from_secs(13)).await;
+            //     } else {
+            //         info!(
+            //             "Failed with request {} and got response {}",
+            //             request, response
+            //         );
+            //         sleep(time::Duration::from_secs(13)).await;
+        } else {
+            if successful_request_counter == 0 {
+                error!("FinancialmodelingprepCompanyProfileColletor key is already exhausted");
+                return Err(Error::msg(
+                    "FinancialmodelingprepCompanyProfileColletor key is already exhausted",
+                ));
+            } else {
+                info!(
+                    "FinancialmodelingprepCompanyProfileColletor collected {} entries.",
+                    successful_request_counter
+                );
+                return Ok(());
+            }
+        }
         result = sqlx::query!(
             "select issue_symbol
             from master_data_eligible mde
@@ -396,9 +424,6 @@ mod test {
                 .unwrap();
         println!("parsed:{:?}", parsed);
         let instrument = CompanyProfileElement {
-            ipo_date: Some(
-                NaiveDate::parse_from_str("1999-11-18", "%Y-%m-%d").expect("Parsing constant."),
-            ),
             symbol: "A".to_string(),
             price: Some(137.74),
             beta: Some(1.122),
@@ -420,7 +445,7 @@ mod test {
             ceo: Some("Mr. Michael R. McMullen".to_string()),
             sector: Some("Healthcare".to_string()),
             country: Some("US".to_string()),
-            full_time_employees: Some("17700".to_string()),
+            full_time_employees: Some(17700),
             phone: Some("800 227 9770".to_string()),
             address: Some("5301 Stevens Creek Boulevard".to_string()),
             city: Some("Santa Clara".to_string()),
@@ -429,6 +454,96 @@ mod test {
             dcf_diff: Some(53.46901),
             dcf: Some(84.27099210145948),
             image: Some("https://financialmodelingprep.com/image-stock/A.png".to_string()),
+            ipo_date: Some(
+                NaiveDate::parse_from_str("1999-11-18", "%Y-%m-%d").expect("Parsing constant."),
+            ),
+            default_image: Some(false),
+            is_etf: Some(false),
+            is_actively_trading: Some(true),
+            is_adr: Some(false),
+            is_fund: Some(false),
+        };
+        assert_eq!(parsed[0], instrument);
+    }
+
+    #[test]
+    fn parse_financialmodelingprep_company_profile_with_empty_ipo() {
+        let input_json = r#"[
+            {
+              "symbol": "A",
+              "price": 137.74,
+              "beta": 1.122,
+              "volAvg": 1591377,
+              "mktCap": 40365395700,
+              "lastDiv": 0.94,
+              "range": "96.8-151.58",
+              "changes": 1.37,
+              "companyName": "Agilent Technologies, Inc.",
+              "currency": "USD",
+              "cik": "0001090872",
+              "isin": "US00846U1016",
+              "cusip": "00846U101",
+              "exchange": "New York Stock Exchange",
+              "exchangeShortName": "NYSE",
+              "industry": "Medical - Diagnostics & Research",
+              "website": "https://www.agilent.com",
+              "description": "Agilent Technologies",
+              "ceo": "Mr. Michael R. McMullen",
+              "sector": "Healthcare",
+              "country": "US",
+              "fullTimeEmployees": "17700",
+              "phone": "800 227 9770",
+              "address": "5301 Stevens Creek Boulevard",
+              "city": "Santa Clara",
+              "state": "CA",
+              "zip": "95051",
+              "dcfDiff": 53.46901,
+              "dcf": 84.27099210145948,
+              "image": "https://financialmodelingprep.com/image-stock/A.png",
+              "ipoDate": "",
+              "defaultImage": false,
+              "isEtf": false,
+              "isActivelyTrading": true,
+              "isAdr": false,
+              "isFund": false
+            }
+          ]"#;
+        let parsed =
+            crate::utils::action_helpers::parse_response::<Vec<CompanyProfileElement>>(input_json)
+                .unwrap();
+
+        let instrument = CompanyProfileElement {
+            symbol: "A".to_string(),
+            price: Some(137.74),
+            beta: Some(1.122),
+            vol_avg: Some(1591377),
+            mkt_cap: Some(40365395700),
+            last_div: Some(0.94),
+            range: Some("96.8-151.58".to_string()),
+            changes: Some(1.37),
+            company_name: "Agilent Technologies, Inc.".to_string(),
+            currency: Some("USD".to_string()),
+            cik: Some("0001090872".to_string()),
+            isin: Some("US00846U1016".to_string()),
+            cusip: Some("00846U101".to_string()),
+            exchange: Some("New York Stock Exchange".to_string()),
+            exchange_short_name: Some("NYSE".to_string()),
+            industry: Some("Medical - Diagnostics & Research".to_string()),
+            website: Some("https://www.agilent.com".to_string()),
+            description: Some("Agilent Technologies".to_string()),
+            ceo: Some("Mr. Michael R. McMullen".to_string()),
+            sector: Some("Healthcare".to_string()),
+            country: Some("US".to_string()),
+            full_time_employees: Some(17700),
+            phone: Some("800 227 9770".to_string()),
+            address: Some("5301 Stevens Creek Boulevard".to_string()),
+            city: Some("Santa Clara".to_string()),
+            state: Some("CA".to_string()),
+            zip: Some("95051".to_string()),
+            dcf_diff: Some(53.46901),
+            dcf: Some(84.27099210145948),
+            image: Some("https://financialmodelingprep.com/image-stock/A.png".to_string()),
+            ipo_date: None,
             default_image: Some(false),
             is_etf: Some(false),
             is_actively_trading: Some(true),

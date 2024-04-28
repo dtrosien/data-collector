@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select issue_symbol\n        from master_data_eligible mde\n        where issue_symbol not in \n          (select distinct(symbol) \n           from financialmodelingprep_company_profile fcp)\n        order by issue_symbol limit 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "issue_symbol",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "6e611050a150873802da569fdf3c94b4be2739e4005b2b2166c1d4bb06efbad9"
+}
