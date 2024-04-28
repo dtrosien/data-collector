@@ -1,23 +1,18 @@
 use anyhow::Error;
 use async_trait::async_trait;
-use chrono::{Days, Months, NaiveDate, Utc};
+use chrono::NaiveDate;
 use futures_util::TryFutureExt;
 use secrecy::{ExposeSecret, Secret};
-use serde_json::from_str;
 
 use serde_with::{serde_as, DisplayFromStr, NoneAsEmptyString};
-use std::collections::HashMap;
+
 use std::fmt::{Debug, Display};
-use std::str::FromStr;
-use std::sync::Arc;
-use std::time;
-use tokio::time::sleep;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use sqlx::PgPool;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
