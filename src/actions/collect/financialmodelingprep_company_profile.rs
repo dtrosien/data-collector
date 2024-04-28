@@ -1,7 +1,6 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use futures_util::TryFutureExt;
 use secrecy::{ExposeSecret, Secret};
 
 use serde_with::{serde_as, DisplayFromStr, NoneAsEmptyString};
@@ -78,16 +77,6 @@ impl Runnable for FinancialmodelingprepCompanyProfileColletor {
         Ok(None)
     }
 }
-
-// #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-// #[serde(rename_all = "camelCase")]
-// pub struct PolygonGroupedDaily {
-//     adjusted: Option<bool>,
-//     query_count: Option<i64>,
-//     results: Option<Vec<DailyValue>>,
-//     results_count: Option<i64>,
-//     status: String,
-// }
 
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -245,32 +234,19 @@ async fn load_and_store_missing_data_given_url(
                     &vec![company_profile[0].is_fund] as _
                 )
                 .execute(&connection_pool).await?;
-            //     }
-            //     if open_close.status != *"ERROR" {
-            //         current_check_date = current_check_date
-            //             .checked_add_days(Days::new(1))
-            //             .expect("Adding one day must always work, given the operating date context.");
-            //         sleep(time::Duration::from_secs(13)).await;
-            //     } else {
-            //         info!(
-            //             "Failed with request {} and got response {}",
-            //             request, response
-            //         );
-            //         sleep(time::Duration::from_secs(13)).await;
+        } else if successful_request_counter == 0 {
+            error!("FinancialmodelingprepCompanyProfileColletor key is already exhausted");
+            return Err(Error::msg(
+                "FinancialmodelingprepCompanyProfileColletor key is already exhausted",
+            ));
         } else {
-            if successful_request_counter == 0 {
-                error!("FinancialmodelingprepCompanyProfileColletor key is already exhausted");
-                return Err(Error::msg(
-                    "FinancialmodelingprepCompanyProfileColletor key is already exhausted",
-                ));
-            } else {
-                info!(
-                    "FinancialmodelingprepCompanyProfileColletor collected {} entries.",
-                    successful_request_counter
-                );
-                return Ok(());
-            }
+            info!(
+                "FinancialmodelingprepCompanyProfileColletor collected {} entries.",
+                successful_request_counter
+            );
+            return Ok(());
         }
+
         result = sqlx::query!(
             "select issue_symbol
             from master_data_eligible mde
@@ -285,72 +261,6 @@ async fn load_and_store_missing_data_given_url(
     }
     Ok(())
 }
-
-// #[tracing::instrument(level = "debug", skip_all)]
-// fn get_start_date(result: Option<NaiveDate>) -> NaiveDate {
-//     if let Some(date) = result {
-//         return date
-//             .checked_add_days(Days::new(1))
-//             .expect("Adding one day must always work, given the operating date context.");
-//     }
-//     earliest_date()
-// }
-
-// #[tracing::instrument(level = "debug", skip_all)]
-// fn transpose_polygon_grouped_daily(
-//     instruments: Vec<DailyValue>,
-//     business_date: NaiveDate,
-// ) -> TransposedPolygonOpenClose {
-//     let mut result = TransposedPolygonOpenClose {
-//         close: vec![],
-//         business_date: vec![],
-//         high: vec![],
-//         low: vec![],
-//         open: vec![],
-//         symbol: vec![],
-//         traded_volume: vec![],
-//         volume_weighted_average_price: vec![],
-//         stock_volume: vec![],
-//     };
-
-//     for data in instruments {
-//         result.close.push(data.close);
-//         result.business_date.push(business_date);
-//         result.high.push(data.high);
-//         result.low.push(data.low);
-//         result.open.push(data.open);
-//         result.symbol.push(data.symbol);
-//         result.traded_volume.push(data.traded_volume);
-//         result
-//             .volume_weighted_average_price
-//             .push(data.volume_weighted_average_price);
-//         result.stock_volume.push(data.stock_volume)
-//     }
-//     result
-// }
-
-// #[tracing::instrument(level = "debug", skip_all)]
-// fn earliest_date() -> NaiveDate {
-//     Utc::now()
-//         .date_naive()
-//         .checked_sub_months(Months::new(24))
-//         .expect("Minus 2 years should never fail")
-//         .checked_add_days(Days::new(1))
-//         .expect("Adding 1 day should always work")
-// }
-
-// // impl Collector for PolygonGroupedDailyCollector {
-// //     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-// //         vec![
-// //             sp500_fields::Fields::OpenClose,
-// //             sp500_fields::Fields::MonthTradingVolume,
-// //         ]
-// //     }
-
-// //     fn get_source(&self) -> collector_sources::CollectorSource {
-// //         collector_sources::CollectorSource::PolygonGroupedDaily
-// //     }
-// // }
 
 ///  Example output https://financialmodelingprep.com/api/v3/profile/AAPL?apikey=TOKEN
 #[tracing::instrument(level = "debug", skip_all)]
