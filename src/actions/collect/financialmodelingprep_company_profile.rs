@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Error};
+use anyhow::Error;
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use futures_util::TryFutureExt;
@@ -15,7 +15,7 @@ use sqlx::PgPool;
 use tracing::{error, info, warn};
 
 use crate::dag_schedule::task::TaskError::UnexpectedError;
-use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
+use crate::dag_schedule::task::{Runnable, StatsMap};
 
 const URL: &str = "https://financialmodelingprep.com/api/v3/profile/";
 
@@ -83,10 +83,13 @@ impl Runnable for FinancialmodelingprepCompanyProfileColletor {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 enum Responses {
+    NotFound(Vec<EmptyStruct>),
     Data(Vec<CompanyProfileElement>),
     KeyExhausted(ErrorStruct),
-    NotFound(Vec<Option<serde_json::Value>>),
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EmptyStruct;
 
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -209,7 +212,7 @@ async fn load_and_store_missing_data_given_url(
                 return handle_exhausted_key(successful_request_counter);
             }
             Responses::NotFound(_) => {
-                info!("Key {} not found.", issue_sybmol);
+                info!("Stock symbol '{}' not found.", issue_sybmol);
                 return Ok(());
             }
         }
@@ -225,7 +228,7 @@ async fn get_next_issue_symbol(connection_pool: &PgPool) -> Result<Option<String
         from master_data_eligible mde
         where issue_symbol not in 
           (select distinct(symbol) 
-           from financialmodelingprep_company_profile fcp) and issue_symbol not in ('ATCH', 'BFX')
+           from financialmodelingprep_company_profile fcp) and issue_symbol not in ('ATCH', 'BFX', 'CNVS', 'DMK', 'ELUT')
         order by issue_symbol limit 1"
     )
     .fetch_one(connection_pool)
@@ -235,7 +238,7 @@ async fn get_next_issue_symbol(connection_pool: &PgPool) -> Result<Option<String
 
 fn handle_exhausted_key(successful_request_counter: u16) -> Result<(), anyhow::Error> {
     if successful_request_counter == 0 {
-        error!("FinancialmodelingprepCompanyProfileColletor key is already exhausted");
+        warn!("FinancialmodelingprepCompanyProfileColletor key is already exhausted");
         return Err(Error::msg(
             "FinancialmodelingprepCompanyProfileColletor key is already exhausted",
         ));
@@ -315,11 +318,13 @@ mod test {
     use chrono::NaiveDate;
 
     use crate::actions::collect::financialmodelingprep_company_profile::{
-        CompanyProfileElement, Responses,
+        CompanyProfileElement, EmptyStruct, Responses,
     };
 
+    use super::ErrorStruct;
+
     #[test]
-    fn parse_financialmodelingprep_company_profile() {
+    fn parse_data_response() {
         let input_json = r#"[
             {
               "symbol": "A",
@@ -412,7 +417,7 @@ mod test {
     }
 
     #[test]
-    fn parse_financialmodelingprep_company_profile_with_empty_ipo() {
+    fn parse_data_struct_with_empty_ipo() {
         let input_json = r#"[
             {
               "symbol": "A",
@@ -499,58 +504,44 @@ mod test {
     }
 
     #[test]
-    fn parse_financialmodelingprep_company_profile_with_empty_ipo2() {
-        let input_json = r#"{
-            "error_msg": "My Error Text"
-            }
-          "#;
-        let parsed = crate::utils::action_helpers::parse_response::<
-            Option<Vec<CompanyProfileElement>>,
-        >(input_json)
-        .unwrap();
-        println!("Parsed: {:?}", parsed);
-        let instrument = CompanyProfileElement {
-            symbol: "A".to_string(),
-            price: Some(137.74),
-            beta: Some(1.122),
-            vol_avg: Some(1591377),
-            mkt_cap: Some(40365395700),
-            last_div: Some(0.94),
-            range: Some("96.8-151.58".to_string()),
-            changes: Some(1.37),
-            company_name: "Agilent Technologies, Inc.".to_string(),
-            currency: Some("USD".to_string()),
-            cik: Some("0001090872".to_string()),
-            isin: Some("US00846U1016".to_string()),
-            cusip: Some("00846U101".to_string()),
-            exchange: Some("New York Stock Exchange".to_string()),
-            exchange_short_name: Some("NYSE".to_string()),
-            industry: Some("Medical - Diagnostics & Research".to_string()),
-            website: Some("https://www.agilent.com".to_string()),
-            description: Some("Agilent Technologies".to_string()),
-            ceo: Some("Mr. Michael R. McMullen".to_string()),
-            sector: Some("Healthcare".to_string()),
-            country: Some("US".to_string()),
-            full_time_employees: Some(17700),
-            phone: Some("800 227 9770".to_string()),
-            address: Some("5301 Stevens Creek Boulevard".to_string()),
-            city: Some("Santa Clara".to_string()),
-            state: Some("CA".to_string()),
-            zip: Some("95051".to_string()),
-            dcf_diff: Some(53.46901),
-            dcf: Some(84.27099210145948),
-            image: Some("https://financialmodelingprep.com/image-stock/A.png".to_string()),
-            ipo_date: None,
-            default_image: Some(false),
-            is_etf: Some(false),
-            is_actively_trading: Some(true),
-            is_adr: Some(false),
-            is_fund: Some(false),
+    fn parse_empty_response() {
+        let input_json = r#"[]"#;
+        let parsed_response =
+            crate::utils::action_helpers::parse_response::<Responses>(input_json).unwrap();
+
+        match parsed_response {
+            Responses::NotFound(a) => assert_eq!(a.len(), 0),
+            _ => panic!("Wrong parse!"),
+        }
+    }
+
+    #[test]
+    fn parse_empty_struct() {
+        let input_json = r#"[]"#;
+        let parsed_response =
+            crate::utils::action_helpers::parse_response::<Vec<EmptyStruct>>(input_json).unwrap();
+
+        assert_eq!(parsed_response.len(), 0);
+    }
+
+    #[test]
+    fn parse_error_response() {
+        let input_json = r#"{"Error Message": "Limit Reach."}"#;
+        let parsed_response =
+            crate::utils::action_helpers::parse_response::<Responses>(input_json).unwrap();
+
+        match parsed_response {
+            Responses::KeyExhausted(a) => assert_eq!(a.error_message, "Limit Reach."),
+            _ => panic!("Wrong parse!"),
         };
-        // assert_eq!(parsed.company_profile_elements.unwrap()[0], instrument);
+    }
+
+    #[test]
+    fn parse_error_struct() {
+        let input_json = r#"{"Error Message": "Limit Reach."}"#;
+        let parsed_response =
+            crate::utils::action_helpers::parse_response::<ErrorStruct>(input_json).unwrap();
+
+        assert_eq!(parsed_response.error_message, "Limit Reach.");
     }
 }
-
-// {
-//     "Error Message": "Limit Reach . Please upgrade your plan or visit our documentation for more details at https://site.financialmodelingprep.com/"
-//   }
