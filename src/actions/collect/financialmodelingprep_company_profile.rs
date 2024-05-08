@@ -1,21 +1,16 @@
+use crate::dag_schedule::task::TaskError::UnexpectedError;
+use crate::dag_schedule::task::{Runnable, StatsMap};
 use anyhow::Error;
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use futures_util::TryFutureExt;
-use secrecy::{ExposeSecret, Secret};
-
-use serde_with::{serde_as, DisplayFromStr, NoneAsEmptyString};
-
-use std::fmt::{Debug, Display};
-
 use reqwest::Client;
+use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
-
+use serde_with::{serde_as, DisplayFromStr, NoneAsEmptyString};
 use sqlx::PgPool;
-use tracing::{error, info, warn};
-
-use crate::dag_schedule::task::TaskError::UnexpectedError;
-use crate::dag_schedule::task::{Runnable, StatsMap};
+use std::fmt::{Debug, Display};
+use tracing::{debug, error, info, warn};
 
 const URL: &str = "https://financialmodelingprep.com/api/v3/profile/";
 
@@ -188,17 +183,16 @@ async fn load_and_store_missing_data_given_url(
     // let mut current_check_date = get_start_date(result);
     let mut successful_request_counter: u16 = 0;
     while let Some(issue_sybmol) = potential_issue_sybmol.as_ref() {
-        println!("#########################{}####", issue_sybmol);
+        info!("Requesting symbol {}", issue_sybmol);
         let request = create_polygon_grouped_daily_request(url, issue_sybmol, api_key);
-        println!("##########{}", request.expose_secret());
-        info!("Financialmodelingprep Company request: {}", request);
+        debug!("Financialmodelingprep Company request: {}", request);
         let response = client
             .get(&request.expose_secret())
             .send()
             .await?
             .text()
             .await?;
-        println!("Repsonse: {}", response);
+        debug!("Repsonse: {}", response);
 
         //TODO: Handle error
         let parsed = crate::utils::action_helpers::parse_response::<Responses>(&response)?;
@@ -228,7 +222,7 @@ async fn get_next_issue_symbol(connection_pool: &PgPool) -> Result<Option<String
         from master_data_eligible mde
         where issue_symbol not in 
           (select distinct(symbol) 
-           from financialmodelingprep_company_profile fcp) and issue_symbol not in ('ATCH', 'BFX', 'CNVS', 'DMK', 'ELUT')
+           from financialmodelingprep_company_profile fcp) and issue_symbol not in ('ATCH', 'BFX', 'CNVS', 'DMK', 'ELUT', 'IPXXU')
         order by issue_symbol limit 1"
     )
     .fetch_one(connection_pool)
@@ -239,15 +233,15 @@ async fn get_next_issue_symbol(connection_pool: &PgPool) -> Result<Option<String
 fn handle_exhausted_key(successful_request_counter: u16) -> Result<(), anyhow::Error> {
     if successful_request_counter == 0 {
         warn!("FinancialmodelingprepCompanyProfileColletor key is already exhausted");
-        return Err(Error::msg(
+        Err(Error::msg(
             "FinancialmodelingprepCompanyProfileColletor key is already exhausted",
-        ));
+        ))
     } else {
         info!(
             "FinancialmodelingprepCompanyProfileColletor collected {} entries.",
             successful_request_counter
         );
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -315,13 +309,11 @@ fn create_polygon_grouped_daily_request(
 
 #[cfg(test)]
 mod test {
-    use chrono::NaiveDate;
-
+    use super::ErrorStruct;
     use crate::actions::collect::financialmodelingprep_company_profile::{
         CompanyProfileElement, EmptyStruct, Responses,
     };
-
-    use super::ErrorStruct;
+    use chrono::NaiveDate;
 
     #[test]
     fn parse_data_response() {
@@ -366,7 +358,6 @@ mod test {
             }
           ]"#;
         let parsed = crate::utils::action_helpers::parse_response::<Responses>(input_json).unwrap();
-        println!("parsed:{:?}", parsed);
 
         let instrument = CompanyProfileElement {
             symbol: "A".to_string(),
