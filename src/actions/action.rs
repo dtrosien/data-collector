@@ -58,7 +58,7 @@ fn create_action_financial_modeling_company_profile(
 ) -> Arc<FinancialmodelingprepCompanyProfileColletor> {
     let mut fin_modeling_prep_key = Option::<Secret<String>>::None;
     if let Some(secret) = secrets {
-        fin_modeling_prep_key = secret.financialmodelingprep_company.clone();
+        fin_modeling_prep_key.clone_from(&secret.financialmodelingprep_company)
     }
 
     Arc::new(FinancialmodelingprepCompanyProfileColletor::new(
@@ -75,7 +75,7 @@ fn create_action_polygon_grouped_daily(
 ) -> Arc<PolygonGroupedDailyCollector> {
     let mut polygon_key = Option::<Secret<String>>::None;
     if let Some(secret) = secrets {
-        polygon_key = secret.polygon.clone();
+        polygon_key.clone_from(&secret.polygon)
     }
 
     Arc::new(PolygonGroupedDailyCollector::new(
@@ -92,7 +92,7 @@ fn create_action_polygon_open_close(
 ) -> Arc<PolygonOpenCloseCollector> {
     let mut polygon_key = Option::<Secret<String>>::None;
     if let Some(secret) = secrets {
-        polygon_key = secret.polygon.clone();
+        polygon_key.clone_from(&secret.polygon)
     }
 
     Arc::new(PolygonOpenCloseCollector::new(
