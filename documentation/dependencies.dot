@@ -10,6 +10,7 @@ digraph regexp {
  SecCompaniesStage      [label="SEC staging"];
  PolygonGroupedDaily    [label="Polygon grouped daily", style=filled, fillcolor=chartreuse];
  PolygonOpenClose       [label="Polygon open close"];
+ FinmodCompanyProfile   [label="Financialmodelingprep companyprofile" style=filled, fillcolor=chartreuse];
 
  NyseEventsCollect -> n1
  NyseInstrumentsCollect -> NyseInstrumentsStage

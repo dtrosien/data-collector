@@ -61,6 +61,7 @@ pub struct HttpClientSettings {
 #[derive(Deserialize, Clone)]
 pub struct SecretKeys {
     pub polygon: Option<Secret<String>>,
+    pub financialmodelingprep_company: Option<Secret<String>>,
 }
 
 impl HttpClientSettings {

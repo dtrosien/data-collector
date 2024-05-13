@@ -13,20 +13,22 @@ application:
   # Note: Tasks listed as dependencies of others must also be explicitly included here to be considered.
   # If a task is referenced in a dependency list but not present in this list, it will be ignored.
   task_dependencies:
-    - name: NyseEventsCollect
-      dependencies: [ ]
-    - name: NyseInstrumentsCollect
-      dependencies: [ ]
-    - name: NyseInstrumentsStage
-      dependencies: [ NyseInstrumentsCollect, SecCompaniesStage ]
-    - name: SecCompaniesCollect
-      dependencies: [ ]
-    - name: SecCompaniesStage
-      dependencies: [ SecCompaniesCollect ]
-    - name: PolygonGroupedDaily
-      dependencies: [ ]
-    - name: PolygonOpenClose
-      dependencies: [ PolygonGroupedDaily ]
+    # - name: NyseEventsCollect
+    #   dependencies: [ ]
+    # - name: NyseInstrumentsCollect
+    #   dependencies: [ ]
+    # - name: NyseInstrumentsStage
+    #   dependencies: [ NyseInstrumentsCollect, SecCompaniesStage ]
+    # - name: SecCompaniesCollect
+    #   dependencies: [ ]
+    # - name: SecCompaniesStage
+    #   dependencies: [ SecCompaniesCollect ]
+    # - name: PolygonGroupedDaily
+    #   dependencies: [ ]
+    # - name: PolygonOpenClose
+    #   dependencies: [ PolygonGroupedDaily ]
+    - name: FinancialmodelingprepCompanyProfileCollet
+      dependencies: []  
   
   
   tasks:
@@ -51,3 +53,6 @@ application:
     - name: PolygonOpenClose
       task_type: PolygonOpenClose
       comment: Helpful comment
+    - name: FinancialmodelingprepCompanyProfileCollet
+      task_type: FinancialmodelingprepCompanyProfileCollet
+      comment: Helpful comment  

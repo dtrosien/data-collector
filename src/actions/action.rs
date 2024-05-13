@@ -1,4 +1,5 @@
 use crate::actions::collect::dummy::DummyCollector;
+use crate::actions::collect::financialmodelingprep_company_profile::FinancialmodelingprepCompanyProfileColletor;
 use crate::actions::collect::nyse_events::NyseEventCollector;
 use crate::actions::collect::nyse_instruments::NyseInstrumentCollector;
 use crate::actions::collect::sec_companies::SecCompanyCollector;
@@ -44,7 +45,27 @@ pub fn create_action(
             create_action_polygon_grouped_daily(pool, client, secrets)
         }
         ActionType::PolygonOpenClose => create_action_polygon_open_close(pool, client, secrets),
+        ActionType::FinancialmodelingprepCompanyProfileCollet => {
+            create_action_financial_modeling_company_profile(pool, client, secrets)
+        }
     }
+}
+
+fn create_action_financial_modeling_company_profile(
+    pool: &sqlx::Pool<sqlx::Postgres>,
+    client: &Client,
+    secrets: &Option<SecretKeys>,
+) -> Arc<FinancialmodelingprepCompanyProfileColletor> {
+    let mut fin_modeling_prep_key = Option::<Secret<String>>::None;
+    if let Some(secret) = secrets {
+        fin_modeling_prep_key.clone_from(&secret.financialmodelingprep_company)
+    }
+
+    Arc::new(FinancialmodelingprepCompanyProfileColletor::new(
+        pool.clone(),
+        client.clone(),
+        fin_modeling_prep_key,
+    ))
 }
 
 fn create_action_polygon_grouped_daily(
@@ -54,7 +75,7 @@ fn create_action_polygon_grouped_daily(
 ) -> Arc<PolygonGroupedDailyCollector> {
     let mut polygon_key = Option::<Secret<String>>::None;
     if let Some(secret) = secrets {
-        polygon_key = secret.polygon.clone();
+        polygon_key.clone_from(&secret.polygon)
     }
 
     Arc::new(PolygonGroupedDailyCollector::new(
@@ -71,7 +92,7 @@ fn create_action_polygon_open_close(
 ) -> Arc<PolygonOpenCloseCollector> {
     let mut polygon_key = Option::<Secret<String>>::None;
     if let Some(secret) = secrets {
-        polygon_key = secret.polygon.clone();
+        polygon_key.clone_from(&secret.polygon)
     }
 
     Arc::new(PolygonOpenCloseCollector::new(
@@ -91,6 +112,7 @@ pub enum ActionType {
     SecCompaniesStage,
     PolygonGroupedDaily,
     PolygonOpenClose,
+    FinancialmodelingprepCompanyProfileCollet,
     Dummy,
 }
 
