@@ -15,6 +15,11 @@ use tracing::{debug, error, info, warn};
 const URL: &str = "https://financialmodelingprep.com/api/v3/profile/";
 
 #[derive(Clone, Debug)]
+struct IssueSymbols {
+    issue_symbol: String,
+}
+
+#[derive(Clone, Debug)]
 struct FinancialmodelingprepCompanyProfileRequest {
     base: String,
     api_key: Secret<String>,
@@ -207,7 +212,8 @@ async fn load_and_store_missing_data_given_url(
             }
             Responses::NotFound(_) => {
                 info!("Stock symbol '{}' not found.", issue_sybmol);
-                return Ok(());
+                add_missing_issue_symbol(issue_sybmol, &connection_pool).await?;
+                // return Ok(());
             }
         }
 
@@ -217,13 +223,25 @@ async fn load_and_store_missing_data_given_url(
 }
 
 async fn get_next_issue_symbol(connection_pool: &PgPool) -> Result<Option<String>, anyhow::Error> {
+    let missing_issue_symbols = sqlx::query_as!(
+        IssueSymbols,
+        "SELECT issue_symbol FROM source_symbol_warden ssw  where financial_modeling_prep = false"
+    )
+    .fetch_all(connection_pool)
+    .await?;
+    let missing_issue_symbols = missing_issue_symbols
+        .into_iter()
+        .map(|issue_symbol| issue_symbol.issue_symbol)
+        .collect::<Vec<_>>();
+    // &vec![data[0].symbol.to_string()],
     Ok(sqlx::query!(
         "select issue_symbol
         from master_data_eligible mde
         where issue_symbol not in 
           (select distinct(symbol) 
-           from financialmodelingprep_company_profile fcp) and issue_symbol not in ('ATCH', 'BFX', 'CNVS', 'DMK', 'ELUT', 'IPXXU')
-        order by issue_symbol limit 1"
+           from financialmodelingprep_company_profile fcp) and issue_symbol not in (select unnest($1::text[]))
+        order by issue_symbol limit 1",
+        &missing_issue_symbols
     )
     .fetch_one(connection_pool)
     .await?
@@ -290,6 +308,23 @@ async fn store_data(
     )
     .execute(connection_pool).await?;
 
+    Ok(())
+}
+
+async fn add_missing_issue_symbol(
+    issue_symbol: &str,
+    connection_pool: &PgPool,
+) -> Result<(), anyhow::Error> {
+    sqlx::query!(
+        r#"INSERT INTO source_symbol_warden (issue_symbol, financial_modeling_prep)
+      VALUES($1, false)
+      ON CONFLICT(issue_symbol)
+      DO UPDATE SET
+        financial_modeling_prep = false"#,
+        issue_symbol
+    )
+    .execute(connection_pool)
+    .await?;
     Ok(())
 }
 
