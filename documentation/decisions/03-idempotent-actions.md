@@ -12,7 +12,7 @@ In our context $f$ will be one of the actions and $A$ is either the an online in
  - In the case of the internet, we will just assume that the state of the internet is frozen (just for the sake of the definition), so executing an action twice means that an API will responde with the identical two answers. Practically this means that receiving identical data will not lead to a pile up of duplicates.
  - In the case of the database we have a predefined state $x$ and call $f$ two times. Here $f$ will not pile up data in the database or reverse its own action on the second execution.</br>
 </br>
-Do not confuse this with abort-ability of functions. We assume that $ f $ terminates in a valid way.</br>
+Do not confuse this with abort-ability of functions. We assume that $f$ terminates in a valid way.</br>
 
 
 
