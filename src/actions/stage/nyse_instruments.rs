@@ -181,7 +181,7 @@ async fn mark_already_staged_instruments_as_staged(
 
 #[cfg(test)]
 mod test {
-    use chrono::{NaiveDate, Utc};
+    use chrono::NaiveDate;
     use sqlx::{query, Pool, Postgres};
 
     use crate::actions::stage::nyse_instruments::{
@@ -279,7 +279,7 @@ mod test {
             .unwrap();
 
         // Date is now in correct field
-        let current_date = Utc::now().date_naive();
+        let current_date = NaiveDate::parse_from_str("1792-05-17", "%Y-%m-%d").unwrap();
         let md_result: Vec<MasterDataRow> =
             sqlx::query_as!(MasterDataRow, "select * from master_data")
                 .fetch_all(&pool)
