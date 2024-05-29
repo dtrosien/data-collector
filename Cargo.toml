@@ -18,7 +18,9 @@ path = "src/main.rs"
 anyhow = "1"
 async-trait = "0.1.74"
 chrono = { version = "0.4.31", default-features = false, features = ["clock", "serde"] }
-config = "0.14.0"
+##config = "0.14.0"
+## Remove when higher version than 0.14.0 is available
+config = {git = "https://github.com/mehcode/config-rs"}
 filetime = "0.2.23"
 futures-util = "0.3.28"
 home = "0.5.9"
