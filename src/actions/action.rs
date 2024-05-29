@@ -1,3 +1,6 @@
+use super::collect::polygon_grouped_daily::PolygonGroupedDailyCollector;
+use super::collect::polygon_open_close::PolygonOpenCloseCollector;
+use super::stage::financialmodelingprep_company_profile::FinancialmodelingprepCompanyProfileStager;
 use crate::actions::collect::dummy::DummyCollector;
 use crate::actions::collect::financialmodelingprep_company_profile::FinancialmodelingprepCompanyProfileColletor;
 use crate::actions::collect::nyse_events::NyseEventCollector;
@@ -5,18 +8,13 @@ use crate::actions::collect::nyse_instruments::NyseInstrumentCollector;
 use crate::actions::collect::sec_companies::SecCompanyCollector;
 use crate::actions::stage::nyse_instruments::NyseInstrumentStager;
 use crate::actions::stage::sec_companies::SecCompanyStager;
-
 use crate::configuration::SecretKeys;
 use crate::dag_schedule::task::Runnable;
-
 use reqwest::Client;
 use secrecy::Secret;
 use serde::Deserialize;
 use sqlx::PgPool;
 use std::sync::Arc;
-
-use super::collect::polygon_grouped_daily::PolygonGroupedDailyCollector;
-use super::collect::polygon_open_close::PolygonOpenCloseCollector;
 
 /// Action is a boxed trait object of Runnable.
 pub type Action = Arc<dyn Runnable + Send + Sync>;
@@ -47,6 +45,9 @@ pub fn create_action(
         ActionType::PolygonOpenClose => create_action_polygon_open_close(pool, client, secrets),
         ActionType::FinancialmodelingprepCompanyProfileCollet => {
             create_action_financial_modeling_company_profile(pool, client, secrets)
+        }
+        ActionType::FinmodCompanyProfileStage => {
+            Arc::new(FinancialmodelingprepCompanyProfileStager::new(pool.clone()))
         }
     }
 }
@@ -113,6 +114,7 @@ pub enum ActionType {
     PolygonGroupedDaily,
     PolygonOpenClose,
     FinancialmodelingprepCompanyProfileCollet,
+    FinmodCompanyProfileStage,
     Dummy,
 }
 

@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update master_data set \n                start_nyse                         = case WHEN r.mic_code = 'XNYS' then TO_DATE('1792-05-17','YYYY-MM-DD') end,\n                start_nyse_arca                    = case WHEN r.mic_code = 'ARCX' then TO_DATE('1792-05-17','YYYY-MM-DD') end,\n                start_nyse_american                = case WHEN r.mic_code = 'XASE' then TO_DATE('1792-05-17','YYYY-MM-DD') end,\n                start_nasdaq_global_select_market  = case WHEN r.mic_code = 'XNGS' then TO_DATE('1792-05-17','YYYY-MM-DD') end,\n                start_nasdaq_select_market         = case WHEN r.mic_code = 'XNMS' then TO_DATE('1792-05-17','YYYY-MM-DD') end,\n                start_nasdaq_capital_market        = case WHEN r.mic_code = 'XNCM' then TO_DATE('1792-05-17','YYYY-MM-DD') end,\n                start_nasdaq                       = case WHEN r.mic_code = 'XNAS' then TO_DATE('1792-05-17','YYYY-MM-DD') end,\n                start_cboe                         = case WHEN r.mic_code in ('BATS', 'XCBO', 'BATY', 'EDGA', 'EDGX') then TO_DATE('1792-05-17','YYYY-MM-DD') end  \n            from \n                (select ni.mic_code as mic_code, md.issuer_name as issuer_name, md.issue_symbol as issue_symbol  \n                    from nyse_instruments ni \n                    join master_data md on \n                    replace(ni.symbol_esignal_ticker,'/', '-') = md.issue_symbol\n                    where is_staged = false\n                ) as r\n            where master_data.issuer_name = r.issuer_name and master_data.issue_symbol = r.issue_symbol",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "e04c991983db559196e0e9ba253b90404c2cae9de49b05aa944a390ac5ccbfbe"
+}

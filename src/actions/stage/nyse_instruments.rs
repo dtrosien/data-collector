@@ -120,14 +120,14 @@ async fn mark_stock_exchange_per_stock_as_current_date(
 ) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##"update master_data set 
-                start_nyse                         = case WHEN r.mic_code = 'XNYS' then current_date end,
-                start_nyse_arca                    = case WHEN r.mic_code = 'ARCX' then current_date end,
-                start_nyse_american                = case WHEN r.mic_code = 'XASE' then current_date end,
-                start_nasdaq_global_select_market  = case WHEN r.mic_code = 'XNGS' then current_date end,
-                start_nasdaq_select_market         = case WHEN r.mic_code = 'XNMS' then current_date end,
-                start_nasdaq_capital_market        = case WHEN r.mic_code = 'XNCM' then current_date end,
-                start_nasdaq                       = case WHEN r.mic_code = 'XNAS' then current_date end,
-                start_cboe                         = case WHEN r.mic_code in ('BATS', 'XCBO', 'BATY', 'EDGA', 'EDGX') then current_date end  
+                start_nyse                         = case WHEN r.mic_code = 'XNYS' then TO_DATE('1792-05-17','YYYY-MM-DD') end,
+                start_nyse_arca                    = case WHEN r.mic_code = 'ARCX' then TO_DATE('1792-05-17','YYYY-MM-DD') end,
+                start_nyse_american                = case WHEN r.mic_code = 'XASE' then TO_DATE('1792-05-17','YYYY-MM-DD') end,
+                start_nasdaq_global_select_market  = case WHEN r.mic_code = 'XNGS' then TO_DATE('1792-05-17','YYYY-MM-DD') end,
+                start_nasdaq_select_market         = case WHEN r.mic_code = 'XNMS' then TO_DATE('1792-05-17','YYYY-MM-DD') end,
+                start_nasdaq_capital_market        = case WHEN r.mic_code = 'XNCM' then TO_DATE('1792-05-17','YYYY-MM-DD') end,
+                start_nasdaq                       = case WHEN r.mic_code = 'XNAS' then TO_DATE('1792-05-17','YYYY-MM-DD') end,
+                start_cboe                         = case WHEN r.mic_code in ('BATS', 'XCBO', 'BATY', 'EDGA', 'EDGX') then TO_DATE('1792-05-17','YYYY-MM-DD') end  
             from 
                 (select ni.mic_code as mic_code, md.issuer_name as issuer_name, md.issue_symbol as issue_symbol  
                     from nyse_instruments ni 

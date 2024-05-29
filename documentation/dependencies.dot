@@ -10,7 +10,8 @@ digraph regexp {
  SecCompaniesStage      [label="SEC staging"];
  PolygonGroupedDaily    [label="Polygon grouped daily", style=filled, fillcolor=chartreuse];
  PolygonOpenClose       [label="Polygon open close"];
- FinmodCompanyProfile   [label="Financialmodelingprep companyprofile" style=filled, fillcolor=chartreuse];
+ FinmodCompanyProfile   [label="FMP companyprofile collect" style=filled, fillcolor=chartreuse];
+ FinmodCompanyProfileStage   [label="FMP companyprofile staging"];
 
  NyseEventsCollect -> n1
  NyseInstrumentsCollect -> NyseInstrumentsStage
@@ -19,6 +20,7 @@ digraph regexp {
  SecCompaniesStage -> n1
  PolygonGroupedDaily -> PolygonOpenClose
  NyseInstrumentsStage -> PolygonOpenClose
+ FinmodCompanyProfile -> FinmodCompanyProfileStage
  }
 //sudo apt install graphviz
 //dot -Tsvg dependencies.dot > output.svg

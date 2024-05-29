@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update financialmodelingprep_company_profile \n            set is_staged = true\n            where ipo_date is null",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "666db972def4194c186cf34faf28b22430fe17d202ff02e78711ae29c02b4806"
+}
