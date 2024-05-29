@@ -39,7 +39,7 @@ impl Runnable for FinancialmodelingprepCompanyProfileStager {
 pub async fn stage_data(connection_pool: PgPool) -> Result<(), anyhow::Error> {
     stage_nulls(&connection_pool).await?;
 
-    //Derive data
+    //Copy initial public offering dates to master data
     move_ipo_date_to_master_data(&connection_pool).await?;
 
     //Mark as staged in
@@ -59,7 +59,7 @@ async fn stage_nulls(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-///
+/// Take initial public offering dates from financialmodelingprep_company_profile and copy to master data table.
 #[tracing::instrument(level = "debug", skip_all)]
 async fn move_ipo_date_to_master_data(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     sqlx::query!(r##"
@@ -85,7 +85,7 @@ async fn move_ipo_date_to_master_data(connection_pool: &PgPool) -> Result<(), an
     Ok(())
 }
 
-///Select the master data with category 'OTC' and non-null company and mark corresponding rows in sec_companies as staged (true).
+///Select the master data with non start date 1792-05-17 and mark corresponding entries in 1792-05-17 financialmodelingprep_company_profile as staged.
 #[tracing::instrument(level = "debug", skip_all)]
 async fn mark_ipo_date_as_staged(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     sqlx::query!(
