@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        update financialmodelingprep_company_profile fcp set \n        is_staged = true \n        from (\n          select issue_symbol   \n          from master_data md \n          where  \n             start_nyse != '1792-05-17'\n          or start_nyse_arca != '1792-05-17'\n          or start_nyse_american != '1792-05-17'\n          or start_nasdaq_global_select_market != '1792-05-17'\n          or start_nasdaq_select_market != '1792-05-17'\n          or start_nasdaq_capital_market != '1792-05-17'\n          or start_nasdaq != '1792-05-17'\n          or start_cboe != '1792-05-17'\n          ) as r\n        where fcp.symbol = r.issue_symbol and fcp.is_staged = false",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "be70115af8c21d48e80d7655920f3abae92771abcfb80cac8d7a8a7409bb8970"
+}

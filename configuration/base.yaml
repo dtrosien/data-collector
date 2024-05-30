@@ -7,8 +7,6 @@ database:
 application:
   http_client:
     timeout_milliseconds: 1000000
-  # secrets:
-  #   polygon: "test"
   # Defines tasks eligible for execution.
   # Note: Tasks listed as dependencies of others must also be explicitly included here to be considered.
   # If a task is referenced in a dependency list but not present in this list, it will be ignored.
@@ -28,7 +26,9 @@ application:
     - name: PolygonOpenClose
       dependencies: [ PolygonGroupedDaily ]
     - name: FinancialmodelingprepCompanyProfileCollet
-      dependencies: []  
+      dependencies: [] 
+    - name: FinmodCompanyProfileStage
+      dependencies: [FinancialmodelingprepCompanyProfileCollet]
 
   
   tasks:
@@ -55,4 +55,7 @@ application:
       comment: Helpful comment
     - name: FinancialmodelingprepCompanyProfileCollet
       task_type: FinancialmodelingprepCompanyProfileCollet
+      comment: Helpful comment  
+    - name: FinmodCompanyProfileStage
+      task_type: FinmodCompanyProfileStage
       comment: Helpful comment  

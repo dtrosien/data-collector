@@ -243,4 +243,19 @@ https://docs.honeycomb.io/getting-data-in/opentelemetry-overview/
 https://docs.honeycomb.io/getting-data-in/opentelemetry-overview/#using-the-honeycomb-opentelemetry-endpoint
 
 
+## Developer guides
+
+Here are some hints for developers helping in further development of the application
+
+### How to add a new action
+
+1. Give the new action a meaningful name, add it to the [picture of dependencies](documentation/dependencies.dot) at the position it should be executed and regenerate the picture.
+1. Create a new action in a [actions](src/actions) sub directory (collctor or stager) and create a struct along with a `new` constructor for it and implement `Runnable`. Add `tracing::instrument` to the run method, so it shows up in the logs.
+1. Add the dependency in the dependency list and as task in the [configuration](configuration/base.yaml).
+1. Add the dependency in the dependency list and as task in the  [template configuration](configuration/base.yaml.template).
+1. Add a field for a secret key in the [SecretKeys](src/configuration.rs) struct (if needed).
+1. Add an action to the [ActionType](src/actions/action.rs) enum matching the `name` in the configuration.
+1. Add a constructor call in the function [create_action](src/actions/action.rs).
+1. Implement the functionality for the action.
+1. Add new tables or database actions to [migrations](migrations).
 ****
