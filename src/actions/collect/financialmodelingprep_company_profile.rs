@@ -247,9 +247,9 @@ async fn get_next_issue_symbol(connection_pool: &PgPool) -> Result<Option<String
     .await;
 
     match query_result {
-        Ok(_) => return Ok(Some(query_result?.issue_symbol)),
-        Err(_) => return Ok(Option::None),
-    };
+        Ok(_) => Ok(Some(query_result?.issue_symbol)),
+        Err(_) => Ok(Option::None),
+    }
 }
 
 fn handle_exhausted_key(successful_request_counter: u16) -> Result<(), anyhow::Error> {
