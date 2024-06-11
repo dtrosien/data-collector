@@ -233,10 +233,10 @@ async fn get_next_issue_symbol(connection_pool: &PgPool) -> Result<Option<String
         .into_iter()
         .map(|issue_symbol| issue_symbol.issue_symbol)
         .collect::<Vec<_>>();
-    // &vec![data[0].symbol.to_string()],
-    Ok(sqlx::query!(
+
+    let query_result = sqlx::query!(
         "select issue_symbol
-        from master_data_eligible mde
+        from master_data md
         where issue_symbol not in 
           (select distinct(symbol) 
            from financialmodelingprep_company_profile fcp) and issue_symbol not in (select unnest($1::text[]))
@@ -244,8 +244,12 @@ async fn get_next_issue_symbol(connection_pool: &PgPool) -> Result<Option<String
         &missing_issue_symbols
     )
     .fetch_one(connection_pool)
-    .await?
-    .issue_symbol)
+    .await;
+
+    match query_result {
+        Ok(_) => Ok(Some(query_result?.issue_symbol)),
+        Err(_) => Ok(Option::None),
+    }
 }
 
 fn handle_exhausted_key(successful_request_counter: u16) -> Result<(), anyhow::Error> {

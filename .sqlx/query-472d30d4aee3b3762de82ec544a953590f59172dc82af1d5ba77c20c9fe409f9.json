@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select issue_symbol\n        from master_data md\n        where issue_symbol not in \n          (select distinct(symbol) \n           from financialmodelingprep_company_profile fcp) and issue_symbol not in (select unnest($1::text[]))\n        order by issue_symbol limit 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "issue_symbol",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "472d30d4aee3b3762de82ec544a953590f59172dc82af1d5ba77c20c9fe409f9"
+}
