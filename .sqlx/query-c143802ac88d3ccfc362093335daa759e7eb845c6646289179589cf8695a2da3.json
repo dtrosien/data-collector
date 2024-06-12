@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO financialmodelingprep_market_cap (symbol, business_date, market_cap)\n        Select * from UNNEST ($1::text[], $2::date[], $3::float[]) on conflict do nothing",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "DateArray",
+        "Float8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c143802ac88d3ccfc362093335daa759e7eb845c6646289179589cf8695a2da3"
+}

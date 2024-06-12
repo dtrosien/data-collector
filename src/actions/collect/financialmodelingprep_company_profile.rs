@@ -39,16 +39,16 @@ impl Display for FinancialmodelingprepCompanyProfileRequest {
 }
 
 #[derive(Clone, Debug)]
-pub struct FinancialmodelingprepCompanyProfileColletor {
+pub struct FinancialmodelingprepCompanyProfileCollector {
     pool: PgPool,
     client: Client,
     api_key: Option<Secret<String>>,
 }
 
-impl FinancialmodelingprepCompanyProfileColletor {
+impl FinancialmodelingprepCompanyProfileCollector {
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn new(pool: PgPool, client: Client, api_key: Option<Secret<String>>) -> Self {
-        FinancialmodelingprepCompanyProfileColletor {
+        FinancialmodelingprepCompanyProfileCollector {
             pool,
             client,
             api_key,
@@ -56,14 +56,14 @@ impl FinancialmodelingprepCompanyProfileColletor {
     }
 }
 
-impl Display for FinancialmodelingprepCompanyProfileColletor {
+impl Display for FinancialmodelingprepCompanyProfileCollector {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "FinancialmodelingprepCompanyProfileColletor struct.")
     }
 }
 
 #[async_trait]
-impl Runnable for FinancialmodelingprepCompanyProfileColletor {
+impl Runnable for FinancialmodelingprepCompanyProfileCollector {
     #[tracing::instrument(name = "Run FinancialmodelingprepCompanyProfileColletor", skip(self))]
     async fn run(&self) -> Result<Option<StatsMap>, crate::dag_schedule::task::TaskError> {
         if let Some(key) = &self.api_key {
@@ -95,29 +95,6 @@ pub struct EmptyStruct;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ErrorStruct {
     #[serde(rename = "Error Message")]
-    error_message: String,
-}
-
-#[serde_as]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DataStruct {
-    data_msg: Option<i32>,
-}
-
-#[serde_as]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CompanyProfile {
-    #[serde(rename = "Error Message")]
-    error_message: Option<String>,
-    company_profile_elements: Option<Vec<CompanyProfileElement>>,
-}
-
-#[serde_as]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CompanyError {
     error_message: String,
 }
 
@@ -185,7 +162,6 @@ async fn load_and_store_missing_data_given_url(
     let mut potential_issue_sybmol: Option<String> =
         get_next_issue_symbol(&connection_pool).await?;
 
-    // let mut current_check_date = get_start_date(result);
     let mut successful_request_counter: u16 = 0;
     while let Some(issue_sybmol) = potential_issue_sybmol.as_ref() {
         info!("Requesting symbol {}", issue_sybmol);

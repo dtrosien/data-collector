@@ -12,6 +12,7 @@ digraph regexp {
  PolygonOpenClose       [label="Polygon open close"];
  FinmodCompanyProfile   [label="FMP companyprofile collect" style=filled, fillcolor=chartreuse];
  FinmodCompanyProfileStage   [label="FMP companyprofile staging"];
+ FinmodCompanyMarketCap [label="FMP Market capitalization collector"]
 
  NyseEventsCollect -> n1
  NyseInstrumentsCollect -> NyseInstrumentsStage
@@ -21,6 +22,7 @@ digraph regexp {
  PolygonGroupedDaily -> PolygonOpenClose
  NyseInstrumentsStage -> PolygonOpenClose
  FinmodCompanyProfile -> FinmodCompanyProfileStage
+ FinmodCompanyProfileStage -> FinmodCompanyMarketCap
  }
 //sudo apt install graphviz
 //dot -Tsvg dependencies.dot > output.svg
