@@ -29,6 +29,8 @@ application:
       dependencies: [] 
     - name: FinmodCompanyProfileStage
       dependencies: [FinancialmodelingprepCompanyProfileCollet]
+    - name: FinmodMarketCapCollect
+      dependencies: [FinmodMarketCapCollect]
 
   
   tasks:
@@ -58,4 +60,7 @@ application:
       comment: Helpful comment  
     - name: FinmodCompanyProfileStage
       task_type: FinmodCompanyProfileStage
+      comment: Helpful comment
+    - name: FinmodMarketCapCollect
+      task_type: FinmodMarketCapCollect
       comment: Helpful comment  

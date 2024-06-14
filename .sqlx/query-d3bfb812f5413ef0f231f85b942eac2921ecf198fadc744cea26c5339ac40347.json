@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select issue_symbol from master_data_eligible mde\n         where\n        not (start_nyse != '1792-05-17' or start_nyse is null) and\n        (start_nyse_arca != '1792-05-17' or start_nyse_arca is null) and\n        (start_nyse_american != '1792-05-17' or start_nyse_american is null) and\n        (start_nasdaq != '1792-05-17' or start_nasdaq is null) and\n        (start_nasdaq_global_select_market != '1792-05-17' or start_nasdaq_global_select_market is null) and\n        (start_nasdaq_select_market != '1792-05-17' or start_nasdaq_select_market is null) and\n        (start_nasdaq_capital_market != '1792-05-17' or start_nasdaq_capital_market is null) and\n        (start_cboe != '1792-05-17' or start_cboe is null) and issue_symbol not in (select unnest($1::text[]))\n         order by issue_symbol limit 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "issue_symbol",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "d3bfb812f5413ef0f231f85b942eac2921ecf198fadc744cea26c5339ac40347"
+}

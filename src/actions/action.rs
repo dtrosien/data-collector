@@ -1,8 +1,9 @@
+use super::collect::financialmodelingprep_market_capitalization::FinancialmodelingprepMarketCapitalizationCollector;
 use super::collect::polygon_grouped_daily::PolygonGroupedDailyCollector;
 use super::collect::polygon_open_close::PolygonOpenCloseCollector;
 use super::stage::financialmodelingprep_company_profile::FinancialmodelingprepCompanyProfileStager;
 use crate::actions::collect::dummy::DummyCollector;
-use crate::actions::collect::financialmodelingprep_company_profile::FinancialmodelingprepCompanyProfileColletor;
+use crate::actions::collect::financialmodelingprep_company_profile::FinancialmodelingprepCompanyProfileCollector;
 use crate::actions::collect::nyse_events::NyseEventCollector;
 use crate::actions::collect::nyse_instruments::NyseInstrumentCollector;
 use crate::actions::collect::sec_companies::SecCompanyCollector;
@@ -49,20 +50,39 @@ pub fn create_action(
         ActionType::FinmodCompanyProfileStage => {
             Arc::new(FinancialmodelingprepCompanyProfileStager::new(pool.clone()))
         }
+        ActionType::FinmodMarketCapCollect => {
+            create_action_financial_modeling_market_capitalization(pool, client, secrets)
+        }
     }
+}
+
+fn create_action_financial_modeling_market_capitalization(
+    pool: &sqlx::Pool<sqlx::Postgres>,
+    client: &Client,
+    secrets: &Option<SecretKeys>,
+) -> Arc<dyn Runnable + Send + Sync> {
+    let mut fin_modeling_prep_key = Option::<Secret<String>>::None;
+    if let Some(secret) = secrets {
+        fin_modeling_prep_key.clone_from(&secret.financialmodelingprep_company)
+    }
+    Arc::new(FinancialmodelingprepMarketCapitalizationCollector::new(
+        pool.clone(),
+        client.clone(),
+        fin_modeling_prep_key,
+    ))
 }
 
 fn create_action_financial_modeling_company_profile(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &Client,
     secrets: &Option<SecretKeys>,
-) -> Arc<FinancialmodelingprepCompanyProfileColletor> {
+) -> Arc<FinancialmodelingprepCompanyProfileCollector> {
     let mut fin_modeling_prep_key = Option::<Secret<String>>::None;
     if let Some(secret) = secrets {
         fin_modeling_prep_key.clone_from(&secret.financialmodelingprep_company)
     }
 
-    Arc::new(FinancialmodelingprepCompanyProfileColletor::new(
+    Arc::new(FinancialmodelingprepCompanyProfileCollector::new(
         pool.clone(),
         client.clone(),
         fin_modeling_prep_key,
@@ -115,6 +135,7 @@ pub enum ActionType {
     PolygonOpenClose,
     FinancialmodelingprepCompanyProfileCollet,
     FinmodCompanyProfileStage,
+    FinmodMarketCapCollect,
     Dummy,
 }
 

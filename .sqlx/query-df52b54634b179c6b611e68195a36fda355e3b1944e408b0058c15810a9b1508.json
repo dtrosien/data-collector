@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select concat(start_nyse, start_nyse_arca, start_nyse_american, start_nasdaq, start_nasdaq_global_select_market, start_nasdaq_select_market, start_nasdaq_capital_market, start_cboe) as ipo_date from master_data_eligible md where issue_symbol = $1::text order by issue_symbol",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "ipo_date",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "df52b54634b179c6b611e68195a36fda355e3b1944e408b0058c15810a9b1508"
+}
