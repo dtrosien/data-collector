@@ -10,7 +10,6 @@ use std::{
     fs::{self, File},
     io::Cursor,
     path::PathBuf,
-    u8,
 };
 use std::{io::copy, path::Path};
 
