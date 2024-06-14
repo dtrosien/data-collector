@@ -50,7 +50,7 @@ pub fn create_action(
         ActionType::FinmodCompanyProfileStage => {
             Arc::new(FinancialmodelingprepCompanyProfileStager::new(pool.clone()))
         }
-        ActionType::FinmodMarketCapCollcet => {
+        ActionType::FinmodMarketCapCollect => {
             create_action_financial_modeling_market_capitalization(pool, client, secrets)
         }
     }
@@ -135,7 +135,7 @@ pub enum ActionType {
     PolygonOpenClose,
     FinancialmodelingprepCompanyProfileCollet,
     FinmodCompanyProfileStage,
-    FinmodMarketCapCollcet,
+    FinmodMarketCapCollect,
     Dummy,
 }
 

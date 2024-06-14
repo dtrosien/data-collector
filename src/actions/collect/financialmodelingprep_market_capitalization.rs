@@ -2,12 +2,12 @@ use crate::dag_schedule::task::TaskError::UnexpectedError;
 use crate::dag_schedule::task::{Runnable, StatsMap};
 use anyhow::Error;
 use async_trait::async_trait;
-use chrono::{Days, NaiveDate, Utc};
+use chrono::{Days, Duration, NaiveDate, Utc};
 use futures_util::TryFutureExt;
 use reqwest::Client;
 use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr, NoneAsEmptyString};
+use serde_with::serde_as;
 use sqlx::PgPool;
 use std::fmt::{Debug, Display};
 use tracing::{debug, error, info, warn};
@@ -159,7 +159,7 @@ async fn load_and_store_missing_data_given_url(
         info!("Searching start date for symbol {}", &issue_sybmol);
         let mut start_request_date: NaiveDate;
         {
-            start_request_date = search_start_date(&connection_pool, &issue_sybmol).await?;
+            start_request_date = search_start_date(&connection_pool, issue_sybmol).await?;
         }
         info!("Requesting symbol {}", &issue_sybmol);
         while start_request_date < Utc::now().date_naive() {
@@ -205,11 +205,6 @@ async fn load_and_store_missing_data_given_url(
     Ok(())
 }
 
-#[derive(Clone, Debug)]
-struct DateStruct {
-    t: NaiveDate,
-}
-
 async fn search_start_date(
     connection_pool: &PgPool,
     issue_sybmol: &String,
@@ -240,7 +235,7 @@ async fn search_start_date(
     )
     .expect("Parsing issue_symbol. Issue symbol is listed in non or multiple stock markets, but should be in exactly one.");
     //TODO: Add search of first data, if ipo date is initialization date
-    return Ok(ipo_date);
+    Ok(ipo_date)
 }
 
 async fn get_next_uncollected_issue_symbol(
@@ -258,8 +253,8 @@ async fn get_next_uncollected_issue_symbol(
         .collect::<Vec<_>>();
 
     let query_result = sqlx::query!(
-        "select issue_symbol from master_data_eligible mde  
-         where 
+        "select issue_symbol from master_data_eligible mde
+         where
         (start_nyse != '1792-05-17' or start_nyse is null) and
         (start_nyse_arca != '1792-05-17' or start_nyse_arca is null) and
         (start_nyse_american != '1792-05-17' or start_nyse_american is null) and
@@ -269,8 +264,8 @@ async fn get_next_uncollected_issue_symbol(
         (start_nasdaq_capital_market != '1792-05-17' or start_nasdaq_capital_market is null) and
         (start_cboe != '1792-05-17' or start_cboe is null) and
         (issue_symbol not in (select unnest($1::text[]))) and
-        (issue_symbol not in 
-          (select distinct(symbol) 
+        (issue_symbol not in
+          (select distinct(symbol)
            from financialmodelingprep_market_cap))
         order by issue_symbol limit 1",
         &missing_issue_symbols
@@ -281,10 +276,10 @@ async fn get_next_uncollected_issue_symbol(
         return Ok(r.issue_symbol);
     }
 
-    // Check if there is a symbol missing in the set of lower priority
+    // // Check if there is a symbol missing in the set of lower priority
     let query_result = sqlx::query!(
-        "select issue_symbol from master_data_eligible mde  
-         where 
+        "select issue_symbol from master_data_eligible mde
+         where
         not (start_nyse != '1792-05-17' or start_nyse is null) and
         (start_nyse_arca != '1792-05-17' or start_nyse_arca is null) and
         (start_nyse_american != '1792-05-17' or start_nyse_american is null) and
@@ -301,8 +296,27 @@ async fn get_next_uncollected_issue_symbol(
 
     match query_result {
         Ok(result) => Ok(result.issue_symbol),
-        Err(_) => Ok(Option::None),
+        Err(_) => get_next_outdated_issue_symbol(connection_pool).await,
     }
+}
+
+// TODO: Misinterprets unlisted issue_symbols as active and creates and endless loop further upstream.
+async fn get_next_outdated_issue_symbol(
+    connection_pool: &PgPool,
+) -> Result<Option<String>, anyhow::Error> {
+    let result = sqlx::query!("select r.symbol, r.maxDate from
+(select symbol ,max(business_date) as maxDate from financialmodelingprep_market_cap group by symbol) as r
+order by r.maxDate asc limit 1").fetch_one(connection_pool).await?;
+
+    if let Some(date) = result.maxdate {
+        //If date is today or yesterday, then the dataset is up to date.
+        if date == Utc::now().date_naive() || date == Utc::now().date_naive() - Duration::days(1) {
+            return Ok(Option::None);
+        } else {
+            return Ok(Some(result.symbol));
+        }
+    }
+    Ok(Option::None)
 }
 
 fn handle_exhausted_key(successful_request_counter: u16) -> Result<(), anyhow::Error> {
@@ -365,7 +379,6 @@ fn create_polygon_market_capitalization_request(
     api_key: &Secret<String>,
 ) -> FinancialmodelingprepMarketCapitalizationRequest {
     let end_date = start_date
-        .clone()
         .checked_add_days(Days::new(1312))
         .expect("Should not leave date range.");
 
