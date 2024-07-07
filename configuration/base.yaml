@@ -11,26 +11,26 @@ application:
   # Note: Tasks listed as dependencies of others must also be explicitly included here to be considered.
   # If a task is referenced in a dependency list but not present in this list, it will be ignored.
   task_dependencies:
-    - name: NyseEventsCollect
-      dependencies: [ ]
-    - name: NyseInstrumentsCollect
-      dependencies: [ ]
-    - name: NyseInstrumentsStage
-      dependencies: [ NyseInstrumentsCollect, SecCompaniesStage ]
-    - name: SecCompaniesCollect
-      dependencies: [ ]
-    - name: SecCompaniesStage
-      dependencies: [ SecCompaniesCollect ]
-    - name: PolygonGroupedDaily
-      dependencies: [ ]
-    - name: PolygonOpenClose
-      dependencies: [ PolygonGroupedDaily ]
+    # - name: NyseEventsCollect
+    #   dependencies: [ ]
+    # - name: NyseInstrumentsCollect
+    #   dependencies: [ ]
+    # - name: NyseInstrumentsStage
+    #   dependencies: [ NyseInstrumentsCollect, SecCompaniesStage ]
+    # - name: SecCompaniesCollect
+    #   dependencies: [ ]
+    # - name: SecCompaniesStage
+    #   dependencies: [ SecCompaniesCollect ]
+    # - name: PolygonGroupedDaily
+    #   dependencies: [ ]
+    # - name: PolygonOpenClose
+    #   dependencies: [ PolygonGroupedDaily ]
     - name: FinancialmodelingprepCompanyProfileCollet
       dependencies: [] 
-    - name: FinmodCompanyProfileStage
-      dependencies: [FinancialmodelingprepCompanyProfileCollet]
-    - name: FinmodMarketCapCollect
-      dependencies: [FinmodCompanyProfileStage]
+    # - name: FinmodCompanyProfileStage
+    #   dependencies: [FinancialmodelingprepCompanyProfileCollet]
+    # - name: FinmodMarketCapCollect
+    #   dependencies: [FinmodCompanyProfileStage]
 
   
   tasks:

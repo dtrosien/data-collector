@@ -1,33 +1,42 @@
-use std::clone;
-
 use chrono::prelude::*;
 use chrono::DateTime;
 use chrono::Utc;
 use secrecy::{ExposeSecret, Secret};
 
-trait api_key {
+pub trait MaxRequests {
+    const MAX_REQUESTS: u32;
+}
+pub trait ApiKey: MaxRequests {
     fn new(key: String) -> Self;
     fn expose_secret(&mut self) -> &String;
     fn refresh_if_possible(&mut self) -> bool;
     fn next_refresh_possible(&self) -> chrono::DateTime<Utc>;
     fn get_status(&self) -> Status;
     fn get_platform(&self) -> ApiKeyPlatform;
+    fn get_secret(&mut self) -> &Secret<String>;
 }
 
-struct FinancialmodelingprepKey {
+#[derive(Debug, Clone)]
+pub struct FinancialmodelingprepKey {
     api_key: Secret<String>,
     platform: ApiKeyPlatform,
     status: Status,
     last_use: DateTime<Utc>,
+    counter: u32,
 }
 
-impl api_key for FinancialmodelingprepKey {
+impl MaxRequests for FinancialmodelingprepKey {
+    const MAX_REQUESTS: u32 = 250;
+}
+
+impl ApiKey for FinancialmodelingprepKey {
     fn new(key: String) -> Self {
         FinancialmodelingprepKey {
             api_key: Secret::new(key),
             platform: ApiKeyPlatform::Financialmodelingprep,
             status: Status::Ready,
             last_use: Utc.with_ymd_and_hms(1970, 1, 1, 0, 0, 0).unwrap(),
+            counter: 0,
         }
     }
 
@@ -51,6 +60,15 @@ impl api_key for FinancialmodelingprepKey {
     fn get_platform(&self) -> ApiKeyPlatform {
         self.platform.clone()
     }
+
+    fn get_secret(&mut self) -> &Secret<String> {
+        self.counter += 1;
+        println!("Counter at: {}", &self.counter);
+        if self.counter == FinancialmodelingprepKey::MAX_REQUESTS {
+            self.status = Status::Exhausted;
+        }
+        &self.api_key
+    }
 }
 
 struct PolygonKey {
@@ -60,7 +78,11 @@ struct PolygonKey {
     last_use: DateTime<Utc>,
 }
 
-impl api_key for PolygonKey {
+impl MaxRequests for PolygonKey {
+    const MAX_REQUESTS: u32 = 5;
+}
+
+impl ApiKey for PolygonKey {
     fn new(key: String) -> Self {
         PolygonKey {
             api_key: Secret::new(key),
@@ -90,16 +112,19 @@ impl api_key for PolygonKey {
     fn get_platform(&self) -> ApiKeyPlatform {
         self.platform.clone()
     }
+    fn get_secret(&mut self) -> &Secret<String> {
+        &self.api_key
+    }
 }
 
-#[derive(Clone)]
-enum ApiKeyPlatform {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ApiKeyPlatform {
     Financialmodelingprep,
     Polygon,
 }
 
-#[derive(Clone)]
-enum Status {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Status {
     Ready,
     Exhausted,
 }

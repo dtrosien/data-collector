@@ -1,3 +1,5 @@
+use crate::api_keys::api_key::Status::Ready;
+use crate::api_keys::api_key::{ApiKey, FinancialmodelingprepKey, MaxRequests};
 use crate::dag_schedule::task::TaskError::UnexpectedError;
 use crate::dag_schedule::task::{Runnable, StatsMap};
 use anyhow::Error;
@@ -19,7 +21,7 @@ struct IssueSymbols {
     issue_symbol: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct FinancialmodelingprepCompanyProfileRequest {
     base: String,
     api_key: Secret<String>,
@@ -31,6 +33,10 @@ impl FinancialmodelingprepCompanyProfileRequest {
     }
 }
 
+fn contains_valid_key(keys: &Vec<FinancialmodelingprepKey>) -> bool {
+    keys.iter().any(|x| x.get_status() == Ready)
+}
+
 impl Display for FinancialmodelingprepCompanyProfileRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", &self.base)?;
@@ -38,21 +44,29 @@ impl Display for FinancialmodelingprepCompanyProfileRequest {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct FinancialmodelingprepCompanyProfileCollector {
     pool: PgPool,
     client: Client,
-    api_key: Option<Secret<String>>,
+    api_keys: Vec<FinancialmodelingprepKey>,
 }
 
 impl FinancialmodelingprepCompanyProfileCollector {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub fn new(pool: PgPool, client: Client, api_key: Option<Secret<String>>) -> Self {
+    pub fn new(pool: PgPool, client: Client, api_keys: Vec<FinancialmodelingprepKey>) -> Self {
         FinancialmodelingprepCompanyProfileCollector {
             pool,
             client,
-            api_key,
+            api_keys,
         }
+    }
+}
+pub fn get_next_api_key(keys: &mut Vec<FinancialmodelingprepKey>) -> Option<&Secret<String>> {
+    if let Some(key) = keys.into_iter().find(|x| x.get_status() == Ready) {
+        // FinancialmodelingprepKey::MAX_REQUESTS
+        Some(key.get_secret())
+    } else {
+        None
     }
 }
 
@@ -66,10 +80,14 @@ impl Display for FinancialmodelingprepCompanyProfileCollector {
 impl Runnable for FinancialmodelingprepCompanyProfileCollector {
     #[tracing::instrument(name = "Run FinancialmodelingprepCompanyProfileColletor", skip(self))]
     async fn run(&self) -> Result<Option<StatsMap>, crate::dag_schedule::task::TaskError> {
-        if let Some(key) = &self.api_key {
-            load_and_store_missing_data(self.pool.clone(), self.client.clone(), key)
-                .map_err(UnexpectedError)
-                .await?;
+        if self.api_keys.len() > 0 {
+            load_and_store_missing_data(
+                self.pool.clone(),
+                self.client.clone(),
+                self.api_keys.clone(),
+            )
+            .map_err(UnexpectedError)
+            .await?;
         } else {
             error!("No Api key provided for FinancialmodelingprepCompanyProfileColletor");
             return Err(UnexpectedError(Error::msg(
@@ -146,16 +164,16 @@ pub struct CompanyProfileElement {
 pub async fn load_and_store_missing_data(
     connection_pool: PgPool,
     client: Client,
-    api_key: &Secret<String>,
+    mut api_keys: Vec<FinancialmodelingprepKey>,
 ) -> Result<(), anyhow::Error> {
-    load_and_store_missing_data_given_url(connection_pool, client, api_key, URL).await
+    load_and_store_missing_data_given_url(connection_pool, client, api_keys, URL).await
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
 async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
     client: Client,
-    api_key: &Secret<String>,
+    mut api_keys: Vec<FinancialmodelingprepKey>,
     url: &str,
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Financialmodelingprep Company Profile Colletor.");
@@ -163,7 +181,10 @@ async fn load_and_store_missing_data_given_url(
         get_next_issue_symbol(&connection_pool).await?;
 
     let mut successful_request_counter: u16 = 0;
-    while let Some(issue_sybmol) = potential_issue_sybmol.as_ref() {
+    while let (Some(issue_sybmol), Some(api_key)) = (
+        potential_issue_sybmol.as_ref(),
+        get_next_api_key(&mut api_keys),
+    ) {
         info!("Requesting symbol {}", issue_sybmol);
         let request = create_polygon_grouped_daily_request(url, issue_sybmol, api_key);
         debug!("Financialmodelingprep Company request: {}", request);

@@ -1,14 +1,16 @@
+use super::collect::financialmodelingprep_company_profile::FinancialmodelingprepCompanyProfileCollector;
 use super::collect::financialmodelingprep_market_capitalization::FinancialmodelingprepMarketCapitalizationCollector;
 use super::collect::polygon_grouped_daily::PolygonGroupedDailyCollector;
 use super::collect::polygon_open_close::PolygonOpenCloseCollector;
 use super::stage::financialmodelingprep_company_profile::FinancialmodelingprepCompanyProfileStager;
 use crate::actions::collect::dummy::DummyCollector;
-use crate::actions::collect::financialmodelingprep_company_profile::FinancialmodelingprepCompanyProfileCollector;
+
 use crate::actions::collect::nyse_events::NyseEventCollector;
 use crate::actions::collect::nyse_instruments::NyseInstrumentCollector;
 use crate::actions::collect::sec_companies::SecCompanyCollector;
 use crate::actions::stage::nyse_instruments::NyseInstrumentStager;
 use crate::actions::stage::sec_companies::SecCompanyStager;
+use crate::api_keys::api_key::{ApiKey, FinancialmodelingprepKey};
 use crate::configuration::SecretKeys;
 use crate::dag_schedule::task::Runnable;
 use reqwest::Client;
@@ -45,7 +47,7 @@ pub fn create_action(
         }
         ActionType::PolygonOpenClose => create_action_polygon_open_close(pool, client, secrets),
         ActionType::FinancialmodelingprepCompanyProfileCollet => {
-            create_action_financial_modeling_company_profile(pool, client, secrets)
+            create_action_financial_modeling_company_profile_vec(pool, client, secrets)
         }
         ActionType::FinmodCompanyProfileStage => {
             Arc::new(FinancialmodelingprepCompanyProfileStager::new(pool.clone()))
@@ -72,20 +74,40 @@ fn create_action_financial_modeling_market_capitalization(
     ))
 }
 
-fn create_action_financial_modeling_company_profile(
+// fn create_action_financial_modeling_company_profile(
+//     pool: &sqlx::Pool<sqlx::Postgres>,
+//     client: &Client,
+//     secrets: &Option<SecretKeys>,
+// ) -> Arc<FinancialmodelingprepCompanyProfileCollector> {
+//     let mut fin_modeling_prep_key = Option::<Secret<String>>::None;
+//     if let Some(secret) = secrets {
+//         fin_modeling_prep_key.clone_from(&secret.financialmodelingprep_company)
+//     }
+
+//     Arc::new(FinancialmodelingprepCompanyProfileCollector::new(
+//         pool.clone(),
+//         client.clone(),
+//         fin_modeling_prep_key,
+//     ))
+// }
+
+fn create_action_financial_modeling_company_profile_vec(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &Client,
     secrets: &Option<SecretKeys>,
 ) -> Arc<FinancialmodelingprepCompanyProfileCollector> {
-    let mut fin_modeling_prep_key = Option::<Secret<String>>::None;
-    if let Some(secret) = secrets {
-        fin_modeling_prep_key.clone_from(&secret.financialmodelingprep_company)
-    }
+    let fin_modeling_prep_keys = secrets
+        .as_ref()
+        .unwrap()
+        .secrets
+        .iter()
+        .map(|x| FinancialmodelingprepKey::new(x.clone()))
+        .collect();
 
     Arc::new(FinancialmodelingprepCompanyProfileCollector::new(
         pool.clone(),
         client.clone(),
-        fin_modeling_prep_key,
+        fin_modeling_prep_keys,
     ))
 }
 

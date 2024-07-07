@@ -1,6 +1,9 @@
 use secrecy::{ExposeSecret, Secret};
 use serde::Deserialize;
 use serde_aux::field_attributes::deserialize_number_from_string;
+use serde_with::formats::SpaceSeparator;
+use serde_with::serde_as;
+use serde_with::StringWithSeparator;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 
 use crate::actions::action::ActionType;
@@ -58,9 +61,12 @@ pub struct HttpClientSettings {
     pub timeout_milliseconds: u64,
 }
 
+#[serde_as]
 #[derive(Deserialize, Clone)]
 pub struct SecretKeys {
     pub polygon: Option<Secret<String>>,
+    #[serde_as(as = "StringWithSeparator::<SpaceSeparator, String>")]
+    pub secrets: Vec<String>,
     pub financialmodelingprep_company: Option<Secret<String>>,
 }
 
