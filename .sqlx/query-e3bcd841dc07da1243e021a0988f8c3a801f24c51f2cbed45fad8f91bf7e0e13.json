@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select r.symbol, r.maxDate from\n(select symbol ,max(business_date) as maxDate from financialmodelingprep_market_cap group by symbol) as r\norder by r.maxDate asc limit 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "symbol",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "maxdate",
+        "type_info": "Date"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "e3bcd841dc07da1243e021a0988f8c3a801f24c51f2cbed45fad8f91bf7e0e13"
+}

@@ -25,6 +25,12 @@ application:
       dependencies: [ ]
     - name: PolygonOpenClose
       dependencies: [ PolygonGroupedDaily ]
+    - name: FinancialmodelingprepCompanyProfileCollet
+      dependencies: [] 
+    - name: FinmodCompanyProfileStage
+      dependencies: [FinancialmodelingprepCompanyProfileCollet]
+    - name: FinmodMarketCapCollect
+      dependencies: [FinmodMarketCapCollect]
   
   
   tasks:
@@ -49,3 +55,12 @@ application:
     - name: PolygonOpenClose
       task_type: PolygonOpenClose
       comment: Helpful comment
+    - name: FinancialmodelingprepCompanyProfileCollet
+      task_type: FinancialmodelingprepCompanyProfileCollet
+      comment: Helpful comment  
+    - name: FinmodCompanyProfileStage
+      task_type: FinmodCompanyProfileStage
+      comment: Helpful comment  
+    - name: FinmodMarketCapCollect
+      task_type: FinmodMarketCapCollect
+      comment: Helpful comment  

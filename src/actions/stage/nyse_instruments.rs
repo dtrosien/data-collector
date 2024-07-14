@@ -120,14 +120,14 @@ async fn mark_stock_exchange_per_stock_as_current_date(
 ) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r##"update master_data set 
-                start_nyse                         = case WHEN r.mic_code = 'XNYS' then current_date end,
-                start_nyse_arca                    = case WHEN r.mic_code = 'ARCX' then current_date end,
-                start_nyse_american                = case WHEN r.mic_code = 'XASE' then current_date end,
-                start_nasdaq_global_select_market  = case WHEN r.mic_code = 'XNGS' then current_date end,
-                start_nasdaq_select_market         = case WHEN r.mic_code = 'XNMS' then current_date end,
-                start_nasdaq_capital_market        = case WHEN r.mic_code = 'XNCM' then current_date end,
-                start_nasdaq                       = case WHEN r.mic_code = 'XNAS' then current_date end,
-                start_cboe                         = case WHEN r.mic_code in ('BATS', 'XCBO', 'BATY', 'EDGA', 'EDGX') then current_date end  
+                start_nyse                         = case WHEN r.mic_code = 'XNYS' then TO_DATE('1792-05-17','YYYY-MM-DD') end,
+                start_nyse_arca                    = case WHEN r.mic_code = 'ARCX' then TO_DATE('1792-05-17','YYYY-MM-DD') end,
+                start_nyse_american                = case WHEN r.mic_code = 'XASE' then TO_DATE('1792-05-17','YYYY-MM-DD') end,
+                start_nasdaq_global_select_market  = case WHEN r.mic_code = 'XNGS' then TO_DATE('1792-05-17','YYYY-MM-DD') end,
+                start_nasdaq_select_market         = case WHEN r.mic_code = 'XNMS' then TO_DATE('1792-05-17','YYYY-MM-DD') end,
+                start_nasdaq_capital_market        = case WHEN r.mic_code = 'XNCM' then TO_DATE('1792-05-17','YYYY-MM-DD') end,
+                start_nasdaq                       = case WHEN r.mic_code = 'XNAS' then TO_DATE('1792-05-17','YYYY-MM-DD') end,
+                start_cboe                         = case WHEN r.mic_code in ('BATS', 'XCBO', 'BATY', 'EDGA', 'EDGX') then TO_DATE('1792-05-17','YYYY-MM-DD') end  
             from 
                 (select ni.mic_code as mic_code, md.issuer_name as issuer_name, md.issue_symbol as issue_symbol  
                     from nyse_instruments ni 
@@ -181,7 +181,7 @@ async fn mark_already_staged_instruments_as_staged(
 
 #[cfg(test)]
 mod test {
-    use chrono::{NaiveDate, Utc};
+    use chrono::NaiveDate;
     use sqlx::{query, Pool, Postgres};
 
     use crate::actions::stage::nyse_instruments::{
@@ -279,7 +279,7 @@ mod test {
             .unwrap();
 
         // Date is now in correct field
-        let current_date = Utc::now().date_naive();
+        let current_date = NaiveDate::parse_from_str("1792-05-17", "%Y-%m-%d").unwrap();
         let md_result: Vec<MasterDataRow> =
             sqlx::query_as!(MasterDataRow, "select * from master_data")
                 .fetch_all(&pool)
