@@ -30,7 +30,7 @@ application:
     - name: FinmodCompanyProfileStage
       dependencies: [FinancialmodelingprepCompanyProfileCollet]
     - name: FinmodMarketCapCollect
-      dependencies: [FinancialmodelingprepCompanyProfileCollet]
+      dependencies: [FinmodCompanyProfileStage]
 
   
   tasks:
