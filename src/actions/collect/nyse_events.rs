@@ -2,10 +2,10 @@ use async_trait::async_trait;
 use chrono::prelude::*;
 use chrono::{Days, NaiveDate};
 use futures_util::TryFutureExt;
-use std::fmt::Display;
-
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, NoneAsEmptyString};
+use std::fmt::Display;
 
 use crate::utils::action_helpers;
 
@@ -74,12 +74,17 @@ struct MaxDate {
     max_date: Option<NaiveDate>,
 }
 
+#[serde_as]
 #[derive(Default, Deserialize, Debug, PartialEq)]
 pub struct NyseData {
+    #[serde_as(as = "NoneAsEmptyString")]
     pub action_date: Option<String>,
+    #[serde_as(as = "NoneAsEmptyString")]
     pub action_status: Option<String>,
     pub action_type: String,
+    #[serde_as(as = "NoneAsEmptyString")]
     pub issue_symbol: Option<String>,
+    #[serde_as(as = "NoneAsEmptyString")]
     pub issuer_name: Option<String>,
     pub updated_at: String,
     pub market_event: String,
@@ -574,5 +579,28 @@ mod test {
         assert_eq!(saved.updated_at, "2023-10-20T09:24:47.134141-04:00");
         assert_eq!(saved.market_event, "54a838d5-b1ae-427a-b7a3-629eb1a0de2c");
         assert_eq!(saved.is_staged, false);
+    }
+
+    #[test]
+    fn parse_nyse_response_with_empty_strings() {
+        let input_json = r#"{"count":1,"next":null,"previous":null,"results":[{"action_date":"","action_status":"","action_type":"Suspend","issue_symbol":"","issuer_name":"","updated_at":"2023-10-20T09:24:47.134141-04:00","market_event":"54a838d5-b1ae-427a-b7a3-629eb1a0de2c"}]}"#;
+        let nyse_response = action_helpers::parse_response::<NyseResponse>(input_json).unwrap();
+        let data = NyseData {
+            action_date: Option::None,
+            action_status: Option::None,
+            action_type: "Suspend".to_string(),
+            issue_symbol: Option::None,
+            issuer_name: Option::None,
+            updated_at: "2023-10-20T09:24:47.134141-04:00".to_string(),
+            market_event: "54a838d5-b1ae-427a-b7a3-629eb1a0de2c".to_string(),
+        };
+        let response = NyseResponse {
+            count: 1,
+            next: Option::None,
+            previous: Option::None,
+            results: vec![data],
+        };
+        assert_eq!(1, nyse_response.results.len());
+        assert_eq!(response, nyse_response);
     }
 }
