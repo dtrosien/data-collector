@@ -2,18 +2,33 @@ use chrono::prelude::*;
 use chrono::DateTime;
 use chrono::Utc;
 use secrecy::{ExposeSecret, Secret};
+use std::hash::Hash;
+use std::sync::Arc;
 
-pub trait MaxRequests {
-    const MAX_REQUESTS: u32;
-}
-pub trait ApiKey: MaxRequests {
-    fn new(key: String) -> Self;
+// pub trait MaxRequests {
+//     const MAX_REQUESTS: u32;
+// }
+pub trait ApiKey {
+    // fn new(key: String) -> Self;
     fn expose_secret(&mut self) -> &String;
     fn refresh_if_possible(&mut self) -> bool;
     fn next_refresh_possible(&self) -> chrono::DateTime<Utc>;
     fn get_status(&self) -> Status;
     fn get_platform(&self) -> ApiKeyPlatform;
     fn get_secret(&mut self) -> &Secret<String>;
+}
+
+impl PartialEq for dyn ApiKey + 'static {
+    fn eq(&self, other: &Self) -> bool {
+        todo!()
+    }
+}
+impl Eq for dyn ApiKey + 'static {}
+
+impl Hash for dyn ApiKey + 'static {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        todo!()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -25,12 +40,12 @@ pub struct FinancialmodelingprepKey {
     counter: u32,
 }
 
-impl MaxRequests for FinancialmodelingprepKey {
-    const MAX_REQUESTS: u32 = 250;
-}
+// impl MaxRequests for FinancialmodelingprepKey {
+//     const MAX_REQUESTS: u32 = 250;
+// }
 
-impl ApiKey for FinancialmodelingprepKey {
-    fn new(key: String) -> Self {
+impl FinancialmodelingprepKey {
+    pub fn new(key: String) -> Self {
         FinancialmodelingprepKey {
             api_key: Secret::new(key),
             platform: ApiKeyPlatform::Financialmodelingprep,
@@ -39,7 +54,9 @@ impl ApiKey for FinancialmodelingprepKey {
             counter: 0,
         }
     }
+}
 
+impl ApiKey for FinancialmodelingprepKey {
     fn expose_secret(&mut self) -> &String {
         self.last_use = Utc::now();
         self.api_key.expose_secret()
@@ -64,7 +81,7 @@ impl ApiKey for FinancialmodelingprepKey {
     fn get_secret(&mut self) -> &Secret<String> {
         self.counter += 1;
         println!("Counter at: {}", &self.counter);
-        if self.counter == FinancialmodelingprepKey::MAX_REQUESTS {
+        if self.counter == 250 {
             self.status = Status::Exhausted;
         }
         &self.api_key
@@ -78,12 +95,12 @@ struct PolygonKey {
     last_use: DateTime<Utc>,
 }
 
-impl MaxRequests for PolygonKey {
-    const MAX_REQUESTS: u32 = 5;
-}
+// impl MaxRequests for PolygonKey {
+//     const MAX_REQUESTS: u32 = 5;
+// }
 
-impl ApiKey for PolygonKey {
-    fn new(key: String) -> Self {
+impl PolygonKey {
+    pub fn new(key: String) -> Self {
         PolygonKey {
             api_key: Secret::new(key),
             platform: ApiKeyPlatform::Polygon,
@@ -91,7 +108,9 @@ impl ApiKey for PolygonKey {
             last_use: Utc.with_ymd_and_hms(1970, 1, 1, 0, 0, 0).unwrap(),
         }
     }
+}
 
+impl ApiKey for PolygonKey {
     fn expose_secret(&mut self) -> &String {
         self.last_use = Utc::now();
         self.api_key.expose_secret()

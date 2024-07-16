@@ -1,5 +1,5 @@
 use crate::api_keys::api_key::Status::Ready;
-use crate::api_keys::api_key::{ApiKey, FinancialmodelingprepKey, MaxRequests};
+use crate::api_keys::api_key::{ApiKey, FinancialmodelingprepKey};
 use crate::dag_schedule::task::TaskError::UnexpectedError;
 use crate::dag_schedule::task::{Runnable, StatsMap};
 use anyhow::Error;
