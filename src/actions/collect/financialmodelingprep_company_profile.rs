@@ -1,10 +1,12 @@
-use crate::api_keys::api_key::Status::Ready;
-use crate::api_keys::api_key::{ApiKey, FinancialmodelingprepKey};
+use crate::api_keys::api_key::Status::{self, Ready};
+use crate::api_keys::api_key::{ApiKey, ApiKeyPlatform, FinancialmodelingprepKey};
+use crate::api_keys::key_manager::KeyManager;
 use crate::dag_schedule::task::TaskError::UnexpectedError;
 use crate::dag_schedule::task::{Runnable, StatsMap};
 use anyhow::Error;
 use async_trait::async_trait;
-use chrono::NaiveDate;
+use chrono::{DateTime, Duration, NaiveDate, Utc};
+
 use futures_util::TryFutureExt;
 use reqwest::Client;
 use secrecy::{ExposeSecret, Secret};
@@ -12,9 +14,12 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr, NoneAsEmptyString};
 use sqlx::PgPool;
 use std::fmt::{Debug, Display};
+use std::sync::{Arc, Mutex};
+use std::thread;
 use tracing::{debug, error, info, warn};
 
 const URL: &str = "https://financialmodelingprep.com/api/v3/profile/";
+const PLATFORM: ApiKeyPlatform = ApiKeyPlatform::Financialmodelingprep;
 
 #[derive(Clone, Debug)]
 struct IssueSymbols {
@@ -22,14 +27,14 @@ struct IssueSymbols {
 }
 
 #[derive(Debug)]
-struct FinancialmodelingprepCompanyProfileRequest {
+struct FinancialmodelingprepCompanyProfileRequest<'a> {
     base: String,
-    api_key: Secret<String>,
+    api_key: &'a mut Box<dyn ApiKey>,
 }
 
-impl FinancialmodelingprepCompanyProfileRequest {
-    fn expose_secret(&self) -> String {
-        self.base.clone() + self.api_key.expose_secret()
+impl FinancialmodelingprepCompanyProfileRequest<'_> {
+    fn expose_secret(&mut self) -> String {
+        self.base.clone() + self.api_key.get_secret().expose_secret()
     }
 }
 
@@ -37,10 +42,10 @@ fn contains_valid_key(keys: &Vec<FinancialmodelingprepKey>) -> bool {
     keys.iter().any(|x| x.get_status() == Ready)
 }
 
-impl Display for FinancialmodelingprepCompanyProfileRequest {
+impl Display for FinancialmodelingprepCompanyProfileRequest<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", &self.base)?;
-        Secret::fmt(&self.api_key, f)
+        Secret::new(self.api_key.expose_secret().clone()).fmt(f)
     }
 }
 
@@ -48,19 +53,27 @@ impl Display for FinancialmodelingprepCompanyProfileRequest {
 pub struct FinancialmodelingprepCompanyProfileCollector {
     pool: PgPool,
     client: Client,
+    key_manager: Arc<Mutex<KeyManager>>,
     api_keys: Vec<FinancialmodelingprepKey>,
 }
 
 impl FinancialmodelingprepCompanyProfileCollector {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub fn new(pool: PgPool, client: Client, api_keys: Vec<FinancialmodelingprepKey>) -> Self {
+    pub fn new(
+        pool: PgPool,
+        client: Client,
+        api_keys: Vec<FinancialmodelingprepKey>,
+        key_manager: Arc<Mutex<KeyManager>>,
+    ) -> Self {
         FinancialmodelingprepCompanyProfileCollector {
             pool,
             client,
             api_keys,
+            key_manager,
         }
     }
 }
+
 pub fn get_next_api_key(keys: &mut Vec<FinancialmodelingprepKey>) -> Option<&Secret<String>> {
     if let Some(key) = keys.into_iter().find(|x| x.get_status() == Ready) {
         // FinancialmodelingprepKey::MAX_REQUESTS
@@ -85,6 +98,7 @@ impl Runnable for FinancialmodelingprepCompanyProfileCollector {
                 self.pool.clone(),
                 self.client.clone(),
                 self.api_keys.clone(),
+                self.key_manager.clone(),
             )
             .map_err(UnexpectedError)
             .await?;
@@ -164,9 +178,10 @@ pub struct CompanyProfileElement {
 pub async fn load_and_store_missing_data(
     connection_pool: PgPool,
     client: Client,
-    mut api_keys: Vec<FinancialmodelingprepKey>,
+    api_keys: Vec<FinancialmodelingprepKey>,
+    key_manager: Arc<Mutex<KeyManager>>,
 ) -> Result<(), anyhow::Error> {
-    load_and_store_missing_data_given_url(connection_pool, client, api_keys, URL).await
+    load_and_store_missing_data_given_url(connection_pool, client, api_keys, key_manager, URL).await
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
@@ -174,49 +189,99 @@ async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
     client: Client,
     mut api_keys: Vec<FinancialmodelingprepKey>,
+    key_manager: Arc<Mutex<KeyManager>>,
     url: &str,
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Financialmodelingprep Company Profile Colletor.");
     let mut potential_issue_sybmol: Option<String> =
         get_next_issue_symbol(&connection_pool).await?;
-
+    let mut general_api_key = get_new_apikey_or_wait(key_manager.clone(), true).await;
     let mut successful_request_counter: u16 = 0;
-    while let (Some(issue_sybmol), Some(api_key)) = (
-        potential_issue_sybmol.as_ref(),
-        get_next_api_key(&mut api_keys),
-    ) {
-        info!("Requesting symbol {}", issue_sybmol);
-        let request = create_polygon_grouped_daily_request(url, issue_sybmol, api_key);
-        debug!("Financialmodelingprep Company request: {}", request);
-        let response = client
-            .get(&request.expose_secret())
-            .send()
-            .await?
-            .text()
-            .await?;
-        debug!("Repsonse: {}", response);
+    println!(
+        "symbols: {:?}, key: {:?}",
+        potential_issue_sybmol, general_api_key
+    );
+    while let (Some(issue_sybmol), Some(mut api_key)) =
+        (potential_issue_sybmol.as_ref(), general_api_key)
+    {
+        {
+            info!("Requesting symbol {}", issue_sybmol);
+            let mut request = create_polygon_grouped_daily_request(url, issue_sybmol, &mut api_key);
+            debug!("Financialmodelingprep Company request: {}", request);
+            let response = client
+                .get(&request.expose_secret())
+                .send()
+                .await?
+                .text()
+                .await?;
+            debug!("Response: {}", response);
 
-        //TODO: Handle error
-        let parsed = crate::utils::action_helpers::parse_response::<Responses>(&response)?;
+            //TODO: Handle error
+            let parsed = crate::utils::action_helpers::parse_response::<Responses>(&response)?;
 
-        match parsed {
-            Responses::Data(data) => {
-                store_data(data, &connection_pool).await?;
-                successful_request_counter += 1;
-            }
-            Responses::KeyExhausted(_) => {
-                return handle_exhausted_key(successful_request_counter);
-            }
-            Responses::NotFound(_) => {
-                info!("Stock symbol '{}' not found.", issue_sybmol);
-                add_missing_issue_symbol(issue_sybmol, &connection_pool).await?;
-                // return Ok(());
+            match parsed {
+                Responses::Data(data) => {
+                    store_data(data, &connection_pool).await?;
+                    successful_request_counter += 1;
+                }
+                Responses::KeyExhausted(_) => {
+                    println!("Key exhaustion detected");
+                    api_key.set_status(Status::Exhausted);
+                }
+                Responses::NotFound(_) => {
+                    info!("Stock symbol '{}' not found.", issue_sybmol);
+                    add_missing_issue_symbol(issue_sybmol, &connection_pool).await?;
+                    // return Ok(());
+                }
             }
         }
-
         potential_issue_sybmol = get_next_issue_symbol(&connection_pool).await?;
+        if api_key.get_status() == Status::Ready {
+            general_api_key = Some(api_key);
+        } else {
+            general_api_key = get_new_apikey_or_wait(key_manager.clone(), true).await;
+        }
+        println!(
+            "BOTTOM: symbols: {:?}, key: {:?}",
+            potential_issue_sybmol, general_api_key
+        );
     }
     Ok(())
+}
+
+async fn get_new_apikey_or_wait(
+    key_manager: Arc<Mutex<KeyManager>>,
+    wait: bool,
+) -> Option<Box<dyn ApiKey>> {
+    let mut g = {
+        let mut d = key_manager.lock().expect("msg");
+        d.get_key_and_timeout(PLATFORM)
+    };
+    println!("Enter get_new_apikey_or_wait {:?}", g);
+    while let Ok(f) = g {
+        match f {
+            (Some(_), Some(_)) => return None, // Cannot occur
+            // Queue is empty
+            (None, None) => {
+                if wait {
+                    tokio::time::sleep(Duration::minutes(1).to_std().unwrap()).await;
+                } else {
+                    return None;
+                }
+            }
+            (None, Some(refresh_time)) => {
+                let time_difference = Utc::now() - refresh_time;
+                tokio::time::sleep(time_difference.to_std().unwrap()).await;
+            }
+            (Some(key), None) => return Some(key),
+        }
+        g = {
+            let mut d = key_manager.lock().expect("msg");
+            d.get_key_and_timeout(PLATFORM)
+        };
+        println!("new while iteration: {:?}", g);
+    }
+    None // Key never added to queue
 }
 
 async fn get_next_issue_symbol(connection_pool: &PgPool) -> Result<Option<String>, anyhow::Error> {
@@ -330,16 +395,16 @@ async fn add_missing_issue_symbol(
 }
 
 ///  Example output https://financialmodelingprep.com/api/v3/profile/AAPL?apikey=TOKEN
-#[tracing::instrument(level = "debug", skip_all)]
-fn create_polygon_grouped_daily_request(
-    base_url: &str,
-    issue_symbol: &str,
-    api_key: &Secret<String>,
-) -> FinancialmodelingprepCompanyProfileRequest {
+// #[tracing::instrument(level = "debug", skip_all)],
+fn create_polygon_grouped_daily_request<'a>(
+    base_url: &'a str,
+    issue_symbol: &'a str,
+    api_key: &'a mut Box<dyn ApiKey>,
+) -> FinancialmodelingprepCompanyProfileRequest<'a> {
     let base_request_url = base_url.to_string() + issue_symbol.to_string().as_str() + "?apikey=";
     FinancialmodelingprepCompanyProfileRequest {
         base: base_request_url,
-        api_key: api_key.clone(),
+        api_key: api_key,
     }
 }
 

@@ -13,20 +13,23 @@ name = "data_collector"
 path = "src/main.rs"
 
 
-
 [dependencies]
 anyhow = "1"
+# async-recursion = "1.1.1"
 async-trait = "0.1.74"
-chrono = { version = "0.4.31", default-features = false, features = ["clock", "serde"] }
+chrono = { version = "0.4.31", default-features = false, features = [
+    "clock",
+    "serde",
+] }
 ##config = "0.14.0"
 ## Remove when higher version than 0.14.0 is available
-config = {git = "https://github.com/mehcode/config-rs"}
+config = { git = "https://github.com/mehcode/config-rs" }
 filetime = "0.2.23"
 futures-util = "0.3.28"
 home = "0.5.9"
 priority-queue = "2.0.3"
 rand = "0.8.5"
-reqwest = { version = "0.11.23", features = ["json", "blocking", "stream"] }
+reqwest = { version = "0.12.5", features = ["json", "blocking", "stream"] }
 secrecy = { version = "0.8", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "*"
@@ -38,29 +41,37 @@ tokio-stream = "0.1.14"
 tracing = { version = "0.1", features = ["log"] } # facade to generate traces
 tracing-bunyan-formatter = "0.3" # uses layer trait from tracing subscriber to build a processing pipeline for span data (see main)
 tracing-log = "0.2" # redirect logs to tracing
-tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] } # to actually print traces
+tracing-subscriber = { version = "0.3", features = [
+    "registry",
+    "env-filter",
+] } # to actually print traces
 uuid = { version = "1", features = ["v4"] }
 zip = "0.6.6"
 
 opentelemetry = "0.22"
 opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
 #opentelemetry-stdout = { version = "0.3", features = ["trace"] }
-opentelemetry-otlp = { version = "0.15.0", features = ["metrics", "grpc-tonic", "tls-roots"] }
+opentelemetry-otlp = { version = "0.15.0", features = [
+    "metrics",
+    "grpc-tonic",
+    "tls-roots",
+] }
 tracing-opentelemetry = "0.23"
 
 [dev-dependencies]
 filetime = "0.2.23"
 httpmock = "0.7.0"
 tempfile = "3.9.0"
-rand = "0.8.5" # used to generate random election timeouts in a specific range
+rand = "0.8.5"         # used to generate random election timeouts in a specific range
 rusty-hook = "^0.11.2"
 
 [dependencies.sqlx]
-version = "0.7.3"
+version = "0.7.4"
 default-features = false
 features = [
     "bigdecimal",
-    "runtime-tokio-rustls",
+    "runtime-tokio",
+    "tls-rustls",
     "macros",
     "postgres",
     "uuid",
@@ -70,6 +81,3 @@ features = [
 
 [package.metadata.cargo-udeps.ignore]
 development = ["rusty-hook"]
-
-
-

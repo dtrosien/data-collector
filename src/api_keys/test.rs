@@ -1,4 +1,4 @@
-use opentelemetry::Key;
+
 use std::hash::Hash;
 
 pub trait MyTest {}

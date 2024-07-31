@@ -10,14 +10,17 @@ use crate::actions::collect::nyse_instruments::NyseInstrumentCollector;
 use crate::actions::collect::sec_companies::SecCompanyCollector;
 use crate::actions::stage::nyse_instruments::NyseInstrumentStager;
 use crate::actions::stage::sec_companies::SecCompanyStager;
-use crate::api_keys::api_key::{ApiKey, FinancialmodelingprepKey};
+use crate::api_keys::api_key::FinancialmodelingprepKey;
+use crate::api_keys::key_manager::KeyManager;
+use crate::api_keys::{self, key_manager};
 use crate::configuration::SecretKeys;
 use crate::dag_schedule::task::Runnable;
+use opentelemetry::Key;
 use reqwest::Client;
 use secrecy::Secret;
 use serde::Deserialize;
 use sqlx::PgPool;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Action is a boxed trait object of Runnable.
 pub type Action = Arc<dyn Runnable + Send + Sync>;
@@ -29,6 +32,10 @@ pub fn create_action(
     client: &Client,
     secrets: &Option<SecretKeys>,
 ) -> Action {
+    let mut key_store = Arc::new(Mutex::new(key_manager::KeyManager::new()));
+    fill_key_store(&key_store, secrets.clone());
+    println!("keystore size: {:?}", key_store);
+
     match action_type {
         ActionType::NyseEventsCollect => {
             Arc::new(NyseEventCollector::new(pool.clone(), client.clone()))
@@ -47,7 +54,12 @@ pub fn create_action(
         }
         ActionType::PolygonOpenClose => create_action_polygon_open_close(pool, client, secrets),
         ActionType::FinancialmodelingprepCompanyProfileCollet => {
-            create_action_financial_modeling_company_profile_vec(pool, client, secrets)
+            create_action_financial_modeling_company_profile_vec(
+                pool,
+                client,
+                secrets,
+                Arc::clone(&key_store),
+            )
         }
         ActionType::FinmodCompanyProfileStage => {
             Arc::new(FinancialmodelingprepCompanyProfileStager::new(pool.clone()))
@@ -55,6 +67,17 @@ pub fn create_action(
         ActionType::FinmodMarketCapCollect => {
             create_action_financial_modeling_market_capitalization(pool, client, secrets)
         }
+    }
+}
+
+fn fill_key_store(key_store: &Arc<Mutex<KeyManager>>, clone: Option<SecretKeys>) -> () {
+    let mut k = key_store.lock().unwrap();
+    if let Some(secrets) = clone {
+        secrets.secrets.into_iter().for_each(|x| {
+            let key = FinancialmodelingprepKey::new(x);
+            print!("key added");
+            k.add_key_by_platform(key);
+        })
     }
 }
 
@@ -95,6 +118,7 @@ fn create_action_financial_modeling_company_profile_vec(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &Client,
     secrets: &Option<SecretKeys>,
+    key_manager: Arc<Mutex<KeyManager>>,
 ) -> Arc<FinancialmodelingprepCompanyProfileCollector> {
     let fin_modeling_prep_keys = secrets
         .as_ref()
@@ -108,6 +132,7 @@ fn create_action_financial_modeling_company_profile_vec(
         pool.clone(),
         client.clone(),
         fin_modeling_prep_keys,
+        key_manager,
     ))
 }
 
