@@ -18,7 +18,7 @@ pub trait ApiKey: Sync + Send {
     fn get_status(&self) -> Status;
     fn get_platform(&self) -> ApiKeyPlatform;
     fn get_secret(&mut self) -> &Secret<String>;
-    fn set_status(&mut self, new_status: Status) -> ();
+    fn set_status(&mut self, new_status: Status);
 }
 
 impl PartialEq for dyn ApiKey + 'static {
@@ -28,7 +28,7 @@ impl PartialEq for dyn ApiKey + 'static {
         {
             return true;
         }
-        return false;
+        false
     }
 }
 impl Eq for dyn ApiKey + 'static {}
@@ -84,8 +84,8 @@ impl ApiKey for FinancialmodelingprepKey {
 
     fn next_refresh_possible(&self) -> chrono::DateTime<Utc> {
         match self.get_status() {
-            Status::Ready => return Utc::now(),
-            Status::Exhausted => return self.last_use + Duration::minutes(1),
+            Status::Ready => Utc::now(),
+            Status::Exhausted => self.last_use + Duration::minutes(1),
         }
     }
 
@@ -106,7 +106,7 @@ impl ApiKey for FinancialmodelingprepKey {
         &self.api_key
     }
 
-    fn set_status(&mut self, new_status: Status) -> () {
+    fn set_status(&mut self, new_status: Status) {
         self.status = new_status;
     }
 }
@@ -160,7 +160,7 @@ impl ApiKey for PolygonKey {
         &self.api_key
     }
 
-    fn set_status(&mut self, new_status: Status) -> () {
+    fn set_status(&mut self, new_status: Status) {
         todo!()
     }
 }

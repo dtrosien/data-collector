@@ -56,7 +56,6 @@ pub fn create_action(
             create_action_financial_modeling_company_profile_vec(
                 pool,
                 client,
-                secrets,
                 Arc::clone(&key_store),
             )
         }
@@ -69,7 +68,7 @@ pub fn create_action(
     }
 }
 
-fn fill_key_store(key_store: &Arc<Mutex<KeyManager>>, clone: Option<SecretKeys>) -> () {
+fn fill_key_store(key_store: &Arc<Mutex<KeyManager>>, clone: Option<SecretKeys>) {
     let mut k = key_store.lock().unwrap();
     if let Some(secrets) = clone {
         secrets.secrets.into_iter().for_each(|x| {
@@ -116,21 +115,11 @@ fn create_action_financial_modeling_market_capitalization(
 fn create_action_financial_modeling_company_profile_vec(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &Client,
-    secrets: &Option<SecretKeys>,
     key_manager: Arc<Mutex<KeyManager>>,
 ) -> Arc<FinancialmodelingprepCompanyProfileCollector> {
-    let fin_modeling_prep_keys = secrets
-        .as_ref()
-        .unwrap()
-        .secrets
-        .iter()
-        .map(|x| FinancialmodelingprepKey::new(x.clone()))
-        .collect();
-
     Arc::new(FinancialmodelingprepCompanyProfileCollector::new(
         pool.clone(),
         client.clone(),
-        fin_modeling_prep_keys,
         key_manager,
     ))
 }
