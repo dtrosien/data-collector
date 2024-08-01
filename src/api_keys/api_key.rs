@@ -161,7 +161,7 @@ impl ApiKey for PolygonKey {
     }
 
     fn set_status(&mut self, new_status: Status) {
-        todo!()
+        self.status = new_status;
     }
 }
 

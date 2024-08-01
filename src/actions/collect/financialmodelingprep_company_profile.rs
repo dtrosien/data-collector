@@ -172,7 +172,7 @@ async fn load_and_store_missing_data_given_url(
     let mut potential_issue_sybmol: Option<String> =
         get_next_issue_symbol(&connection_pool).await?;
     let mut general_api_key = get_new_apikey_or_wait(key_manager.clone(), true).await;
-    let mut successful_request_counter: u16 = 0;
+    let mut _successful_request_counter: u16 = 0; // Variable actually used, but clippy is buggy with the shorthand += below. (clippy 0.1.79)
     while let (Some(issue_sybmol), Some(mut api_key)) =
         (potential_issue_sybmol.as_ref(), general_api_key)
     {
@@ -194,7 +194,7 @@ async fn load_and_store_missing_data_given_url(
             match parsed {
                 Responses::Data(data) => {
                     store_data(data, &connection_pool).await?;
-                    successful_request_counter += 1;
+                    _successful_request_counter += 1;
                 }
                 Responses::KeyExhausted(_) => {
                     println!("Key exhaustion detected");

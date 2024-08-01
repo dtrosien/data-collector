@@ -5,6 +5,8 @@ use priority_queue::PriorityQueue;
 
 use super::api_key::{ApiKey, ApiKeyPlatform};
 
+type KeyOrTimeoutResult = Result<(Option<Box<dyn ApiKey>>, Option<DateTime<Utc>>), KeyErrors>;
+
 #[derive(Debug)]
 pub struct KeyManager {
     keys: Map<ApiKeyPlatform, PriorityQueue<Box<dyn ApiKey>, DateTime<Utc>>>,
@@ -28,10 +30,7 @@ impl KeyManager {
         }
     }
 
-    pub fn get_key_and_timeout(
-        &mut self,
-        platform: ApiKeyPlatform,
-    ) -> Result<(Option<Box<dyn ApiKey>>, Option<DateTime<Utc>>), KeyErrors> {
+    pub fn get_key_and_timeout(&mut self, platform: ApiKeyPlatform) -> KeyOrTimeoutResult {
         if let Some(pq) = self.keys.get_mut(&platform) {
             {
                 if let Some(pair) = pq.peek() {
@@ -54,6 +53,12 @@ impl KeyManager {
                 "FinancialmodelingprepCompanyProfileColletor key not provided",
             ))) // No key was ever added
         }
+    }
+}
+
+impl Default for KeyManager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
