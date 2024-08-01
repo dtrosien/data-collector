@@ -1,4 +1,3 @@
-
 use std::hash::Hash;
 
 pub trait MyTest {}

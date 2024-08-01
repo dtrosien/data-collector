@@ -1,5 +1,3 @@
-use std::{error::Error, sync::Arc};
-
 use chrono::{DateTime, Utc};
 use config::Map;
 use priority_queue::PriorityQueue;
@@ -19,15 +17,15 @@ impl KeyManager {
         KeyManager { keys: Map::new() }
     }
 
-    pub fn add_key_by_platform(&mut self, key: impl ApiKey + 'static) {
+    pub fn add_key_by_platform(&mut self, key: Box<dyn ApiKey>) {
         let platform = key.get_platform();
         let key_value_pair = self.keys.get_mut(&platform);
         let next_update = key.next_refresh_possible().clone();
         if let Some(queue) = key_value_pair {
-            queue.push(Box::new(key), next_update);
+            queue.push((key), next_update);
         } else {
             let mut queue: PriorityQueue<Box<dyn ApiKey>, DateTime<Utc>> = PriorityQueue::new();
-            queue.push(Box::new(key), next_update);
+            queue.push((key), next_update);
             self.keys.insert(platform, queue);
             // println!("no")
         }
@@ -86,6 +84,6 @@ mod test {
     fn create_struct_key_manager() {
         let key = FinancialmodelingprepKey::new("key".to_string());
         let mut km = KeyManager::new();
-        km.add_key_by_platform(key);
+        km.add_key_by_platform(Box::new(key));
     }
 }

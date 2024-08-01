@@ -5,7 +5,6 @@ use chrono::Utc;
 use secrecy::{ExposeSecret, Secret};
 use std::fmt;
 use std::fmt::Debug;
-use std::fmt::Display;
 use std::hash::Hash;
 
 // pub trait MaxRequests {

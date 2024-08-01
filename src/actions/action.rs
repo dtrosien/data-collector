@@ -11,11 +11,10 @@ use crate::actions::collect::sec_companies::SecCompanyCollector;
 use crate::actions::stage::nyse_instruments::NyseInstrumentStager;
 use crate::actions::stage::sec_companies::SecCompanyStager;
 use crate::api_keys::api_key::FinancialmodelingprepKey;
+use crate::api_keys::key_manager;
 use crate::api_keys::key_manager::KeyManager;
-use crate::api_keys::{self, key_manager};
 use crate::configuration::SecretKeys;
 use crate::dag_schedule::task::Runnable;
-use opentelemetry::Key;
 use reqwest::Client;
 use secrecy::Secret;
 use serde::Deserialize;
@@ -32,7 +31,7 @@ pub fn create_action(
     client: &Client,
     secrets: &Option<SecretKeys>,
 ) -> Action {
-    let mut key_store = Arc::new(Mutex::new(key_manager::KeyManager::new()));
+    let key_store = Arc::new(Mutex::new(key_manager::KeyManager::new()));
     fill_key_store(&key_store, secrets.clone());
     println!("keystore size: {:?}", key_store);
 
@@ -76,7 +75,7 @@ fn fill_key_store(key_store: &Arc<Mutex<KeyManager>>, clone: Option<SecretKeys>)
         secrets.secrets.into_iter().for_each(|x| {
             let key = FinancialmodelingprepKey::new(x);
             print!("key added");
-            k.add_key_by_platform(key);
+            k.add_key_by_platform(Box::new(key));
         })
     }
 }

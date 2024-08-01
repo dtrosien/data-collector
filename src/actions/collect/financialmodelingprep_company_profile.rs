@@ -5,7 +5,7 @@ use crate::dag_schedule::task::TaskError::UnexpectedError;
 use crate::dag_schedule::task::{Runnable, StatsMap};
 use anyhow::Error;
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, NaiveDate, Utc};
+use chrono::{Duration, NaiveDate, Utc};
 
 use futures_util::TryFutureExt;
 use reqwest::Client;
@@ -15,7 +15,6 @@ use serde_with::{serde_as, DisplayFromStr, NoneAsEmptyString};
 use sqlx::PgPool;
 use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex};
-use std::thread;
 use tracing::{debug, error, info, warn};
 
 const URL: &str = "https://financialmodelingprep.com/api/v3/profile/";
@@ -188,7 +187,7 @@ pub async fn load_and_store_missing_data(
 async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
     client: Client,
-    mut api_keys: Vec<FinancialmodelingprepKey>,
+    api_keys: Vec<FinancialmodelingprepKey>,
     key_manager: Arc<Mutex<KeyManager>>,
     url: &str,
 ) -> Result<(), anyhow::Error> {
@@ -231,7 +230,6 @@ async fn load_and_store_missing_data_given_url(
                 Responses::NotFound(_) => {
                     info!("Stock symbol '{}' not found.", issue_sybmol);
                     add_missing_issue_symbol(issue_sybmol, &connection_pool).await?;
-                    // return Ok(());
                 }
             }
         }
@@ -239,7 +237,8 @@ async fn load_and_store_missing_data_given_url(
         if api_key.get_status() == Status::Ready {
             general_api_key = Some(api_key);
         } else {
-            general_api_key = get_new_apikey_or_wait(key_manager.clone(), true).await;
+            // general_api_key = get_new_apikey_or_wait(key_manager.clone(), true).await;
+            general_api_key = exchange_apikey_or_wait(key_manager.clone(), true, api_key).await;
         }
         println!(
             "BOTTOM: symbols: {:?}, key: {:?}",
@@ -247,6 +246,18 @@ async fn load_and_store_missing_data_given_url(
         );
     }
     Ok(())
+}
+
+async fn exchange_apikey_or_wait(
+    key_manager: Arc<Mutex<KeyManager>>,
+    wait: bool,
+    api_key: Box<dyn ApiKey>,
+) -> Option<Box<dyn ApiKey>> {
+    {
+        let mut d = key_manager.lock().expect("msg");
+        d.add_key_by_platform(api_key);
+    }
+    get_new_apikey_or_wait(key_manager, wait).await
 }
 
 async fn get_new_apikey_or_wait(
