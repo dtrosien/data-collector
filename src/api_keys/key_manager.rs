@@ -21,6 +21,7 @@ impl KeyManager {
         let platform = key.get_platform();
         let key_value_pair = self.keys.get_mut(&platform);
         let next_update = key.next_refresh_possible();
+        println!("Next update possielbe: {}", next_update);
         if let Some(queue) = key_value_pair {
             queue.push(key, next_update);
         } else {
@@ -35,7 +36,7 @@ impl KeyManager {
             {
                 if let Some(pair) = pq.peek() {
                     if pair.1 > &Utc::now() {
-                        return Ok((None, Some((*pair.1).clone())));
+                        return Ok((None, Some(*pair.1)));
                     }
                 } else {
                     return Ok((None, None)); //No key available in queue, at all

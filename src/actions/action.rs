@@ -33,7 +33,6 @@ pub fn create_action(
 ) -> Action {
     let key_store = Arc::new(Mutex::new(key_manager::KeyManager::new()));
     fill_key_store(&key_store, secrets.clone());
-    println!("keystore size: {:?}", key_store);
 
     match action_type {
         ActionType::NyseEventsCollect => {
@@ -53,17 +52,18 @@ pub fn create_action(
         }
         ActionType::PolygonOpenClose => create_action_polygon_open_close(pool, client, secrets),
         ActionType::FinancialmodelingprepCompanyProfileCollet => {
-            create_action_financial_modeling_company_profile_vec(
-                pool,
-                client,
-                Arc::clone(&key_store),
-            )
+            create_action_financial_modeling_company_profile(pool, client, Arc::clone(&key_store))
         }
         ActionType::FinmodCompanyProfileStage => {
             Arc::new(FinancialmodelingprepCompanyProfileStager::new(pool.clone()))
         }
         ActionType::FinmodMarketCapCollect => {
-            create_action_financial_modeling_market_capitalization(pool, client, secrets)
+            create_action_financial_modeling_market_capitalization(
+                pool,
+                client,
+                secrets,
+                Arc::clone(&key_store),
+            )
         }
     }
 }
@@ -83,6 +83,7 @@ fn create_action_financial_modeling_market_capitalization(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &Client,
     secrets: &Option<SecretKeys>,
+    key_manager: Arc<Mutex<KeyManager>>,
 ) -> Arc<dyn Runnable + Send + Sync> {
     let mut fin_modeling_prep_key = Option::<Secret<String>>::None;
     if let Some(secret) = secrets {
@@ -92,27 +93,11 @@ fn create_action_financial_modeling_market_capitalization(
         pool.clone(),
         client.clone(),
         fin_modeling_prep_key,
+        key_manager,
     ))
 }
 
-// fn create_action_financial_modeling_company_profile(
-//     pool: &sqlx::Pool<sqlx::Postgres>,
-//     client: &Client,
-//     secrets: &Option<SecretKeys>,
-// ) -> Arc<FinancialmodelingprepCompanyProfileCollector> {
-//     let mut fin_modeling_prep_key = Option::<Secret<String>>::None;
-//     if let Some(secret) = secrets {
-//         fin_modeling_prep_key.clone_from(&secret.financialmodelingprep_company)
-//     }
-
-//     Arc::new(FinancialmodelingprepCompanyProfileCollector::new(
-//         pool.clone(),
-//         client.clone(),
-//         fin_modeling_prep_key,
-//     ))
-// }
-
-fn create_action_financial_modeling_company_profile_vec(
+fn create_action_financial_modeling_company_profile(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &Client,
     key_manager: Arc<Mutex<KeyManager>>,

@@ -1,3 +1,5 @@
+use crate::api_keys::api_key::{ApiKey, ApiKeyPlatform, Status};
+use crate::api_keys::key_manager::KeyManager;
 use crate::dag_schedule::task::TaskError::UnexpectedError;
 use crate::dag_schedule::task::{Runnable, StatsMap};
 use anyhow::Error;
@@ -10,30 +12,34 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use sqlx::PgPool;
 use std::fmt::{Debug, Display};
+use std::sync::{Arc, Mutex};
+
 use tracing::{debug, error, info, warn};
 
 const URL: &str = "https://financialmodelingprep.com/api/v3/historical-market-capitalization/";
+const PLATFORM: ApiKeyPlatform = ApiKeyPlatform::Financialmodelingprep;
+const WAIT_FOR_KEY: bool = false;
 
 struct IssueSymbols {
     issue_symbol: String,
 }
 
-#[derive(Clone, Debug)]
-struct FinancialmodelingprepMarketCapitalizationRequest {
+#[derive(Debug)]
+struct FinancialmodelingprepMarketCapitalizationRequest<'a> {
     base: String,
-    api_key: Secret<String>,
+    api_key: &'a mut Box<dyn ApiKey>,
 }
 
-impl FinancialmodelingprepMarketCapitalizationRequest {
-    fn expose_secret(&self) -> String {
-        self.base.clone() + self.api_key.expose_secret()
+impl FinancialmodelingprepMarketCapitalizationRequest<'_> {
+    fn expose_secret(&mut self) -> String {
+        self.base.clone() + self.api_key.get_secret().expose_secret()
     }
 }
 
-impl Display for FinancialmodelingprepMarketCapitalizationRequest {
+impl Display for FinancialmodelingprepMarketCapitalizationRequest<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", &self.base)?;
-        Secret::fmt(&self.api_key, f)
+        Secret::new(self.api_key.expose_secret().clone()).fmt(f)
     }
 }
 
@@ -42,22 +48,32 @@ pub struct FinancialmodelingprepMarketCapitalizationCollector {
     pool: PgPool,
     client: Client,
     api_key: Option<Secret<String>>,
+    key_manager: Arc<Mutex<KeyManager>>,
 }
 
 impl FinancialmodelingprepMarketCapitalizationCollector {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub fn new(pool: PgPool, client: Client, api_key: Option<Secret<String>>) -> Self {
+    pub fn new(
+        pool: PgPool,
+        client: Client,
+        api_key: Option<Secret<String>>,
+        key_manager: Arc<Mutex<KeyManager>>,
+    ) -> Self {
         FinancialmodelingprepMarketCapitalizationCollector {
             pool,
             client,
             api_key,
+            key_manager,
         }
     }
 }
 
 impl Display for FinancialmodelingprepMarketCapitalizationCollector {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "FinancialmodelingprepCompanyProfileColletor struct.")
+        write!(
+            f,
+            "FinancialmodelingprepMarketCapitalizationColletor struct."
+        )
     }
 }
 
@@ -68,16 +84,20 @@ impl Runnable for FinancialmodelingprepMarketCapitalizationCollector {
         skip(self)
     )]
     async fn run(&self) -> Result<Option<StatsMap>, crate::dag_schedule::task::TaskError> {
-        if let Some(key) = &self.api_key {
-            load_and_store_missing_data(self.pool.clone(), self.client.clone(), key)
-                .map_err(UnexpectedError)
-                .await?;
-        } else {
-            error!("No Api key provided for FinancialmodelingprepMarketCapitalizationColletor");
-            return Err(UnexpectedError(Error::msg(
-                "FinancialmodelingprepMarketCapitalizationColletor key not provided",
-            )));
-        }
+        // if let Some(key) = &self.api_key {
+        load_and_store_missing_data(
+            self.pool.clone(),
+            self.client.clone(),
+            self.key_manager.clone(),
+        )
+        .map_err(UnexpectedError)
+        .await?;
+        // } else {
+        //     error!("No Api key provided for FinancialmodelingprepMarketCapitalizationColletor");
+        //     return Err(UnexpectedError(Error::msg(
+        //         "FinancialmodelingprepMarketCapitalizationColletor key not provided",
+        //     )));
+        // }
         Ok(None)
     }
 }
@@ -137,16 +157,16 @@ impl MarketCapTransposed {
 pub async fn load_and_store_missing_data(
     connection_pool: PgPool,
     client: Client,
-    api_key: &Secret<String>,
+    key_manager: Arc<Mutex<KeyManager>>,
 ) -> Result<(), anyhow::Error> {
-    load_and_store_missing_data_given_url(connection_pool, client, api_key, URL).await
+    load_and_store_missing_data_given_url(connection_pool, client, key_manager, URL).await
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
 async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
     client: Client,
-    api_key: &Secret<String>,
+    key_manager: Arc<Mutex<KeyManager>>,
     url: &str,
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Financialmodelingprep Market Capitalization Collector.");
@@ -154,8 +174,11 @@ async fn load_and_store_missing_data_given_url(
         get_next_uncollected_issue_symbol(&connection_pool).await?;
 
     info!("Next symbol: {:?}", potential_issue_sybmol);
-    let mut successful_request_counter: u16 = 0;
-    while let Some(issue_sybmol) = potential_issue_sybmol.as_ref() {
+    let mut general_api_key = get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY).await;
+    let mut _successful_request_counter: u16 = 0;
+    while let (Some(issue_sybmol), Some(mut api_key)) =
+        (potential_issue_sybmol.as_ref(), general_api_key)
+    {
         info!("Searching start date for symbol {}", &issue_sybmol);
         let mut start_request_date: NaiveDate;
         {
@@ -163,11 +186,11 @@ async fn load_and_store_missing_data_given_url(
         }
         info!("Requesting symbol {}", &issue_sybmol);
         while start_request_date < Utc::now().date_naive() {
-            let request = create_polygon_market_capitalization_request(
+            let mut request = create_polygon_market_capitalization_request(
                 url,
                 issue_sybmol,
                 &start_request_date,
-                api_key,
+                &mut api_key,
             );
             debug!(
                 "Financialmodelingprep market capitalization request: {}",
@@ -185,10 +208,11 @@ async fn load_and_store_missing_data_given_url(
             match parsed {
                 Responses::Data(data) => {
                     store_data(data, &connection_pool).await?;
-                    successful_request_counter += 1;
+                    _successful_request_counter += 1;
                 }
                 Responses::KeyExhausted(_) => {
-                    return handle_exhausted_key(successful_request_counter);
+                    println!("Key exhaustion detected");
+                    api_key.set_status(Status::Exhausted);
                 }
                 Responses::NotFound(_) => {
                     info!("Stock symbol '{}' not found.", issue_sybmol);
@@ -201,8 +225,60 @@ async fn load_and_store_missing_data_given_url(
                 .expect("Should not leave date range.");
         }
         potential_issue_sybmol = get_next_uncollected_issue_symbol(&connection_pool).await?;
+        if api_key.get_status() == Status::Ready {
+            general_api_key = Some(api_key);
+        } else {
+            general_api_key =
+                exchange_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, api_key).await;
+            println!("general_api_key {:?}", general_api_key);
+        }
     }
     Ok(())
+}
+
+async fn exchange_apikey_or_wait(
+    key_manager: Arc<Mutex<KeyManager>>,
+    wait: bool,
+    api_key: Box<dyn ApiKey>,
+) -> Option<Box<dyn ApiKey>> {
+    {
+        let mut d = key_manager.lock().expect("msg");
+        d.add_key_by_platform(api_key);
+    }
+    get_new_apikey_or_wait(key_manager, wait).await
+}
+
+async fn get_new_apikey_or_wait(
+    key_manager: Arc<Mutex<KeyManager>>,
+    wait: bool,
+) -> Option<Box<dyn ApiKey>> {
+    let mut g = {
+        let mut d = key_manager.lock().expect("msg");
+        d.get_key_and_timeout(PLATFORM)
+    };
+    while let Ok(f) = g {
+        match f {
+            (Some(_), Some(_)) => return None, // Cannot occur
+            // Queue is empty
+            (None, None) => {
+                if wait {
+                    tokio::time::sleep(Duration::minutes(1).to_std().unwrap()).await;
+                } else {
+                    return None;
+                }
+            }
+            (None, Some(refresh_time)) => {
+                let time_difference = refresh_time - Utc::now();
+                tokio::time::sleep(time_difference.to_std().unwrap()).await;
+            }
+            (Some(key), None) => return Some(key),
+        }
+        g = {
+            let mut d = key_manager.lock().expect("msg");
+            d.get_key_and_timeout(PLATFORM)
+        };
+    }
+    None // Key never added to queue
 }
 
 async fn search_start_date(
@@ -372,12 +448,12 @@ async fn add_missing_issue_symbol(
 
 ///  Example output https://financialmodelingprep.com/api/v3/historical-market-capitalization/AAPL?limit=1313&from=1980-01-01&to=1990-01-01&apikey=TOKEN
 #[tracing::instrument(level = "debug", skip_all)]
-fn create_polygon_market_capitalization_request(
-    base_url: &str,
+fn create_polygon_market_capitalization_request<'a>(
+    base_url: &'a str,
     issue_symbol: &str,
     start_date: &NaiveDate,
-    api_key: &Secret<String>,
-) -> FinancialmodelingprepMarketCapitalizationRequest {
+    api_key: &'a mut Box<dyn ApiKey>,
+) -> FinancialmodelingprepMarketCapitalizationRequest<'a> {
     let end_date = start_date
         .checked_add_days(Days::new(1312))
         .expect("Should not leave date range.");
@@ -391,7 +467,7 @@ fn create_polygon_market_capitalization_request(
         + "&apikey=";
     FinancialmodelingprepMarketCapitalizationRequest {
         base: base_request_url,
-        api_key: api_key.clone(),
+        api_key: api_key,
     }
 }
 

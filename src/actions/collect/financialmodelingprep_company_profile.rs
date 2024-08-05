@@ -18,6 +18,7 @@ use tracing::{debug, info, warn};
 
 const URL: &str = "https://financialmodelingprep.com/api/v3/profile/";
 const PLATFORM: ApiKeyPlatform = ApiKeyPlatform::Financialmodelingprep;
+const WAIT_FOR_KEY: bool = false;
 
 #[derive(Clone, Debug)]
 struct IssueSymbols {
@@ -171,7 +172,7 @@ async fn load_and_store_missing_data_given_url(
     info!("Starting to load Financialmodelingprep Company Profile Colletor.");
     let mut potential_issue_sybmol: Option<String> =
         get_next_issue_symbol(&connection_pool).await?;
-    let mut general_api_key = get_new_apikey_or_wait(key_manager.clone(), true).await;
+    let mut general_api_key = get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY).await;
     let mut _successful_request_counter: u16 = 0; // Variable actually used, but clippy is buggy with the shorthand += below. (clippy 0.1.79)
     while let (Some(issue_sybmol), Some(mut api_key)) =
         (potential_issue_sybmol.as_ref(), general_api_key)
@@ -210,7 +211,8 @@ async fn load_and_store_missing_data_given_url(
         if api_key.get_status() == Status::Ready {
             general_api_key = Some(api_key);
         } else {
-            general_api_key = exchange_apikey_or_wait(key_manager.clone(), true, api_key).await;
+            general_api_key =
+                exchange_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, api_key).await;
         }
     }
     Ok(())
@@ -248,7 +250,7 @@ async fn get_new_apikey_or_wait(
                 }
             }
             (None, Some(refresh_time)) => {
-                let time_difference = Utc::now() - refresh_time;
+                let time_difference = refresh_time - Utc::now();
                 tokio::time::sleep(time_difference.to_std().unwrap()).await;
             }
             (Some(key), None) => return Some(key),

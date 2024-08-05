@@ -74,7 +74,6 @@ impl FinancialmodelingprepKey {
 
 impl ApiKey for FinancialmodelingprepKey {
     fn expose_secret(&self) -> &String {
-        // self.last_use = Utc::now();
         self.api_key.expose_secret()
     }
 
@@ -98,6 +97,7 @@ impl ApiKey for FinancialmodelingprepKey {
     }
 
     fn get_secret(&mut self) -> &Secret<String> {
+        self.last_use = Utc::now();
         self.counter += 1;
         println!("Counter at: {}", &self.counter);
         if self.counter == 250 {
@@ -107,6 +107,7 @@ impl ApiKey for FinancialmodelingprepKey {
     }
 
     fn set_status(&mut self, new_status: Status) {
+        println!("new status: {}", new_status);
         self.status = new_status;
     }
 }
@@ -146,7 +147,10 @@ impl ApiKey for PolygonKey {
     }
 
     fn next_refresh_possible(&self) -> chrono::DateTime<Utc> {
-        todo!()
+        match self.get_status() {
+            Status::Ready => Utc::now(),
+            Status::Exhausted => self.last_use + Duration::minutes(1),
+        }
     }
 
     fn get_status(&self) -> Status {
