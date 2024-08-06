@@ -250,8 +250,13 @@ async fn get_new_apikey_or_wait(
                 }
             }
             (None, Some(refresh_time)) => {
-                let time_difference = refresh_time - Utc::now();
-                tokio::time::sleep(time_difference.to_std().unwrap()).await;
+                if wait {
+                    let time_difference = refresh_time - Utc::now();
+                    tokio::time::sleep(time_difference.to_std().unwrap()).await;
+                // TODO: If they are very close to each other this could fail
+                } else {
+                    return None;
+                }
             }
             (Some(key), None) => return Some(key),
         }
