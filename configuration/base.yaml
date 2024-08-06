@@ -27,10 +27,10 @@ application:
     #   dependencies: [ PolygonGroupedDaily ]
     - name: FinancialmodelingprepCompanyProfileCollet
       dependencies: [] 
-    # - name: FinmodCompanyProfileStage
-    #   dependencies: [FinancialmodelingprepCompanyProfileCollet]
-    # - name: FinmodMarketCapCollect
-    #   dependencies: [FinmodCompanyProfileStage]
+    - name: FinmodCompanyProfileStage
+      dependencies: [FinancialmodelingprepCompanyProfileCollet]
+    - name: FinmodMarketCapCollect
+      dependencies: [FinmodCompanyProfileStage]
 
   
   tasks:

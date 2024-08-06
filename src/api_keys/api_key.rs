@@ -70,6 +70,33 @@ impl FinancialmodelingprepKey {
             counter: 0,
         }
     }
+
+    fn compute_next_refresh_time(&self) -> chrono::DateTime<Utc> {
+        //Key refreshes at 19 o'clock UTC
+        if self.last_use.hour() < 19 {
+            return Utc
+                .with_ymd_and_hms(
+                    self.last_use.year(),
+                    self.last_use.month(),
+                    self.last_use.day(),
+                    19,
+                    0,
+                    0,
+                )
+                .single()
+                .expect("Unwrapping of date today should always work");
+        }
+        Utc.with_ymd_and_hms(
+            self.last_use.year(),
+            self.last_use.month(),
+            self.last_use.day() + 1,
+            19,
+            0,
+            0,
+        )
+        .single()
+        .expect("Unwrapping of date today should always work")
+    }
 }
 
 impl ApiKey for FinancialmodelingprepKey {
@@ -84,7 +111,7 @@ impl ApiKey for FinancialmodelingprepKey {
     fn next_refresh_possible(&self) -> chrono::DateTime<Utc> {
         match self.get_status() {
             Status::Ready => Utc::now(),
-            Status::Exhausted => self.last_use + Duration::minutes(1),
+            Status::Exhausted => self.compute_next_refresh_time(),
         }
     }
 

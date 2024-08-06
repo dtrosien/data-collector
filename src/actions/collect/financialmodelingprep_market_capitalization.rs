@@ -14,7 +14,7 @@ use sqlx::PgPool;
 use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex};
 
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 const URL: &str = "https://financialmodelingprep.com/api/v3/historical-market-capitalization/";
 const PLATFORM: ApiKeyPlatform = ApiKeyPlatform::Financialmodelingprep;
@@ -268,8 +268,13 @@ async fn get_new_apikey_or_wait(
                 }
             }
             (None, Some(refresh_time)) => {
-                let time_difference = refresh_time - Utc::now();
-                tokio::time::sleep(time_difference.to_std().unwrap()).await;
+                if wait {
+                    let time_difference = refresh_time - Utc::now();
+                    tokio::time::sleep(time_difference.to_std().unwrap()).await;
+                // TODO: If they are very close to each other this could fail
+                } else {
+                    return None;
+                }
             }
             (Some(key), None) => return Some(key),
         }
