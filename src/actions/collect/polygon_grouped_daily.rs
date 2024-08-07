@@ -20,7 +20,7 @@ use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 const URL: &str = "https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/";
 const PLATFORM: ApiKeyPlatform = ApiKeyPlatform::Polygon;
-const WAIT_FOR_KEY: bool = false;
+const WAIT_FOR_KEY: bool = true;
 
 #[derive(Debug)]
 struct PolygonGroupedDailyRequest<'a> {
@@ -76,20 +76,19 @@ impl Display for PolygonGroupedDailyCollector {
 impl Runnable for PolygonGroupedDailyCollector {
     #[tracing::instrument(name = "Run PolygonGroupedDailyCollector", skip_all)]
     async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
-        if let Some(key) = &self.api_key {
-            load_and_store_missing_data(
-                self.pool.clone(),
-                self.client.clone(),
-                key,
-                self.key_manager.clone(),
-            )
-            .map_err(TaskError::UnexpectedError)
-            .await?;
-        } else {
-            return Err(TaskError::UnexpectedError(Error::msg(
-                "Api key not provided for PolygonGroupedDailyCollector",
-            )));
-        }
+        // if let Some(key) = &self.api_key {
+        load_and_store_missing_data(
+            self.pool.clone(),
+            self.client.clone(),
+            self.key_manager.clone(),
+        )
+        .map_err(TaskError::UnexpectedError)
+        .await?;
+        // } else {
+        //     return Err(TaskError::UnexpectedError(Error::msg(
+        //         "Api key not provided for PolygonGroupedDailyCollector",
+        //     )));
+        // }
         Ok(None)
     }
 }
@@ -144,17 +143,15 @@ struct TransposedPolygonOpenClose {
 pub async fn load_and_store_missing_data(
     connection_pool: PgPool,
     client: Client,
-    api_key: &Secret<String>,
     key_manager: Arc<Mutex<KeyManager>>,
 ) -> Result<(), anyhow::Error> {
-    load_and_store_missing_data_given_url(connection_pool, client, api_key, key_manager, URL).await
+    load_and_store_missing_data_given_url(connection_pool, client, key_manager, URL).await
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
 async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
     client: Client,
-    api_key: &Secret<String>,
     key_manager: Arc<Mutex<KeyManager>>,
     url: &str,
 ) -> Result<(), anyhow::Error> {
@@ -214,6 +211,7 @@ async fn load_and_store_missing_data_given_url(
                 "Failed with request {} and got response {}",
                 request, response
             );
+            
         }
         if api_key.get_status() == Status::Ready {
             general_api_key = Some(api_key);

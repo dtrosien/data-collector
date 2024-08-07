@@ -3,7 +3,7 @@ use config::Map;
 use priority_queue::PriorityQueue;
 // use vtable::VBox;
 
-use super::api_key::{ApiKey, ApiKeyPlatform};
+use super::api_key::{ApiKey, ApiKeyPlatform, Status};
 
 type KeyOrTimeoutResult = Result<(Option<Box<dyn ApiKey>>, Option<DateTime<Utc>>), KeyErrors>;
 
@@ -43,7 +43,8 @@ impl KeyManager {
                 }
             }
 
-            if let Some(pair) = pq.pop() {
+            if let Some(mut pair) = pq.pop() {
+                pair.0.set_status(Status::Ready);
                 return Ok((Some(pair.0), None)); //return key
             }
             Err(KeyErrors::KeyNeverProvided(anyhow::Error::msg(

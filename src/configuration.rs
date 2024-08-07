@@ -5,6 +5,7 @@ use serde_with::formats::{CommaSeparator, SpaceSeparator};
 use serde_with::serde_as;
 use serde_with::{DefaultOnError, DisplayFromStr, StringWithSeparator, VecSkipError};
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
+use tracing::error;
 
 use crate::actions::action::ActionType;
 use crate::actions::collector_sources::CollectorSource;
@@ -65,24 +66,22 @@ pub struct HttpClientSettings {
 }
 
 #[serde_as]
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct SecretKeys {
     pub polygon: Option<Secret<String>>,
     #[serde_as(deserialize_as = "Option<DefaultOnError>")]
     pub polygon_vec: Option<String>,
     #[serde_as(deserialize_as = "Option<DefaultOnError>")]
     pub financialmodelingprep_company: Option<String>,
-    #[serde_as(as = "VecSkipError<StringWithSeparator::<SpaceSeparator, String>>")]
-    pub test: Vec<String>,
 }
 
 impl Default for SecretKeys {
     fn default() -> Self {
+        error!("Defaulting all secrets to None! Please check all env inputs for keys problems.");
         Self {
             polygon: Default::default(),
             polygon_vec: Default::default(),
             financialmodelingprep_company: Default::default(),
-            test: Default::default(),
         }
     }
 }
@@ -157,6 +156,7 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
         )
         .build()?;
     // convert to Settings type
+    println!("#### {:?}", settings);
     settings.try_deserialize::<Settings>()
 }
 

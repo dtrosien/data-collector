@@ -136,6 +136,9 @@ impl ApiKey for FinancialmodelingprepKey {
 
     fn set_status(&mut self, new_status: Status) {
         println!("new status: {}", new_status);
+        if new_status == Status::Exhausted {
+            self.counter = 0;
+        }
         self.status = new_status;
     }
 }
@@ -193,12 +196,15 @@ impl ApiKey for PolygonKey {
         println!("Counter at: {}", &self.counter);
         // println!("Key: {}", self.expose_secret_for_data_structure());
         if self.counter == 5 {
-            self.status = Status::Exhausted;
+            self.set_status(Status::Exhausted);
         }
         &self.api_key
     }
 
     fn set_status(&mut self, new_status: Status) {
+        if new_status == Status::Exhausted {
+            self.counter = 0;
+        }
         self.status = new_status;
     }
 }

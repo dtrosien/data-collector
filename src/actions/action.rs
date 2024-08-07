@@ -69,7 +69,7 @@ pub fn create_action(
 
 fn fill_key_store(key_store: &Arc<Mutex<KeyManager>>, secrets: SecretKeys) {
     let mut k = key_store.lock().unwrap();
-
+    // println!("######### {:?}", secrets);
     if let Some(finmod_list) = secrets.financialmodelingprep_company {
         finmod_list
             .split(' ')
