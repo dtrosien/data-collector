@@ -12,7 +12,7 @@ use std::hash::Hash;
 // }
 pub trait ApiKey: Sync + Send {
     // fn new(key: String) -> Self;
-    fn expose_secret(&self) -> &String;
+    fn expose_secret_for_data_structure(&self) -> &String;
     fn refresh_if_possible(&mut self) -> bool;
     fn next_refresh_possible(&self) -> chrono::DateTime<Utc>;
     fn get_status(&self) -> Status;
@@ -24,7 +24,7 @@ pub trait ApiKey: Sync + Send {
 impl PartialEq for dyn ApiKey + 'static {
     fn eq(&self, _other: &Self) -> bool {
         if self.get_platform() == (_other.get_platform())
-            && self.expose_secret() == _other.expose_secret()
+            && self.expose_secret_for_data_structure() == _other.expose_secret_for_data_structure()
         {
             return true;
         }
@@ -35,7 +35,7 @@ impl Eq for dyn ApiKey + 'static {}
 
 impl Hash for dyn ApiKey + 'static {
     fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {
-        self.expose_secret().hash(_state);
+        self.expose_secret_for_data_structure().hash(_state);
         self.get_platform().hash(_state)
     }
 }
@@ -71,7 +71,7 @@ impl FinancialmodelingprepKey {
         }
     }
 
-    fn compute_next_refresh_time(&self) -> chrono::DateTime<Utc> {
+    fn compute_next_full_refresh_time(&self) -> chrono::DateTime<Utc> {
         //Key refreshes at 19 o'clock UTC
         if self.last_use.hour() < 19 {
             return Utc
@@ -100,7 +100,7 @@ impl FinancialmodelingprepKey {
 }
 
 impl ApiKey for FinancialmodelingprepKey {
-    fn expose_secret(&self) -> &String {
+    fn expose_secret_for_data_structure(&self) -> &String {
         self.api_key.expose_secret()
     }
 
@@ -111,7 +111,7 @@ impl ApiKey for FinancialmodelingprepKey {
     fn next_refresh_possible(&self) -> chrono::DateTime<Utc> {
         match self.get_status() {
             Status::Ready => Utc::now(),
-            Status::Exhausted => self.compute_next_refresh_time(),
+            Status::Exhausted => self.compute_next_full_refresh_time(),
         }
     }
 
@@ -127,6 +127,7 @@ impl ApiKey for FinancialmodelingprepKey {
         self.last_use = Utc::now();
         self.counter += 1;
         println!("Counter at: {}", &self.counter);
+        // println!("Key: {}", self.expose_secret_for_data_structure());
         if self.counter == 250 {
             self.status = Status::Exhausted;
         }
@@ -139,7 +140,7 @@ impl ApiKey for FinancialmodelingprepKey {
     }
 }
 
-struct PolygonKey {
+pub struct PolygonKey {
     api_key: Secret<String>,
     platform: ApiKeyPlatform,
     status: Status,
@@ -164,8 +165,7 @@ impl PolygonKey {
 }
 
 impl ApiKey for PolygonKey {
-    fn expose_secret(&self) -> &String {
-        // self.last_use = Utc::now();
+    fn expose_secret_for_data_structure(&self) -> &String {
         self.api_key.expose_secret()
     }
 
@@ -188,6 +188,13 @@ impl ApiKey for PolygonKey {
         self.platform.clone()
     }
     fn get_secret(&mut self) -> &Secret<String> {
+        self.last_use = Utc::now();
+        self.counter += 1;
+        println!("Counter at: {}", &self.counter);
+        // println!("Key: {}", self.expose_secret_for_data_structure());
+        if self.counter == 5 {
+            self.status = Status::Exhausted;
+        }
         &self.api_key
     }
 
@@ -237,7 +244,10 @@ mod test {
             fin_key.get_platform(),
             ApiKeyPlatform::Financialmodelingprep
         );
-        assert_eq!(fin_key.expose_secret(), &"key".to_string());
+        assert_eq!(
+            fin_key.expose_secret_for_data_structure(),
+            &"key".to_string()
+        );
     }
 
     #[test]
@@ -246,6 +256,9 @@ mod test {
         assert_eq!(fin_key.counter, 0);
         assert_eq!(fin_key.get_status(), Status::Ready);
         assert_eq!(fin_key.get_platform(), ApiKeyPlatform::Polygon);
-        assert_eq!(fin_key.expose_secret(), &"key".to_string());
+        assert_eq!(
+            fin_key.expose_secret_for_data_structure(),
+            &"key".to_string()
+        );
     }
 }

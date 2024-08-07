@@ -40,7 +40,7 @@ impl FinancialmodelingprepCompanyProfileRequest<'_> {
 impl Display for FinancialmodelingprepCompanyProfileRequest<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", &self.base)?;
-        Secret::new(self.api_key.expose_secret().clone()).fmt(f)
+        Secret::new(self.api_key.expose_secret_for_data_structure().clone()).fmt(f)
     }
 }
 
@@ -179,7 +179,7 @@ async fn load_and_store_missing_data_given_url(
     {
         {
             info!("Requesting symbol {}", issue_sybmol);
-            let mut request = create_polygon_grouped_daily_request(url, issue_sybmol, &mut api_key);
+            let mut request = create_finprep_company_request(url, issue_sybmol, &mut api_key);
             debug!("Financialmodelingprep Company request: {}", request);
             let response = client
                 .get(&request.expose_secret())
@@ -365,7 +365,7 @@ async fn add_missing_issue_symbol(
 
 ///  Example output https://financialmodelingprep.com/api/v3/profile/AAPL?apikey=TOKEN
 // #[tracing::instrument(level = "debug", skip_all)],
-fn create_polygon_grouped_daily_request<'a>(
+fn create_finprep_company_request<'a>(
     base_url: &'a str,
     issue_symbol: &'a str,
     api_key: &'a mut Box<dyn ApiKey>,

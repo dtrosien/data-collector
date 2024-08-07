@@ -39,7 +39,7 @@ impl FinancialmodelingprepMarketCapitalizationRequest<'_> {
 impl Display for FinancialmodelingprepMarketCapitalizationRequest<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", &self.base)?;
-        Secret::new(self.api_key.expose_secret().clone()).fmt(f)
+        Secret::new(self.api_key.expose_secret_for_data_structure().clone()).fmt(f)
     }
 }
 
@@ -47,7 +47,7 @@ impl Display for FinancialmodelingprepMarketCapitalizationRequest<'_> {
 pub struct FinancialmodelingprepMarketCapitalizationCollector {
     pool: PgPool,
     client: Client,
-    api_key: Option<Secret<String>>,
+    // api_key: Option<Secret<String>>,
     key_manager: Arc<Mutex<KeyManager>>,
 }
 
@@ -56,13 +56,13 @@ impl FinancialmodelingprepMarketCapitalizationCollector {
     pub fn new(
         pool: PgPool,
         client: Client,
-        api_key: Option<Secret<String>>,
+        // api_key: Option<Secret<String>>,
         key_manager: Arc<Mutex<KeyManager>>,
     ) -> Self {
         FinancialmodelingprepMarketCapitalizationCollector {
             pool,
             client,
-            api_key,
+            // api_key,
             key_manager,
         }
     }
@@ -185,7 +185,8 @@ async fn load_and_store_missing_data_given_url(
             start_request_date = search_start_date(&connection_pool, issue_sybmol).await?;
         }
         info!("Requesting symbol {}", &issue_sybmol);
-        while start_request_date < Utc::now().date_naive() {
+        while start_request_date < Utc::now().date_naive() && api_key.get_status() == Status::Ready
+        {
             let mut request = create_polygon_market_capitalization_request(
                 url,
                 issue_sybmol,

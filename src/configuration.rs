@@ -1,9 +1,9 @@
 use secrecy::{ExposeSecret, Secret};
 use serde::Deserialize;
 use serde_aux::field_attributes::deserialize_number_from_string;
-use serde_with::formats::SpaceSeparator;
+use serde_with::formats::{CommaSeparator, SpaceSeparator};
 use serde_with::serde_as;
-use serde_with::StringWithSeparator;
+use serde_with::{DefaultOnError, DisplayFromStr, StringWithSeparator, VecSkipError};
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 
 use crate::actions::action::ActionType;
@@ -27,12 +27,15 @@ pub struct DatabaseSettings {
     pub require_ssl: bool,
 }
 
+#[serde_as]
 #[derive(Deserialize)]
 pub struct ApplicationSettings {
     pub task_dependencies: Vec<TaskDependency>,
     pub tasks: Vec<TaskSetting>,
     pub http_client: HttpClientSettings,
-    pub secrets: Option<SecretKeys>,
+    #[serde_as(deserialize_as = "DefaultOnError")]
+    #[serde(default)]
+    pub secrets: SecretKeys,
 }
 
 #[derive(Deserialize, Clone)]
@@ -65,9 +68,23 @@ pub struct HttpClientSettings {
 #[derive(Deserialize, Clone)]
 pub struct SecretKeys {
     pub polygon: Option<Secret<String>>,
-    #[serde_as(as = "StringWithSeparator::<SpaceSeparator, String>")]
-    pub secrets: Vec<String>,
-    pub financialmodelingprep_company: Option<Secret<String>>,
+    #[serde_as(deserialize_as = "Option<DefaultOnError>")]
+    pub polygon_vec: Option<String>,
+    #[serde_as(deserialize_as = "Option<DefaultOnError>")]
+    pub financialmodelingprep_company: Option<String>,
+    #[serde_as(as = "VecSkipError<StringWithSeparator::<SpaceSeparator, String>>")]
+    pub test: Vec<String>,
+}
+
+impl Default for SecretKeys {
+    fn default() -> Self {
+        Self {
+            polygon: Default::default(),
+            polygon_vec: Default::default(),
+            financialmodelingprep_company: Default::default(),
+            test: Default::default(),
+        }
+    }
 }
 
 impl HttpClientSettings {

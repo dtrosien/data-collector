@@ -21,7 +21,7 @@ impl KeyManager {
         let platform = key.get_platform();
         let key_value_pair = self.keys.get_mut(&platform);
         let next_update = key.next_refresh_possible();
-        println!("Next update possielbe: {}", next_update);
+        println!("Next update possible: {}", next_update);
         if let Some(queue) = key_value_pair {
             queue.push(key, next_update);
         } else {

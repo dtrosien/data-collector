@@ -19,7 +19,7 @@ pub struct Application {
     task_dependencies: Vec<TaskDependency>,
     task_settings: Vec<TaskSetting>,
     client: Client,
-    secrets: Option<SecretKeys>,
+    secrets: SecretKeys,
 }
 
 impl Application {
@@ -64,7 +64,7 @@ fn build_task_specs(
     task_dependencies: &[TaskDependency],
     pool: &PgPool,
     client: &Client,
-    secrets: &Option<SecretKeys>,
+    secrets: &SecretKeys,
 ) -> HashMap<TaskName, TaskSpecRef> {
     let required_tasks: Vec<TaskName> = task_dependencies.iter().map(|t| t.name.clone()).collect();
 

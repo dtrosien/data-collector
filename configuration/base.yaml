@@ -21,16 +21,16 @@ application:
     #   dependencies: [ ]
     # - name: SecCompaniesStage
     #   dependencies: [ SecCompaniesCollect ]
-    # - name: PolygonGroupedDaily
-    #   dependencies: [ ]
+    - name: PolygonGroupedDaily
+      dependencies: [ ]
     # - name: PolygonOpenClose
     #   dependencies: [ PolygonGroupedDaily ]
-    - name: FinancialmodelingprepCompanyProfileCollet
-      dependencies: [] 
-    - name: FinmodCompanyProfileStage
-      dependencies: [FinancialmodelingprepCompanyProfileCollet]
-    - name: FinmodMarketCapCollect
-      dependencies: [FinmodCompanyProfileStage]
+    # - name: FinancialmodelingprepCompanyProfileCollet
+    #   dependencies: [] 
+    # - name: FinmodCompanyProfileStage
+    #   dependencies: [FinancialmodelingprepCompanyProfileCollet]
+    # - name: FinmodMarketCapCollect
+    #   dependencies: [FinmodCompanyProfileStage]
 
   
   tasks:
