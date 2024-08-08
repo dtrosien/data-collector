@@ -1,12 +1,10 @@
-use anyhow::Error;
 use async_trait::async_trait;
 use chrono::{Days, Duration, Months, NaiveDate, Utc};
 use futures_util::TryFutureExt;
 use secrecy::{ExposeSecret, Secret};
+use std::cmp::Reverse;
 use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex};
-use std::time;
-use tokio::time::sleep;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -14,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{debug, info};
 
-use crate::api_keys::api_key::{self, ApiKey, ApiKeyPlatform, Status};
+use crate::api_keys::api_key::{ApiKey, ApiKeyPlatform, Status};
 use crate::api_keys::key_manager::KeyManager;
 use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
@@ -211,7 +209,7 @@ async fn load_and_store_missing_data_given_url(
                 "Failed with request {} and got response {}",
                 request, response
             );
-            
+            api_key.set_status(Status::Exhausted);
         }
         if api_key.get_status() == Status::Ready {
             general_api_key = Some(api_key);
@@ -257,8 +255,9 @@ async fn get_new_apikey_or_wait(
             (None, Some(refresh_time)) => {
                 if wait {
                     let time_difference = refresh_time - Utc::now();
-                    tokio::time::sleep(time_difference.to_std().unwrap()).await;
-                // TODO: If they are very close to each other this could fail
+                    if let Ok(sleep_duration) = time_difference.to_std() {
+                        tokio::time::sleep(sleep_duration).await;
+                    }
                 } else {
                     return None;
                 }

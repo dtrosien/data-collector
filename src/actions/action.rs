@@ -82,15 +82,13 @@ fn fill_key_store(key_store: &Arc<Mutex<KeyManager>>, secrets: SecretKeys) {
             });
     }
     if let Some(poly_list) = secrets.polygon_vec {
-        poly_list
-            .split(' ')
-            .collect::<Vec<&str>>()
-            .into_iter()
-            .for_each(|x| {
-                let key = PolygonKey::new(x.to_string());
-                print!("Polygon key added");
-                k.add_key_by_platform(Box::new(key));
-            });
+        let v = poly_list.split(' ').collect::<Vec<&str>>();
+        println!("After split: {:?}", v);
+        v.into_iter().for_each(|x| {
+            let key = PolygonKey::new(x.to_string());
+            print!("Polygon key added");
+            k.add_key_by_platform(Box::new(key));
+        });
     }
 }
 

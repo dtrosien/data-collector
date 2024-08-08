@@ -1,3 +1,5 @@
+use std::cmp::Reverse;
+
 use chrono::{DateTime, Utc};
 use config::Map;
 use priority_queue::PriorityQueue;
@@ -9,7 +11,7 @@ type KeyOrTimeoutResult = Result<(Option<Box<dyn ApiKey>>, Option<DateTime<Utc>>
 
 #[derive(Debug)]
 pub struct KeyManager {
-    keys: Map<ApiKeyPlatform, PriorityQueue<Box<dyn ApiKey>, DateTime<Utc>>>,
+    keys: Map<ApiKeyPlatform, PriorityQueue<Box<dyn ApiKey>, Reverse<DateTime<Utc>>>>,
 }
 
 impl KeyManager {
@@ -23,20 +25,26 @@ impl KeyManager {
         let next_update = key.next_refresh_possible();
         println!("Next update possible: {}", next_update);
         if let Some(queue) = key_value_pair {
-            queue.push(key, next_update);
+            queue.push(key, Reverse(next_update));
         } else {
-            let mut queue: PriorityQueue<Box<dyn ApiKey>, DateTime<Utc>> = PriorityQueue::new();
-            queue.push(key, next_update);
+            let mut queue: PriorityQueue<Box<dyn ApiKey>, Reverse<DateTime<Utc>>> =
+                PriorityQueue::new();
+            queue.push(key, Reverse(next_update));
             self.keys.insert(platform, queue);
         }
     }
 
     pub fn get_key_and_timeout(&mut self, platform: ApiKeyPlatform) -> KeyOrTimeoutResult {
         if let Some(pq) = self.keys.get_mut(&platform) {
+            println!("#####queue size: {}", pq.len());
+            println!("#####queue: {:?}", pq);
             {
                 if let Some(pair) = pq.peek() {
-                    if pair.1 > &Utc::now() {
-                        return Ok((None, Some(*pair.1)));
+                    println!("peek time: {:?}", pair);
+                    println!("now: {:?}", Utc::now());
+                    if pair.1 .0 > Utc::now() {
+                        println!("returning waiting time");
+                        return Ok((None, Some(pair.1 .0)));
                     }
                 } else {
                     return Ok((None, None)); //No key available in queue, at all
