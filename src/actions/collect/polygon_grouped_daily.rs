@@ -317,19 +317,6 @@ fn earliest_date() -> NaiveDate {
         .expect("Adding 1 day should always work")
 }
 
-// impl Collector for PolygonGroupedDailyCollector {
-//     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-//         vec![
-//             sp500_fields::Fields::OpenClose,
-//             sp500_fields::Fields::MonthTradingVolume,
-//         ]
-//     }
-
-//     fn get_source(&self) -> collector_sources::CollectorSource {
-//         collector_sources::CollectorSource::PolygonGroupedDaily
-//     }
-// }
-
 ///  Example output https://api.polygon.io/v1/open-close/AAPL/2023-01-09?adjusted=true&apiKey=PutYourKeyHere
 #[tracing::instrument(level = "debug", skip_all)]
 fn create_polygon_grouped_daily_request<'a>(
@@ -341,10 +328,8 @@ fn create_polygon_grouped_daily_request<'a>(
         base_url.to_string() + date.to_string().as_str() + "?adjusted=true" + "&apiKey=";
     PolygonGroupedDailyRequest {
         base: base_request_url,
-        api_key: api_key,
+        api_key,
     }
-    //     + api_key.expose_secret();
-    // base_request_url
 }
 
 #[cfg(test)]

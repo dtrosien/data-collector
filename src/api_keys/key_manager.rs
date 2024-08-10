@@ -8,10 +8,11 @@ use priority_queue::PriorityQueue;
 use super::api_key::{ApiKey, ApiKeyPlatform, Status};
 
 type KeyOrTimeoutResult = Result<(Option<Box<dyn ApiKey>>, Option<DateTime<Utc>>), KeyErrors>;
+type KeyStore = Map<ApiKeyPlatform, PriorityQueue<Box<dyn ApiKey>, Reverse<DateTime<Utc>>>>;
 
 #[derive(Debug)]
 pub struct KeyManager {
-    keys: Map<ApiKeyPlatform, PriorityQueue<Box<dyn ApiKey>, Reverse<DateTime<Utc>>>>,
+    keys: KeyStore,
 }
 
 impl KeyManager {

@@ -16,7 +16,6 @@ use crate::api_keys::key_manager::KeyManager;
 use crate::configuration::SecretKeys;
 use crate::dag_schedule::task::Runnable;
 use reqwest::Client;
-use secrecy::Secret;
 use serde::Deserialize;
 use sqlx::PgPool;
 use std::sync::{Arc, Mutex};
@@ -51,7 +50,7 @@ pub fn create_action(
             create_action_polygon_grouped_daily(pool, client, Arc::clone(&key_store))
         }
         ActionType::PolygonOpenClose => {
-            create_action_polygon_open_close(pool, client, secrets, Arc::clone(&key_store))
+            create_action_polygon_open_close(pool, client, Arc::clone(&key_store))
         }
         ActionType::FinancialmodelingprepCompanyProfileCollet => {
             create_action_financial_modeling_company_profile(pool, client, Arc::clone(&key_store))
@@ -134,18 +133,11 @@ fn create_action_polygon_grouped_daily(
 fn create_action_polygon_open_close(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &Client,
-    secrets: &SecretKeys,
     key_manager: Arc<Mutex<KeyManager>>,
 ) -> Arc<PolygonOpenCloseCollector> {
-    let mut polygon_key = Option::<Secret<String>>::None;
-    if let Some(secret) = Some(secrets) {
-        polygon_key.clone_from(&secret.polygon)
-    }
-
     Arc::new(PolygonOpenCloseCollector::new(
         pool.clone(),
         client.clone(),
-        polygon_key,
         key_manager,
     ))
 }

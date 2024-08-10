@@ -2,7 +2,6 @@ use crate::api_keys::api_key::{ApiKey, ApiKeyPlatform, Status};
 use crate::api_keys::key_manager::KeyManager;
 use crate::dag_schedule::task::TaskError::UnexpectedError;
 use crate::dag_schedule::task::{Runnable, StatsMap};
-use anyhow::Error;
 use async_trait::async_trait;
 use chrono::{Days, Duration, NaiveDate, Utc};
 use futures_util::TryFutureExt;
@@ -401,21 +400,6 @@ order by r.maxDate asc limit 1").fetch_one(connection_pool).await?;
     Ok(Option::None)
 }
 
-fn handle_exhausted_key(successful_request_counter: u16) -> Result<(), anyhow::Error> {
-    if successful_request_counter == 0 {
-        warn!("FinancialmodelingprepCompanyProfileColletor key is already exhausted");
-        Err(Error::msg(
-            "FinancialmodelingprepCompanyProfileColletor key is already exhausted",
-        ))
-    } else {
-        info!(
-            "FinancialmodelingprepCompanyProfileColletor collected {} entries.",
-            successful_request_counter
-        );
-        Ok(())
-    }
-}
-
 async fn store_data(
     data: Vec<MarketCapElement>,
     connection_pool: &PgPool,
@@ -473,7 +457,7 @@ fn create_polygon_market_capitalization_request<'a>(
         + "&apikey=";
     FinancialmodelingprepMarketCapitalizationRequest {
         base: base_request_url,
-        api_key: api_key,
+        api_key,
     }
 }
 

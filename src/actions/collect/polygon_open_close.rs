@@ -1,11 +1,10 @@
 use crate::{
     api_keys::{
-        api_key::{self, ApiKey, ApiKeyPlatform, Status},
+        api_key::{ApiKey, ApiKeyPlatform, Status},
         key_manager::KeyManager,
     },
     utils::action_helpers::parse_response,
 };
-use anyhow::Error;
 use async_trait::async_trait;
 use chrono::{Days, Duration, Months, NaiveDate, Utc};
 use futures_util::TryFutureExt;
@@ -17,8 +16,6 @@ use std::{
 use tracing::{debug, info};
 
 use std::fmt::Display;
-use std::time;
-use tokio::time::sleep;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -55,22 +52,15 @@ impl Display for PolygonOpenCloseRequest<'_> {
 pub struct PolygonOpenCloseCollector {
     pool: PgPool,
     client: Client,
-    api_key: Option<Secret<String>>,
     key_manager: Arc<Mutex<KeyManager>>,
 }
 
 impl PolygonOpenCloseCollector {
     #[tracing::instrument(name = "Run Polygon open close collector", skip_all)]
-    pub fn new(
-        pool: PgPool,
-        client: Client,
-        api_key: Option<Secret<String>>,
-        key_manager: Arc<Mutex<KeyManager>>,
-    ) -> Self {
+    pub fn new(pool: PgPool, client: Client, key_manager: Arc<Mutex<KeyManager>>) -> Self {
         PolygonOpenCloseCollector {
             pool,
             client,
-            api_key,
             key_manager,
         }
     }
@@ -363,7 +353,7 @@ fn create_polygon_open_close_request<'a>(
         + "&apiKey=";
     PolygonOpenCloseRequest {
         base: base_request_url,
-        api_key: api_key,
+        api_key,
     }
     //      api_key.expose_secret();
     // base_request_url
