@@ -1,10 +1,19 @@
-use crate::utils::action_helpers::parse_response;
+use crate::{
+    api_keys::{
+        api_key::{self, ApiKey, ApiKeyPlatform, Status},
+        key_manager::KeyManager,
+    },
+    utils::action_helpers::parse_response,
+};
 use anyhow::Error;
 use async_trait::async_trait;
-use chrono::{Days, Months, NaiveDate, Utc};
+use chrono::{Days, Duration, Months, NaiveDate, Utc};
 use futures_util::TryFutureExt;
 use secrecy::{ExposeSecret, Secret};
-use std::fmt::Debug;
+use std::{
+    fmt::Debug,
+    sync::{Arc, Mutex},
+};
 use tracing::{debug, info};
 
 use std::fmt::Display;
@@ -20,23 +29,25 @@ use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 const URL: &str = "https://api.polygon.io/v1/open-close/";
 const ERROR_MSG_VALUE_EXISTS: &str = "Value exists or error must have been caught before";
+const PLATFORM: ApiKeyPlatform = ApiKeyPlatform::Polygon;
+const WAIT_FOR_KEY: bool = true;
 
-#[derive(Clone, Debug)]
-struct PolygonOpenCloseRequest {
+#[derive(Debug)]
+struct PolygonOpenCloseRequest<'a> {
     base: String,
-    api_key: Secret<String>,
+    api_key: &'a mut Box<dyn ApiKey>,
 }
 
-impl PolygonOpenCloseRequest {
-    fn expose_secret(&self) -> String {
-        self.base.clone() + self.api_key.expose_secret()
+impl PolygonOpenCloseRequest<'_> {
+    fn expose_secret(&mut self) -> String {
+        self.base.clone() + self.api_key.get_secret().expose_secret()
     }
 }
 
-impl Display for PolygonOpenCloseRequest {
+impl Display for PolygonOpenCloseRequest<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", &self.base)?;
-        Secret::fmt(&self.api_key, f)
+        Secret::new(self.api_key.expose_secret_for_data_structure().clone()).fmt(f)
     }
 }
 
@@ -45,15 +56,22 @@ pub struct PolygonOpenCloseCollector {
     pool: PgPool,
     client: Client,
     api_key: Option<Secret<String>>,
+    key_manager: Arc<Mutex<KeyManager>>,
 }
 
 impl PolygonOpenCloseCollector {
     #[tracing::instrument(name = "Run Polygon open close collector", skip_all)]
-    pub fn new(pool: PgPool, client: Client, api_key: Option<Secret<String>>) -> Self {
+    pub fn new(
+        pool: PgPool,
+        client: Client,
+        api_key: Option<Secret<String>>,
+        key_manager: Arc<Mutex<KeyManager>>,
+    ) -> Self {
         PolygonOpenCloseCollector {
             pool,
             client,
             api_key,
+            key_manager,
         }
     }
 }
@@ -68,15 +86,19 @@ impl Display for PolygonOpenCloseCollector {
 impl Runnable for PolygonOpenCloseCollector {
     #[tracing::instrument(level = "debug", skip_all)]
     async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
-        if let Some(key) = &self.api_key {
-            load_and_store_missing_data(self.pool.clone(), self.client.clone(), key)
-                .map_err(TaskError::UnexpectedError)
-                .await?;
-        } else {
-            return Err(TaskError::UnexpectedError(Error::msg(
-                "Api key not provided for PolygonOpenCloseCollector",
-            )));
-        }
+        // if let Some(key) = &self.api_key {
+        load_and_store_missing_data(
+            self.pool.clone(),
+            self.client.clone(),
+            self.key_manager.clone(),
+        )
+        .map_err(TaskError::UnexpectedError)
+        .await?;
+        // } else {
+        //     return Err(TaskError::UnexpectedError(Error::msg(
+        //         "Api key not provided for PolygonOpenCloseCollector",
+        //     )));
+        // }
         Ok(None)
     }
 }
@@ -116,16 +138,16 @@ struct TransposedPolygonOpenClose {
 pub async fn load_and_store_missing_data(
     connection_pool: PgPool,
     client: Client,
-    api_key: &Secret<String>,
+    key_manager: Arc<Mutex<KeyManager>>,
 ) -> Result<(), anyhow::Error> {
-    load_and_store_missing_data_given_url(connection_pool, client, api_key, URL).await
+    load_and_store_missing_data_given_url(connection_pool, client, key_manager, URL).await
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
 async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
     client: Client,
-    api_key: &Secret<String>,
+    key_manager: Arc<Mutex<KeyManager>>,
     url: &str,
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Polygon open close.");
@@ -141,12 +163,18 @@ async fn load_and_store_missing_data_given_url(
     .fetch_one(&connection_pool)
     .await?
     .issue_symbol;
-    while let Some(issue_symbol) = issue_symbol_candidate {
+    let mut general_api_key = get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY).await;
+    while let (Some(issue_symbol), true) = (issue_symbol_candidate, general_api_key.is_some()) {
         let mut current_check_date = earliest_date();
 
-        while current_check_date.lt(&Utc::now().date_naive()) {
-            let request =
-                create_polygon_open_close_request(url, &issue_symbol, current_check_date, api_key);
+        while current_check_date.lt(&Utc::now().date_naive()) && general_api_key.is_some() {
+            let mut api_key = general_api_key.unwrap();
+            let mut request = create_polygon_open_close_request(
+                url,
+                &issue_symbol,
+                current_check_date,
+                &mut api_key,
+            );
             debug!("Polygon open close request: {}", request);
             let response = client
                 .get(request.expose_secret())
@@ -176,8 +204,19 @@ async fn load_and_store_missing_data_given_url(
                 current_check_date = current_check_date
                     .checked_add_days(Days::new(1))
                     .expect("Adding one day must always work, given the operating date context.");
+            } else {
+                info!(
+                    "Failed with request {} and got response {}",
+                    request, response
+                );
+                api_key.set_status(Status::Exhausted);
             }
-            sleep(time::Duration::from_secs(13)).await;
+            if api_key.get_status() == Status::Ready {
+                general_api_key = Some(api_key);
+            } else {
+                general_api_key =
+                    exchange_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, api_key).await;
+            }
         }
         issue_symbol_candidate = sqlx::query!(
             "select issue_symbol 
@@ -191,7 +230,62 @@ async fn load_and_store_missing_data_given_url(
         .await?
         .issue_symbol;
     }
+    if let Some(api_key) = general_api_key {
+        let mut d = key_manager.lock().expect("msg");
+        d.add_key_by_platform(api_key);
+    }
     Ok(())
+}
+
+async fn exchange_apikey_or_wait(
+    key_manager: Arc<Mutex<KeyManager>>,
+    wait: bool,
+    api_key: Box<dyn ApiKey>,
+) -> Option<Box<dyn ApiKey>> {
+    {
+        let mut d = key_manager.lock().expect("msg");
+        d.add_key_by_platform(api_key);
+    }
+    get_new_apikey_or_wait(key_manager, wait).await
+}
+
+async fn get_new_apikey_or_wait(
+    key_manager: Arc<Mutex<KeyManager>>,
+    wait: bool,
+) -> Option<Box<dyn ApiKey>> {
+    let mut g = {
+        let mut d = key_manager.lock().expect("msg");
+        d.get_key_and_timeout(PLATFORM)
+    };
+    while let Ok(f) = g {
+        match f {
+            (Some(_), Some(_)) => return None, // Cannot occur
+            // Queue is empty
+            (None, None) => {
+                if wait {
+                    tokio::time::sleep(Duration::minutes(1).to_std().unwrap()).await;
+                } else {
+                    return None;
+                }
+            }
+            (None, Some(refresh_time)) => {
+                if wait {
+                    let time_difference = refresh_time - Utc::now();
+                    if let Ok(sleep_duration) = time_difference.to_std() {
+                        tokio::time::sleep(sleep_duration).await;
+                    }
+                } else {
+                    return None;
+                }
+            }
+            (Some(key), None) => return Some(key),
+        }
+        g = {
+            let mut d = key_manager.lock().expect("msg");
+            d.get_key_and_timeout(PLATFORM)
+        };
+    }
+    None // Key never added to queue
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
@@ -255,12 +349,12 @@ fn earliest_date() -> NaiveDate {
 // }
 
 #[tracing::instrument(level = "debug", skip_all)]
-fn create_polygon_open_close_request(
-    base_url: &str,
-    ticker_symbol: &str,
+fn create_polygon_open_close_request<'a>(
+    base_url: &'a str,
+    ticker_symbol: &'a str,
     date: NaiveDate,
-    api_key: &Secret<String>,
-) -> PolygonOpenCloseRequest {
+    api_key: &'a mut Box<dyn ApiKey>,
+) -> PolygonOpenCloseRequest<'a> {
     let base_request_url = base_url.to_string()
         + ticker_symbol
         + "/"
@@ -269,7 +363,7 @@ fn create_polygon_open_close_request(
         + "&apiKey=";
     PolygonOpenCloseRequest {
         base: base_request_url,
-        api_key: api_key.clone(),
+        api_key: api_key,
     }
     //      api_key.expose_secret();
     // base_request_url

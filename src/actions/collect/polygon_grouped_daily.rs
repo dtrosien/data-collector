@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use chrono::{Days, Duration, Months, NaiveDate, Utc};
 use futures_util::TryFutureExt;
 use secrecy::{ExposeSecret, Secret};
-use std::cmp::Reverse;
 use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex};
 
@@ -43,22 +42,15 @@ impl Display for PolygonGroupedDailyRequest<'_> {
 pub struct PolygonGroupedDailyCollector {
     pool: PgPool,
     client: Client,
-    api_key: Option<Secret<String>>,
     key_manager: Arc<Mutex<KeyManager>>,
 }
 
 impl PolygonGroupedDailyCollector {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub fn new(
-        pool: PgPool,
-        client: Client,
-        api_key: Option<Secret<String>>,
-        key_manager: Arc<Mutex<KeyManager>>,
-    ) -> Self {
+    pub fn new(pool: PgPool, client: Client, key_manager: Arc<Mutex<KeyManager>>) -> Self {
         PolygonGroupedDailyCollector {
             pool,
             client,
-            api_key,
             key_manager,
         }
     }

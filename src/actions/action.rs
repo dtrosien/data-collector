@@ -48,9 +48,11 @@ pub fn create_action(
         ActionType::SecCompaniesStage => Arc::new(SecCompanyStager::new(pool.clone())),
         ActionType::Dummy => Arc::new(DummyCollector::new()),
         ActionType::PolygonGroupedDaily => {
-            create_action_polygon_grouped_daily(pool, client, secrets, Arc::clone(&key_store))
+            create_action_polygon_grouped_daily(pool, client, Arc::clone(&key_store))
         }
-        ActionType::PolygonOpenClose => create_action_polygon_open_close(pool, client, secrets),
+        ActionType::PolygonOpenClose => {
+            create_action_polygon_open_close(pool, client, secrets, Arc::clone(&key_store))
+        }
         ActionType::FinancialmodelingprepCompanyProfileCollet => {
             create_action_financial_modeling_company_profile(pool, client, Arc::clone(&key_store))
         }
@@ -95,13 +97,8 @@ fn fill_key_store(key_store: &Arc<Mutex<KeyManager>>, secrets: SecretKeys) {
 fn create_action_financial_modeling_market_capitalization(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &Client,
-    // secrets: &Option<SecretKeys>,
     key_manager: Arc<Mutex<KeyManager>>,
 ) -> Arc<dyn Runnable + Send + Sync> {
-    // let mut fin_modeling_prep_key = Option::<Secret<String>>::None;
-    // if let Some(secret) = secrets {
-    //     fin_modeling_prep_key.clone_from(&secret.financialmodelingprep_company)
-    // }
     Arc::new(FinancialmodelingprepMarketCapitalizationCollector::new(
         pool.clone(),
         client.clone(),
@@ -125,18 +122,11 @@ fn create_action_financial_modeling_company_profile(
 fn create_action_polygon_grouped_daily(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &Client,
-    secrets: &SecretKeys,
     key_manager: Arc<Mutex<KeyManager>>,
 ) -> Arc<PolygonGroupedDailyCollector> {
-    let mut polygon_key = Option::<Secret<String>>::None;
-    if let Some(secret) = Some(secrets) {
-        polygon_key.clone_from(&secret.polygon)
-    }
-
     Arc::new(PolygonGroupedDailyCollector::new(
         pool.clone(),
         client.clone(),
-        polygon_key,
         key_manager,
     ))
 }
@@ -145,6 +135,7 @@ fn create_action_polygon_open_close(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &Client,
     secrets: &SecretKeys,
+    key_manager: Arc<Mutex<KeyManager>>,
 ) -> Arc<PolygonOpenCloseCollector> {
     let mut polygon_key = Option::<Secret<String>>::None;
     if let Some(secret) = Some(secrets) {
@@ -155,6 +146,7 @@ fn create_action_polygon_open_close(
         pool.clone(),
         client.clone(),
         polygon_key,
+        key_manager,
     ))
 }
 
