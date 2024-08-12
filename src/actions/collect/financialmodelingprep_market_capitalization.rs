@@ -175,9 +175,10 @@ async fn load_and_store_missing_data_given_url(
     info!("Next symbol: {:?}", potential_issue_sybmol);
     let mut general_api_key = get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY).await;
     let mut _successful_request_counter: u16 = 0;
-    while let (Some(issue_sybmol), Some(mut api_key)) =
-        (potential_issue_sybmol.as_ref(), general_api_key)
+    while let (Some(issue_sybmol), true) =
+        (potential_issue_sybmol.as_ref(), general_api_key.is_some())
     {
+        let mut api_key = general_api_key.unwrap();
         info!("Searching start date for symbol {}", &issue_sybmol);
         let mut start_request_date: NaiveDate;
         {
@@ -232,6 +233,10 @@ async fn load_and_store_missing_data_given_url(
                 exchange_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, api_key).await;
             println!("general_api_key {:?}", general_api_key);
         }
+    }
+    if let Some(api_key) = general_api_key {
+        let mut d = key_manager.lock().expect("msg");
+        d.add_key_by_platform(api_key);
     }
     Ok(())
 }

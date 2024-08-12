@@ -158,10 +158,8 @@ async fn load_and_store_missing_data_given_url(
     let mut general_api_key = get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY).await;
     let mut current_check_date = get_start_date(result);
 
-    while let (true, Some(mut api_key)) = (
-        current_check_date.lt(&Utc::now().date_naive()),
-        general_api_key,
-    ) {
+    while current_check_date.lt(&Utc::now().date_naive()) && general_api_key.is_some() {
+        let mut api_key = general_api_key.unwrap();
         let mut request =
             create_polygon_grouped_daily_request(url, &current_check_date, &mut api_key);
         debug!("Polygon grouped daily request: {}", request);
@@ -209,6 +207,10 @@ async fn load_and_store_missing_data_given_url(
             general_api_key =
                 exchange_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, api_key).await;
         }
+    }
+    if let Some(api_key) = general_api_key {
+        let mut d = key_manager.lock().expect("msg");
+        d.add_key_by_platform(api_key);
     }
     Ok(())
 }

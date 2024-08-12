@@ -121,7 +121,7 @@ pub struct CompanyProfileElement {
     last_div: Option<f64>,
     range: Option<String>,
     changes: Option<f64>,
-    company_name: String,
+    company_name: String, //TODO: Must be optional. Yes, there is data with company name null...
     currency: Option<String>,
     cik: Option<String>,
     isin: Option<String>,
@@ -174,9 +174,10 @@ async fn load_and_store_missing_data_given_url(
         get_next_issue_symbol(&connection_pool).await?;
     let mut general_api_key = get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY).await;
     let mut _successful_request_counter: u16 = 0; // Variable actually used, but clippy is buggy with the shorthand += below. (clippy 0.1.79)
-    while let (Some(issue_sybmol), Some(mut api_key)) =
-        (potential_issue_sybmol.as_ref(), general_api_key)
+    while let (Some(issue_sybmol), true) =
+        (potential_issue_sybmol.as_ref(), general_api_key.is_some())
     {
+        let mut api_key = general_api_key.unwrap();
         {
             info!("Requesting symbol {}", issue_sybmol);
             let mut request = create_finprep_company_request(url, issue_sybmol, &mut api_key);
@@ -214,6 +215,10 @@ async fn load_and_store_missing_data_given_url(
             general_api_key =
                 exchange_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, api_key).await;
         }
+    }
+    if let Some(api_key) = general_api_key {
+        let mut d = key_manager.lock().expect("msg");
+        d.add_key_by_platform(api_key);
     }
     Ok(())
 }
