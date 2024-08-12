@@ -17,7 +17,7 @@ use tracing::{debug, info};
 
 use std::fmt::Display;
 
-use reqwest::Client;
+use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
 
 use sqlx::PgPool;
@@ -26,7 +26,7 @@ use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 const URL: &str = "https://api.polygon.io/v1/open-close/";
 const ERROR_MSG_VALUE_EXISTS: &str = "Value exists or error must have been caught before";
-const PLATFORM: ApiKeyPlatform = ApiKeyPlatform::Polygon;
+const PLATFORM: &ApiKeyPlatform = &ApiKeyPlatform::Polygon;
 const WAIT_FOR_KEY: bool = true;
 
 #[derive(Debug)]
@@ -153,7 +153,9 @@ async fn load_and_store_missing_data_given_url(
     .fetch_one(&connection_pool)
     .await?
     .issue_symbol;
-    let mut general_api_key = get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY).await;
+    // let mut general_api_key = get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY).await;
+    let mut general_api_key =
+        KeyManager::get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, PLATFORM).await;
     while let (Some(issue_symbol), true) = (issue_symbol_candidate, general_api_key.is_some()) {
         let mut current_check_date = earliest_date();
 
@@ -172,6 +174,7 @@ async fn load_and_store_missing_data_given_url(
                 .await?
                 .text()
                 .await?;
+            println!("####### response: {}", response);
             let open_close = vec![parse_response::<PolygonOpenClose>(&response)?];
             if open_close[0].status.eq("OK") {
                 let open_close_data = transpose_polygon_open_close(&open_close);
@@ -204,8 +207,13 @@ async fn load_and_store_missing_data_given_url(
             if api_key.get_status() == Status::Ready {
                 general_api_key = Some(api_key);
             } else {
-                general_api_key =
-                    exchange_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, api_key).await;
+                general_api_key = KeyManager::exchange_apikey_or_wait(
+                    key_manager.clone(),
+                    WAIT_FOR_KEY,
+                    api_key,
+                    PLATFORM,
+                )
+                .await;
             }
         }
         issue_symbol_candidate = sqlx::query!(
@@ -225,57 +233,6 @@ async fn load_and_store_missing_data_given_url(
         d.add_key_by_platform(api_key);
     }
     Ok(())
-}
-
-async fn exchange_apikey_or_wait(
-    key_manager: Arc<Mutex<KeyManager>>,
-    wait: bool,
-    api_key: Box<dyn ApiKey>,
-) -> Option<Box<dyn ApiKey>> {
-    {
-        let mut d = key_manager.lock().expect("msg");
-        d.add_key_by_platform(api_key);
-    }
-    get_new_apikey_or_wait(key_manager, wait).await
-}
-
-async fn get_new_apikey_or_wait(
-    key_manager: Arc<Mutex<KeyManager>>,
-    wait: bool,
-) -> Option<Box<dyn ApiKey>> {
-    let mut g = {
-        let mut d = key_manager.lock().expect("msg");
-        d.get_key_and_timeout(PLATFORM)
-    };
-    while let Ok(f) = g {
-        match f {
-            (Some(_), Some(_)) => return None, // Cannot occur
-            // Queue is empty
-            (None, None) => {
-                if wait {
-                    tokio::time::sleep(Duration::minutes(1).to_std().unwrap()).await;
-                } else {
-                    return None;
-                }
-            }
-            (None, Some(refresh_time)) => {
-                if wait {
-                    let time_difference = refresh_time - Utc::now();
-                    if let Ok(sleep_duration) = time_difference.to_std() {
-                        tokio::time::sleep(sleep_duration).await;
-                    }
-                } else {
-                    return None;
-                }
-            }
-            (Some(key), None) => return Some(key),
-        }
-        g = {
-            let mut d = key_manager.lock().expect("msg");
-            d.get_key_and_timeout(PLATFORM)
-        };
-    }
-    None // Key never added to queue
 }
 
 #[tracing::instrument(level = "debug", skip_all)]

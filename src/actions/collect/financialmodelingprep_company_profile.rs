@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
 
 const URL: &str = "https://financialmodelingprep.com/api/v3/profile/";
-const PLATFORM: ApiKeyPlatform = ApiKeyPlatform::Financialmodelingprep;
+const PLATFORM: &ApiKeyPlatform = &ApiKeyPlatform::Financialmodelingprep;
 const WAIT_FOR_KEY: bool = false;
 
 #[derive(Clone, Debug)]
@@ -173,7 +173,7 @@ async fn load_and_store_missing_data_given_url(
     let mut potential_issue_sybmol: Option<String> =
         get_next_issue_symbol(&connection_pool).await?;
     let mut general_api_key = get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY).await;
-    let mut _successful_request_counter: u16 = 0; // Variable actually used, but clippy is buggy with the shorthand += below. (clippy 0.1.79)
+    let mut _successful_request_counter: u16 = 0; // Variable actually used, but clippy is buggy? with the shorthand += below. (clippy 0.1.79)
     while let (Some(issue_sybmol), true) =
         (potential_issue_sybmol.as_ref(), general_api_key.is_some())
     {

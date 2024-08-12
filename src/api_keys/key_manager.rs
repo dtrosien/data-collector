@@ -1,6 +1,9 @@
-use std::cmp::Reverse;
+use std::{
+    cmp::Reverse,
+    sync::{Arc, Mutex},
+};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use config::Map;
 use priority_queue::PriorityQueue;
 // use vtable::VBox;
@@ -20,6 +23,59 @@ impl KeyManager {
         KeyManager { keys: Map::new() }
     }
 
+    pub async fn exchange_apikey_or_wait(
+        key_manager: Arc<Mutex<KeyManager>>,
+        wait: bool,
+        api_key: Box<dyn ApiKey>,
+        platform: &ApiKeyPlatform,
+    ) -> Option<Box<dyn ApiKey>> {
+        {
+            let mut d = key_manager.lock().expect("msg");
+            d.add_key_by_platform(api_key);
+        }
+        KeyManager::get_new_apikey_or_wait(key_manager, wait, platform).await
+    }
+
+    pub async fn get_new_apikey_or_wait(
+        key_manager: Arc<Mutex<KeyManager>>,
+        wait: bool,
+        platform: &ApiKeyPlatform,
+    ) -> Option<Box<dyn ApiKey>> {
+        let mut g = {
+            let mut d = key_manager.lock().expect("msg");
+            d.get_key_and_timeout(platform)
+        };
+        while let Ok(f) = g {
+            match f {
+                (Some(_), Some(_)) => return None, // Cannot occur
+                // Queue is empty
+                (None, None) => {
+                    if wait {
+                        tokio::time::sleep(Duration::minutes(1).to_std().unwrap()).await;
+                    } else {
+                        return None;
+                    }
+                }
+                (None, Some(refresh_time)) => {
+                    if wait {
+                        let time_difference = refresh_time - Utc::now();
+                        if let Ok(sleep_duration) = time_difference.to_std() {
+                            tokio::time::sleep(sleep_duration).await;
+                        }
+                    } else {
+                        return None;
+                    }
+                }
+                (Some(key), None) => return Some(key),
+            }
+            g = {
+                let mut d = key_manager.lock().expect("msg");
+                d.get_key_and_timeout(platform)
+            };
+        }
+        None // Key never added to queue
+    }
+
     pub fn add_key_by_platform(&mut self, key: Box<dyn ApiKey>) {
         let platform = key.get_platform();
         let key_value_pair = self.keys.get_mut(&platform);
@@ -35,8 +91,8 @@ impl KeyManager {
         }
     }
 
-    pub fn get_key_and_timeout(&mut self, platform: ApiKeyPlatform) -> KeyOrTimeoutResult {
-        if let Some(pq) = self.keys.get_mut(&platform) {
+    pub fn get_key_and_timeout(&mut self, platform: &ApiKeyPlatform) -> KeyOrTimeoutResult {
+        if let Some(pq) = self.keys.get_mut(platform) {
             println!("#####queue size: {}", pq.len());
             println!("#####queue: {:?}", pq);
             {

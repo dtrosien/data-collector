@@ -16,7 +16,7 @@ use crate::api_keys::key_manager::KeyManager;
 use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 
 const URL: &str = "https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/";
-const PLATFORM: ApiKeyPlatform = ApiKeyPlatform::Polygon;
+const PLATFORM: &ApiKeyPlatform = &ApiKeyPlatform::Polygon;
 const WAIT_FOR_KEY: bool = true;
 
 #[derive(Debug)]

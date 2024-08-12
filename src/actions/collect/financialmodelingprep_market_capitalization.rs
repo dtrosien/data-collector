@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
 
 const URL: &str = "https://financialmodelingprep.com/api/v3/historical-market-capitalization/";
-const PLATFORM: ApiKeyPlatform = ApiKeyPlatform::Financialmodelingprep;
+const PLATFORM: &ApiKeyPlatform = &ApiKeyPlatform::Financialmodelingprep;
 const WAIT_FOR_KEY: bool = false;
 
 struct IssueSymbols {
