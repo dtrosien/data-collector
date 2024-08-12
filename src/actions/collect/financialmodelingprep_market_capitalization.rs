@@ -173,7 +173,8 @@ async fn load_and_store_missing_data_given_url(
         get_next_uncollected_issue_symbol(&connection_pool).await?;
 
     info!("Next symbol: {:?}", potential_issue_sybmol);
-    let mut general_api_key = get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY).await;
+    let mut general_api_key =
+        KeyManager::get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, PLATFORM).await;
     let mut _successful_request_counter: u16 = 0;
     while let (Some(issue_sybmol), true) =
         (potential_issue_sybmol.as_ref(), general_api_key.is_some())
@@ -229,8 +230,13 @@ async fn load_and_store_missing_data_given_url(
         if api_key.get_status() == Status::Ready {
             general_api_key = Some(api_key);
         } else {
-            general_api_key =
-                exchange_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, api_key).await;
+            general_api_key = KeyManager::exchange_apikey_or_wait(
+                key_manager.clone(),
+                WAIT_FOR_KEY,
+                api_key,
+                PLATFORM,
+            )
+            .await;
             println!("general_api_key {:?}", general_api_key);
         }
     }
@@ -239,56 +245,6 @@ async fn load_and_store_missing_data_given_url(
         d.add_key_by_platform(api_key);
     }
     Ok(())
-}
-
-async fn exchange_apikey_or_wait(
-    key_manager: Arc<Mutex<KeyManager>>,
-    wait: bool,
-    api_key: Box<dyn ApiKey>,
-) -> Option<Box<dyn ApiKey>> {
-    {
-        let mut d = key_manager.lock().expect("msg");
-        d.add_key_by_platform(api_key);
-    }
-    get_new_apikey_or_wait(key_manager, wait).await
-}
-
-async fn get_new_apikey_or_wait(
-    key_manager: Arc<Mutex<KeyManager>>,
-    wait: bool,
-) -> Option<Box<dyn ApiKey>> {
-    let mut g = {
-        let mut d = key_manager.lock().expect("msg");
-        d.get_key_and_timeout(PLATFORM)
-    };
-    while let Ok(f) = g {
-        match f {
-            (Some(_), Some(_)) => return None, // Cannot occur
-            // Queue is empty
-            (None, None) => {
-                if wait {
-                    tokio::time::sleep(Duration::minutes(1).to_std().unwrap()).await;
-                } else {
-                    return None;
-                }
-            }
-            (None, Some(refresh_time)) => {
-                if wait {
-                    let time_difference = refresh_time - Utc::now();
-                    tokio::time::sleep(time_difference.to_std().unwrap()).await;
-                // TODO: If they are very close to each other this could fail
-                } else {
-                    return None;
-                }
-            }
-            (Some(key), None) => return Some(key),
-        }
-        g = {
-            let mut d = key_manager.lock().expect("msg");
-            d.get_key_and_timeout(PLATFORM)
-        };
-    }
-    None // Key never added to queue
 }
 
 async fn search_start_date(

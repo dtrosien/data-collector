@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use chrono::{Days, Duration, Months, NaiveDate, Utc};
+use chrono::{Days, Months, NaiveDate, Utc};
 use futures_util::TryFutureExt;
 use secrecy::{ExposeSecret, Secret};
 use std::fmt::{Debug, Display};
@@ -155,7 +155,8 @@ async fn load_and_store_missing_data_given_url(
     .await?
     .business_date;
 
-    let mut general_api_key = get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY).await;
+    let mut general_api_key =
+        KeyManager::get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, PLATFORM).await;
     let mut current_check_date = get_start_date(result);
 
     while current_check_date.lt(&Utc::now().date_naive()) && general_api_key.is_some() {
@@ -201,11 +202,17 @@ async fn load_and_store_missing_data_given_url(
             );
             api_key.set_status(Status::Exhausted);
         }
+
         if api_key.get_status() == Status::Ready {
             general_api_key = Some(api_key);
         } else {
-            general_api_key =
-                exchange_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, api_key).await;
+            general_api_key = KeyManager::exchange_apikey_or_wait(
+                key_manager.clone(),
+                WAIT_FOR_KEY,
+                api_key,
+                PLATFORM,
+            )
+            .await;
         }
     }
     if let Some(api_key) = general_api_key {
@@ -213,57 +220,6 @@ async fn load_and_store_missing_data_given_url(
         d.add_key_by_platform(api_key);
     }
     Ok(())
-}
-
-async fn exchange_apikey_or_wait(
-    key_manager: Arc<Mutex<KeyManager>>,
-    wait: bool,
-    api_key: Box<dyn ApiKey>,
-) -> Option<Box<dyn ApiKey>> {
-    {
-        let mut d = key_manager.lock().expect("msg");
-        d.add_key_by_platform(api_key);
-    }
-    get_new_apikey_or_wait(key_manager, wait).await
-}
-
-async fn get_new_apikey_or_wait(
-    key_manager: Arc<Mutex<KeyManager>>,
-    wait: bool,
-) -> Option<Box<dyn ApiKey>> {
-    let mut g = {
-        let mut d = key_manager.lock().expect("msg");
-        d.get_key_and_timeout(PLATFORM)
-    };
-    while let Ok(f) = g {
-        match f {
-            (Some(_), Some(_)) => return None, // Cannot occur
-            // Queue is empty
-            (None, None) => {
-                if wait {
-                    tokio::time::sleep(Duration::minutes(1).to_std().unwrap()).await;
-                } else {
-                    return None;
-                }
-            }
-            (None, Some(refresh_time)) => {
-                if wait {
-                    let time_difference = refresh_time - Utc::now();
-                    if let Ok(sleep_duration) = time_difference.to_std() {
-                        tokio::time::sleep(sleep_duration).await;
-                    }
-                } else {
-                    return None;
-                }
-            }
-            (Some(key), None) => return Some(key),
-        }
-        g = {
-            let mut d = key_manager.lock().expect("msg");
-            d.get_key_and_timeout(PLATFORM)
-        };
-    }
-    None // Key never added to queue
 }
 
 #[tracing::instrument(level = "debug", skip_all)]

@@ -6,7 +6,7 @@ use crate::{
     utils::action_helpers::parse_response,
 };
 use async_trait::async_trait;
-use chrono::{Days, Duration, Months, NaiveDate, Utc};
+use chrono::{Days, Months, NaiveDate, Utc};
 use futures_util::TryFutureExt;
 use secrecy::{ExposeSecret, Secret};
 use std::{
@@ -17,7 +17,7 @@ use tracing::{debug, info};
 
 use std::fmt::Display;
 
-use reqwest::{Client, Response};
+use reqwest::{Client};
 use serde::{Deserialize, Serialize};
 
 use sqlx::PgPool;
