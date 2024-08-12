@@ -203,17 +203,13 @@ async fn load_and_store_missing_data_given_url(
             api_key.set_status(Status::Exhausted);
         }
 
-        if api_key.get_status() == Status::Ready {
-            general_api_key = Some(api_key);
-        } else {
-            general_api_key = KeyManager::exchange_apikey_or_wait(
-                key_manager.clone(),
-                WAIT_FOR_KEY,
-                api_key,
-                PLATFORM,
-            )
-            .await;
-        }
+        general_api_key = KeyManager::exchange_apikey_or_wait_if_non_ready(
+            key_manager.clone(),
+            WAIT_FOR_KEY,
+            api_key,
+            PLATFORM,
+        )
+        .await;
     }
     if let Some(api_key) = general_api_key {
         let mut d = key_manager.lock().expect("msg");

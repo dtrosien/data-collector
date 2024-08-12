@@ -23,6 +23,19 @@ impl KeyManager {
         KeyManager { keys: Map::new() }
     }
 
+    pub async fn exchange_apikey_or_wait_if_non_ready(
+        key_manager: Arc<Mutex<KeyManager>>,
+        wait: bool,
+        api_key: Box<dyn ApiKey>,
+        platform: &ApiKeyPlatform,
+    ) -> Option<Box<dyn ApiKey>> {
+        if api_key.get_status() == Status::Ready {
+            Some(api_key)
+        } else {
+            KeyManager::exchange_apikey_or_wait(key_manager.clone(), wait, api_key, platform).await
+        }
+    }
+
     pub async fn exchange_apikey_or_wait(
         key_manager: Arc<Mutex<KeyManager>>,
         wait: bool,

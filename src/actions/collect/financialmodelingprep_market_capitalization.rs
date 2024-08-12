@@ -227,18 +227,13 @@ async fn load_and_store_missing_data_given_url(
                 .expect("Should not leave date range.");
         }
         potential_issue_sybmol = get_next_uncollected_issue_symbol(&connection_pool).await?;
-        if api_key.get_status() == Status::Ready {
-            general_api_key = Some(api_key);
-        } else {
-            general_api_key = KeyManager::exchange_apikey_or_wait(
-                key_manager.clone(),
-                WAIT_FOR_KEY,
-                api_key,
-                PLATFORM,
-            )
-            .await;
-            println!("general_api_key {:?}", general_api_key);
-        }
+        general_api_key = KeyManager::exchange_apikey_or_wait_if_non_ready(
+            key_manager.clone(),
+            WAIT_FOR_KEY,
+            api_key,
+            PLATFORM,
+        )
+        .await;
     }
     if let Some(api_key) = general_api_key {
         let mut d = key_manager.lock().expect("msg");

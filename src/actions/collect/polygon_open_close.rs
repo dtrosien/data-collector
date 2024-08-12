@@ -17,7 +17,7 @@ use tracing::{debug, info};
 
 use std::fmt::Display;
 
-use reqwest::{Client};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use sqlx::PgPool;
@@ -153,7 +153,6 @@ async fn load_and_store_missing_data_given_url(
     .fetch_one(&connection_pool)
     .await?
     .issue_symbol;
-    // let mut general_api_key = get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY).await;
     let mut general_api_key =
         KeyManager::get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, PLATFORM).await;
     while let (Some(issue_symbol), true) = (issue_symbol_candidate, general_api_key.is_some()) {
@@ -174,7 +173,6 @@ async fn load_and_store_missing_data_given_url(
                 .await?
                 .text()
                 .await?;
-            println!("####### response: {}", response);
             let open_close = vec![parse_response::<PolygonOpenClose>(&response)?];
             if open_close[0].status.eq("OK") {
                 let open_close_data = transpose_polygon_open_close(&open_close);
@@ -204,17 +202,13 @@ async fn load_and_store_missing_data_given_url(
                 );
                 api_key.set_status(Status::Exhausted);
             }
-            if api_key.get_status() == Status::Ready {
-                general_api_key = Some(api_key);
-            } else {
-                general_api_key = KeyManager::exchange_apikey_or_wait(
-                    key_manager.clone(),
-                    WAIT_FOR_KEY,
-                    api_key,
-                    PLATFORM,
-                )
-                .await;
-            }
+            general_api_key = KeyManager::exchange_apikey_or_wait_if_non_ready(
+                key_manager.clone(),
+                WAIT_FOR_KEY,
+                api_key,
+                PLATFORM,
+            )
+            .await;
         }
         issue_symbol_candidate = sqlx::query!(
             "select issue_symbol 
@@ -282,19 +276,6 @@ fn earliest_date() -> NaiveDate {
         .expect("Adding 1 day should always work")
 }
 
-// impl Collector for PolygonOpenCloseCollector {
-//     fn get_sp_fields(&self) -> Vec<sp500_fields::Fields> {
-//         vec![
-//             sp500_fields::Fields::OpenClose,
-//             sp500_fields::Fields::MonthTradingVolume,
-//         ]
-//     }
-
-//     fn get_source(&self) -> collector_sources::CollectorSource {
-//         collector_sources::CollectorSource::PolygonOpenClose
-//     }
-// }
-
 #[tracing::instrument(level = "debug", skip_all)]
 fn create_polygon_open_close_request<'a>(
     base_url: &'a str,
@@ -312,8 +293,6 @@ fn create_polygon_open_close_request<'a>(
         base: base_request_url,
         api_key,
     }
-    //      api_key.expose_secret();
-    // base_request_url
 }
 
 #[cfg(test)]
