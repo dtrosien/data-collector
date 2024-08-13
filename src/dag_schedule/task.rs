@@ -167,7 +167,7 @@ impl Task {
         // s_finished: Option<mpsc::Sender<(bool, Vec<TaskRef>)>>,
     ) -> TaskRef {
         let task = Task {
-            id: task_spec.id,
+            id: task_spec.get_uuid(),
             name: task_spec.name.clone(),
             num_ingoing_tasks: None,
             outgoing_tasks: Vec::new(),
