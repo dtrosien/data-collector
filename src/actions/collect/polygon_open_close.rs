@@ -158,8 +158,10 @@ async fn load_and_store_missing_data_given_url(
     while let (Some(issue_symbol), true) = (issue_symbol_candidate, general_api_key.is_some()) {
         let mut current_check_date = earliest_date();
 
-        while current_check_date.lt(&Utc::now().date_naive()) && general_api_key.is_some() {
-            let mut api_key = general_api_key.unwrap();
+        while let (true, Some(mut api_key)) = (
+            current_check_date.lt(&Utc::now().date_naive()),
+            general_api_key.take(),
+        ) {
             let mut request = create_polygon_open_close_request(
                 url,
                 &issue_symbol,
@@ -242,7 +244,6 @@ fn transpose_polygon_open_close(instruments: &Vec<PolygonOpenClose>) -> Transpos
         symbol: vec![],
         volume: vec![],
     };
-    println!("Data: {:?}", instruments);
     for data in instruments {
         result.after_hours.push(data.after_hours);
         result.close.push(data.close.expect(ERROR_MSG_VALUE_EXISTS));

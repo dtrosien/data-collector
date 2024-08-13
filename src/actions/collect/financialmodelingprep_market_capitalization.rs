@@ -176,15 +176,12 @@ async fn load_and_store_missing_data_given_url(
     let mut general_api_key =
         KeyManager::get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, PLATFORM).await;
     let mut _successful_request_counter: u16 = 0;
-    while let (Some(issue_sybmol), true) =
-        (potential_issue_sybmol.as_ref(), general_api_key.is_some())
+    while let (Some(issue_sybmol), Some(mut api_key)) =
+        (potential_issue_sybmol.as_ref(), general_api_key.take())
     {
-        let mut api_key = general_api_key.unwrap();
         info!("Searching start date for symbol {}", &issue_sybmol);
-        let mut start_request_date: NaiveDate;
-        {
-            start_request_date = search_start_date(&connection_pool, issue_sybmol).await?;
-        }
+        let mut start_request_date: NaiveDate =
+            search_start_date(&connection_pool, issue_sybmol).await?;
         info!("Requesting symbol {}", &issue_sybmol);
         while start_request_date < Utc::now().date_naive() && api_key.get_status() == Status::Ready
         {
@@ -213,7 +210,6 @@ async fn load_and_store_missing_data_given_url(
                     _successful_request_counter += 1;
                 }
                 Responses::KeyExhausted(_) => {
-                    println!("Key exhaustion detected");
                     api_key.set_status(Status::Exhausted);
                 }
                 Responses::NotFound(_) => {

@@ -159,8 +159,10 @@ async fn load_and_store_missing_data_given_url(
         KeyManager::get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, PLATFORM).await;
     let mut current_check_date = get_start_date(result);
 
-    while current_check_date.lt(&Utc::now().date_naive()) && general_api_key.is_some() {
-        let mut api_key = general_api_key.unwrap();
+    while let (true, Some(mut api_key)) = (
+        current_check_date.lt(&Utc::now().date_naive()),
+        general_api_key.take(),
+    ) {
         let mut request =
             create_polygon_grouped_daily_request(url, &current_check_date, &mut api_key);
         debug!("Polygon grouped daily request: {}", request);

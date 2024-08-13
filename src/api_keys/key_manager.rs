@@ -6,7 +6,6 @@ use std::{
 use chrono::{DateTime, Duration, Utc};
 use config::Map;
 use priority_queue::PriorityQueue;
-// use vtable::VBox;
 
 use super::api_key::{ApiKey, ApiKeyPlatform, Status};
 
@@ -93,7 +92,6 @@ impl KeyManager {
         let platform = key.get_platform();
         let key_value_pair = self.keys.get_mut(&platform);
         let next_update = key.next_refresh_possible();
-        println!("Next update possible: {}", next_update);
         if let Some(queue) = key_value_pair {
             queue.push(key, Reverse(next_update));
         } else {
@@ -106,14 +104,10 @@ impl KeyManager {
 
     pub fn get_key_and_timeout(&mut self, platform: &ApiKeyPlatform) -> KeyOrTimeoutResult {
         if let Some(pq) = self.keys.get_mut(platform) {
-            println!("#####queue size: {}", pq.len());
-            println!("#####queue: {:?}", pq);
+
             {
                 if let Some(pair) = pq.peek() {
-                    println!("peek time: {:?}", pair);
-                    println!("now: {:?}", Utc::now());
                     if pair.1 .0 > Utc::now() {
-                        println!("returning waiting time");
                         return Ok((None, Some(pair.1 .0)));
                     }
                 } else {

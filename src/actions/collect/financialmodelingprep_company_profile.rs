@@ -175,40 +175,37 @@ async fn load_and_store_missing_data_given_url(
     let mut general_api_key =
         KeyManager::get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, PLATFORM).await;
     let mut _successful_request_counter: u16 = 0; // Variable actually used, but clippy is buggy? with the shorthand += below. (clippy 0.1.79)
-    while let (Some(issue_sybmol), true) =
-        (potential_issue_sybmol.as_ref(), general_api_key.is_some())
+    while let (Some(issue_sybmol), Some(mut api_key)) =
+        (potential_issue_sybmol.as_ref(), general_api_key.take())
     {
-        let mut api_key = general_api_key.unwrap();
-        {
-            info!("Requesting symbol {}", issue_sybmol);
-            let mut request = create_finprep_company_request(url, issue_sybmol, &mut api_key);
-            debug!("Financialmodelingprep Company request: {}", request);
-            let response = client
-                .get(&request.expose_secret())
-                .send()
-                .await?
-                .text()
-                .await?;
-            debug!("Response: {}", response);
+        info!("Requesting symbol {}", issue_sybmol);
+        let mut request = create_finprep_company_request(url, issue_sybmol, &mut api_key);
+        debug!("Financialmodelingprep Company request: {}", request);
+        let response = client
+            .get(&request.expose_secret())
+            .send()
+            .await?
+            .text()
+            .await?;
+        debug!("Response: {}", response);
 
-            //TODO: Handle error
-            let parsed = crate::utils::action_helpers::parse_response::<Responses>(&response)?;
+        //TODO: Handle error
+        let parsed = crate::utils::action_helpers::parse_response::<Responses>(&response)?;
 
-            match parsed {
-                Responses::Data(data) => {
-                    store_data(data, &connection_pool).await?;
-                    _successful_request_counter += 1;
-                }
-                Responses::KeyExhausted(_) => {
-                    println!("Key exhaustion detected");
-                    api_key.set_status(Status::Exhausted);
-                }
-                Responses::NotFound(_) => {
-                    info!("Stock symbol '{}' not found.", issue_sybmol);
-                    add_missing_issue_symbol(issue_sybmol, &connection_pool).await?;
-                }
+        match parsed {
+            Responses::Data(data) => {
+                store_data(data, &connection_pool).await?;
+                _successful_request_counter += 1;
+            }
+            Responses::KeyExhausted(_) => {
+                api_key.set_status(Status::Exhausted);
+            }
+            Responses::NotFound(_) => {
+                info!("Stock symbol '{}' not found.", issue_sybmol);
+                add_missing_issue_symbol(issue_sybmol, &connection_pool).await?;
             }
         }
+
         potential_issue_sybmol = get_next_issue_symbol(&connection_pool).await?;
         general_api_key = KeyManager::exchange_apikey_or_wait_if_non_ready(
             key_manager.clone(),
