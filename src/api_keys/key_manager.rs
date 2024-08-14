@@ -104,7 +104,6 @@ impl KeyManager {
 
     pub fn get_key_and_timeout(&mut self, platform: &ApiKeyPlatform) -> KeyOrTimeoutResult {
         if let Some(pq) = self.keys.get_mut(platform) {
-
             {
                 if let Some(pair) = pq.peek() {
                     if pair.1 .0 > Utc::now() {

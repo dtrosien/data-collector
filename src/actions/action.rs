@@ -19,6 +19,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use sqlx::PgPool;
 use std::sync::{Arc, Mutex};
+use tracing::debug;
 
 /// Action is a boxed trait object of Runnable.
 pub type Action = Arc<dyn Runnable + Send + Sync>;
@@ -70,7 +71,6 @@ pub fn create_action(
 
 fn fill_key_store(key_store: &Arc<Mutex<KeyManager>>, secrets: SecretKeys) {
     let mut k = key_store.lock().unwrap();
-    // println!("######### {:?}", secrets);
     if let Some(finmod_list) = secrets.financialmodelingprep_company {
         finmod_list
             .split(' ')
@@ -78,16 +78,16 @@ fn fill_key_store(key_store: &Arc<Mutex<KeyManager>>, secrets: SecretKeys) {
             .into_iter()
             .for_each(|x| {
                 let key = FinancialmodelingprepKey::new(x.to_string());
-                print!("FinancialmodelingprepKey key added");
+                debug!("FinancialmodelingprepKey key added");
                 k.add_key_by_platform(Box::new(key));
             });
     }
-    if let Some(poly_list) = secrets.polygon_vec {
+    if let Some(poly_list) = secrets.polygon {
         let v = poly_list.split(' ').collect::<Vec<&str>>();
-        println!("After split: {:?}", v);
+
         v.into_iter().for_each(|x| {
             let key = PolygonKey::new(x.to_string());
-            print!("Polygon key added");
+            debug!("Polygon key added");
             k.add_key_by_platform(Box::new(key));
         });
     }
@@ -101,7 +101,6 @@ fn create_action_financial_modeling_market_capitalization(
     Arc::new(FinancialmodelingprepMarketCapitalizationCollector::new(
         pool.clone(),
         client.clone(),
-        // fin_modeling_prep_key,
         key_manager,
     ))
 }

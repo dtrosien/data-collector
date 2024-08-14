@@ -67,9 +67,8 @@ pub struct HttpClientSettings {
 #[serde_as]
 #[derive(Deserialize, Clone, Debug)]
 pub struct SecretKeys {
-    pub polygon: Option<Secret<String>>,
     #[serde_as(deserialize_as = "Option<DefaultOnError>")]
-    pub polygon_vec: Option<String>,
+    pub polygon: Option<String>,
     #[serde_as(deserialize_as = "Option<DefaultOnError>")]
     pub financialmodelingprep_company: Option<String>,
 }
@@ -79,7 +78,6 @@ impl Default for SecretKeys {
         error!("Defaulting all secrets to None! Please check all env inputs for keys problems.");
         Self {
             polygon: Default::default(),
-            polygon_vec: Default::default(),
             financialmodelingprep_company: Default::default(),
         }
     }
@@ -155,7 +153,6 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
         )
         .build()?;
     // convert to Settings type
-    println!("#### {:?}", settings);
     settings.try_deserialize::<Settings>()
 }
 

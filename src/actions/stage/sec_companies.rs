@@ -3,6 +3,7 @@ use futures_util::TryFutureExt;
 
 use sqlx::PgPool;
 use std::fmt::Display;
+use tracing::info;
 
 use crate::dag_schedule::task::TaskError::UnexpectedError;
 use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
@@ -37,7 +38,7 @@ impl Runnable for SecCompanyStager {
 
 #[tracing::instrument(level = "debug", skip_all)]
 pub async fn stage_data(connection_pool: PgPool) -> Result<(), anyhow::Error> {
-    println!("Staging entered");
+    info!("Staging entered");
     //Derive data
     move_issuers_to_master_data(&connection_pool).await?;
     move_otc_issues_to_master_data(&connection_pool).await?;

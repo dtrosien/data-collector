@@ -6,10 +6,8 @@ use secrecy::{ExposeSecret, Secret};
 use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
+use tracing::debug;
 
-// pub trait MaxRequests {
-//     const MAX_REQUESTS: u32;
-// }
 pub trait ApiKey: Sync + Send {
     // fn new(key: String) -> Self;
     fn expose_secret_for_data_structure(&self) -> &String;
@@ -55,10 +53,6 @@ pub struct FinancialmodelingprepKey {
     last_use: DateTime<Utc>,
     counter: u32,
 }
-
-// impl MaxRequests for FinancialmodelingprepKey {
-//     const MAX_REQUESTS: u32 = 250;
-// }
 
 impl FinancialmodelingprepKey {
     pub fn new(key: String) -> Self {
@@ -126,8 +120,7 @@ impl ApiKey for FinancialmodelingprepKey {
     fn get_secret(&mut self) -> &Secret<String> {
         self.last_use = Utc::now();
         self.counter += 1;
-        println!("Counter at: {}", &self.counter);
-        // println!("Key: {}", self.expose_secret_for_data_structure());
+        debug!("Counter at: {}", &self.counter);
         if self.counter == 250 {
             self.status = Status::Exhausted;
         }
@@ -135,7 +128,6 @@ impl ApiKey for FinancialmodelingprepKey {
     }
 
     fn set_status(&mut self, new_status: Status) {
-        println!("new status: {}", new_status);
         if new_status == Status::Exhausted {
             self.counter = 0;
         }
@@ -193,8 +185,7 @@ impl ApiKey for PolygonKey {
     fn get_secret(&mut self) -> &Secret<String> {
         self.last_use = Utc::now();
         self.counter += 1;
-        println!("Counter at: {}", &self.counter);
-        // println!("Key: {}", self.expose_secret_for_data_structure());
+        debug!("Counter at: {}", &self.counter);
         if self.counter == 5 {
             self.set_status(Status::Exhausted);
         }
@@ -235,7 +226,6 @@ impl fmt::Display for Status {
 
 #[cfg(test)]
 mod test {
-    use secrecy::Secret;
 
     use crate::api_keys::api_key::{ApiKey, ApiKeyPlatform, PolygonKey, Status};
 
