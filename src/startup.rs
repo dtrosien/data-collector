@@ -12,7 +12,6 @@ use crate::dag_schedule::schedule::{Schedule, TaskDependenciesSpecs, TaskSpec, T
 use crate::dag_schedule::task::{ExecutionMode, RetryOptions};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
-use uuid::Uuid;
 
 pub struct Application {
     pool: PgPool,
@@ -36,6 +35,7 @@ impl Application {
         }
     }
 
+    #[allow(clippy::mutable_key_type)]
     #[tracing::instrument(name = "Run application", skip(self))]
     pub async fn run(&self) -> Result<(), anyhow::Error> {
         // init specs from config
@@ -75,20 +75,20 @@ fn build_task_specs(
         .map(|ts| {
             let task_name: TaskName = ts.name.clone();
             let action = create_action(&ts.task_type, pool, client, secrets);
-            let task_spec = TaskSpec {
-                id: Uuid::new_v4(),
-                name: task_name.clone(),
-                retry_options: RetryOptions::default(), // todo read from config
-                execution_mode: ExecutionMode::Once,
-                tools: Arc::new(Default::default()),
-                runnable: action,
-            };
+            let task_spec = TaskSpec::new(
+                task_name.clone(),
+                RetryOptions::default(),
+                ExecutionMode::Once,
+                Arc::new(Default::default()),
+                action,
+            );
             let task_spec_ref: TaskSpecRef = TaskSpecRef::from(task_spec);
             (task_name, task_spec_ref)
         })
         .collect()
 }
 
+#[allow(clippy::mutable_key_type)]
 fn add_dependencies_to_task_specs(
     task_specs_map: HashMap<TaskName, TaskSpecRef>,
     task_dependencies: &[TaskDependency],
