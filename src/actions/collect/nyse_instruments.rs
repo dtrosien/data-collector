@@ -52,11 +52,6 @@ struct NysePeekResponse {
 }
 
 #[derive(Default, Deserialize, Debug, PartialEq)]
-struct NyseInstruments {
-    pub instruments: Vec<NyseInstrument>,
-}
-
-#[derive(Default, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct NyseInstrument {
     pub instrument_type: String,

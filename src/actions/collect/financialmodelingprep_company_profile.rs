@@ -121,7 +121,7 @@ pub struct CompanyProfileElement {
     last_div: Option<f64>,
     range: Option<String>,
     changes: Option<f64>,
-    company_name: String, //TODO: Must be optional. Yes, there is data with company name null...
+    company_name: Option<String>,
     currency: Option<String>,
     cik: Option<String>,
     isin: Option<String>,
@@ -182,7 +182,7 @@ async fn load_and_store_missing_data_given_url(
         let mut request = create_finprep_company_request(url, issue_sybmol, &mut api_key);
         debug!("Financialmodelingprep Company request: {}", request);
         let response = client
-            .get(&request.expose_secret())
+            .get(request.expose_secret())
             .send()
             .await?
             .text()
@@ -266,7 +266,7 @@ async fn store_data(
    &vec![data[0].last_div] as _,
    &vec![data[0].range.clone()] as _,
    &vec![data[0].changes] as _,
-   &vec![data[0].company_name.to_string()] as _,
+   &vec![data[0].company_name.clone()] as _,
    &vec![data[0].currency.clone()] as _,
    &vec![data[0].cik.clone()] as _,
    &vec![data[0].isin.clone()] as _,
@@ -392,7 +392,7 @@ mod test {
             last_div: Some(0.94),
             range: Some("96.8-151.58".to_string()),
             changes: Some(1.37),
-            company_name: "Agilent Technologies, Inc.".to_string(),
+            company_name: Some("Agilent Technologies, Inc.".to_string()),
             currency: Some("USD".to_string()),
             cik: Some("0001090872".to_string()),
             isin: Some("US00846U1016".to_string()),
@@ -476,6 +476,7 @@ mod test {
         let parsed =
             crate::utils::action_helpers::parse_response::<Vec<CompanyProfileElement>>(input_json)
                 .unwrap();
+        // ALTER TABLE public.financialmodelingprep_company_profile ALTER COLUMN company_name DROP NOT NULL;
 
         let instrument = CompanyProfileElement {
             symbol: "A".to_string(),
@@ -486,7 +487,7 @@ mod test {
             last_div: Some(0.94),
             range: Some("96.8-151.58".to_string()),
             changes: Some(1.37),
-            company_name: "Agilent Technologies, Inc.".to_string(),
+            company_name: Some("Agilent Technologies, Inc.".to_string()),
             currency: Some("USD".to_string()),
             cik: Some("0001090872".to_string()),
             isin: Some("US00846U1016".to_string()),

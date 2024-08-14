@@ -28,7 +28,7 @@ pub type TaskSpecRef = Arc<TaskSpec>;
 
 #[derive(Debug)]
 pub struct TaskSpec {
-    pub id: Uuid,
+    id: Uuid, // Do not change this values as it is used as key in hash maps
     pub name: String,
     pub retry_options: RetryOptions,
     pub execution_mode: ExecutionMode,
@@ -40,6 +40,29 @@ pub struct TaskSpec {
 impl PartialEq for TaskSpec {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
+    }
+}
+
+impl TaskSpec {
+    pub fn new(
+        name: String,
+        retry_options: RetryOptions,
+        execution_mode: ExecutionMode,
+        tools: Tools,
+        runnable: Arc<dyn Runnable>,
+    ) -> TaskSpec {
+        TaskSpec {
+            id: Uuid::new_v4(),
+            name,
+            retry_options,
+            execution_mode,
+            tools,
+            runnable,
+        }
+    }
+
+    pub fn get_uuid(&self) -> Uuid {
+        self.id
     }
 }
 
@@ -66,6 +89,7 @@ impl Default for Schedule {
 }
 
 impl Schedule {
+    #[allow(clippy::mutable_key_type)]
     pub fn new() -> Self {
         Schedule {
             source_tasks: Default::default(),
@@ -76,6 +100,8 @@ impl Schedule {
             // trigger_receiver: None,
         }
     }
+
+    #[allow(clippy::mutable_key_type)]
     #[tracing::instrument(level = "debug", skip_all)]
     async fn create_schedule(
         &mut self,
@@ -159,6 +185,7 @@ impl Schedule {
     /// creates TaskRef from TaskDependenciesSpecs,
     /// counts ingoing tasks for each task and put them in a HashMap
     /// identifies source tasks and puts their reference also in a Vec for later identification and usage
+    #[allow(clippy::mutable_key_type)]
     #[tracing::instrument(level = "debug", skip(self))]
     async fn create_tasks_from_specs(
         &mut self,
@@ -181,6 +208,7 @@ impl Schedule {
     /// add outgoings to tasks
     /// looks if there is a proper task in the task map, which should be the outgoing task
     /// then reverse the direction and go through the dependencies and add the outgoing task to their outgoing tasks
+    #[allow(clippy::mutable_key_type)]
     #[tracing::instrument(level = "debug", skip_all)]
     async fn add_outgoing_tasks_to_tasks_in_map(
         &self,
@@ -199,6 +227,7 @@ impl Schedule {
         }
     }
 
+    #[allow(clippy::mutable_key_type)]
     #[tracing::instrument(skip(self))]
     pub async fn schedule_tasks(&mut self, task_dependencies_specs: TaskDependenciesSpecs) {
         self.tasks = self.create_schedule(task_dependencies_specs).await;

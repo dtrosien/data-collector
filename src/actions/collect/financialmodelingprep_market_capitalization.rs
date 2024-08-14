@@ -196,7 +196,7 @@ async fn load_and_store_missing_data_given_url(
                 request
             );
             let response = client
-                .get(&request.expose_secret())
+                .get(request.expose_secret())
                 .send()
                 .await?
                 .text()

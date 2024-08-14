@@ -167,7 +167,7 @@ async fn load_and_store_missing_data_given_url(
             create_polygon_grouped_daily_request(url, &current_check_date, &mut api_key);
         debug!("Polygon grouped daily request: {}", request);
         let response = client
-            .get(&request.expose_secret())
+            .get(request.expose_secret())
             .send()
             .await?
             .text()
