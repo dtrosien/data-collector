@@ -44,6 +44,7 @@ pub async fn stage_data(connection_pool: PgPool) -> Result<(), anyhow::Error> {
     derive_country_from_sec_code(&connection_pool).await?;
     //Mark as staged in sec_companies
     mark_otc_issuers_as_staged(&connection_pool).await?;
+    mark_non_otc_issuers_as_staged(&connection_pool).await?;
     Ok(())
 }
 
@@ -106,6 +107,28 @@ async fn mark_otc_issuers_as_staged(connection_pool: &PgPool) -> Result<(), anyh
              sc."name" = md.issuer_name 
          and sc.ticker = md.issue_symbol 
        where md.instrument = 'OTC'
+      ) as r
+    where "name" = c_name and ticker = c_ticker"##
+    )
+    .execute(connection_pool)
+    .await?;
+    Ok(())
+}
+
+///Select the master data without category 'OTC' and non-null company and mark corresponding rows in sec_companies as staged (true).
+#[tracing::instrument(level = "debug", skip_all)]
+async fn mark_non_otc_issuers_as_staged(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
+    sqlx::query!(
+        r##" 
+    update sec_companies 
+      set is_staged = true 
+    from 
+      (select sc."name" as c_name , sc.ticker as c_ticker from sec_companies sc 
+       inner join master_data md on
+             sc."name" = md.issuer_name 
+         and sc.ticker = md.issue_symbol 
+       where md.instrument is distinct from 'OTC' 
+         and sc.is_staged  = false 
       ) as r
     where "name" = c_name and ticker = c_ticker"##
     )
