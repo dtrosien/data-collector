@@ -91,7 +91,7 @@ impl KeyManager {
     pub fn add_key_by_platform(&mut self, key: Box<dyn ApiKey>) {
         let platform = key.get_platform();
         let key_value_pair = self.keys.get_mut(&platform);
-        let next_update = key.next_refresh_possible();
+        let next_update = key.next_ready_time();
         if let Some(queue) = key_value_pair {
             queue.push(key, Reverse(next_update));
         } else {
