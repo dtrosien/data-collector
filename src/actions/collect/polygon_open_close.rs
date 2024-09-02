@@ -158,10 +158,9 @@ async fn load_and_store_missing_data_given_url(
     while let (Some(issue_symbol), true) = (issue_symbol_candidate, general_api_key.is_some()) {
         let mut current_check_date = earliest_date();
 
-        while let (true, Some(mut api_key)) = (
-            current_check_date.lt(&Utc::now().date_naive()),
-            general_api_key.take_if(|_| current_check_date.lt(&Utc::now().date_naive())),
-        ) {
+        while let Some(mut api_key) =
+            general_api_key.take_if(|_| current_check_date.lt(&Utc::now().date_naive()))
+        {
             let mut request = create_polygon_open_close_request(
                 url,
                 &issue_symbol,

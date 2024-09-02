@@ -16,6 +16,7 @@ pub trait ApiKey: Sync + Send {
     fn get_status(&self) -> Status;
     fn get_platform(&self) -> ApiKeyPlatform;
     fn get_secret(&mut self) -> &Secret<String>;
+    fn get_usage_counter(&self) -> u32;
     fn set_status(&mut self, new_status: Status);
 }
 
@@ -61,6 +62,16 @@ impl FinancialmodelingprepKey {
             platform: ApiKeyPlatform::Financialmodelingprep,
             status: Status::Ready,
             last_use: Utc.with_ymd_and_hms(1970, 1, 1, 0, 0, 0).unwrap(),
+            counter: 0,
+        }
+    }
+
+    pub fn new_with_time(key: String, last_use: DateTime<Utc>) -> Self {
+        FinancialmodelingprepKey {
+            api_key: Secret::new(key),
+            platform: ApiKeyPlatform::Financialmodelingprep,
+            status: Status::Ready,
+            last_use,
             counter: 0,
         }
     }
@@ -126,7 +137,7 @@ impl ApiKey for FinancialmodelingprepKey {
             self.set_status(Status::Ready);
             return true;
         }
-        return false;
+        false
     }
 
     fn next_ready_time(&self) -> chrono::DateTime<Utc> {
@@ -160,6 +171,10 @@ impl ApiKey for FinancialmodelingprepKey {
         }
         self.status = new_status;
     }
+
+    fn get_usage_counter(&self) -> u32 {
+        self.counter
+    }
 }
 
 pub struct PolygonKey {
@@ -167,7 +182,7 @@ pub struct PolygonKey {
     platform: ApiKeyPlatform,
     status: Status,
     last_use: DateTime<Utc>,
-    counter: u8,
+    counter: u32,
 }
 
 impl PolygonKey {
@@ -193,7 +208,7 @@ impl ApiKey for PolygonKey {
             self.counter = 0;
             return true;
         }
-        return false;
+        false
     }
 
     fn next_ready_time(&self) -> chrono::DateTime<Utc> {
@@ -225,6 +240,10 @@ impl ApiKey for PolygonKey {
             self.counter = 0;
         }
         self.status = new_status;
+    }
+
+    fn get_usage_counter(&self) -> u32 {
+        self.counter
     }
 }
 

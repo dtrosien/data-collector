@@ -175,9 +175,10 @@ async fn load_and_store_missing_data_given_url(
     let mut general_api_key =
         KeyManager::get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, PLATFORM).await;
     let mut _successful_request_counter: u16 = 0; // Variable actually used, but clippy is buggy? with the shorthand += below. (clippy 0.1.79)
-    while let (Some(issue_sybmol), Some(mut api_key)) =
-        (potential_issue_sybmol.as_ref(), general_api_key.take())
-    {
+    while let (Some(issue_sybmol), Some(mut api_key)) = (
+        potential_issue_sybmol.as_ref(),
+        general_api_key.take_if(|_| potential_issue_sybmol.is_some()),
+    ) {
         info!("Requesting symbol {}", issue_sybmol);
         let mut request = create_finprep_company_request(url, issue_sybmol, &mut api_key);
         debug!("Financialmodelingprep Company request: {}", request);

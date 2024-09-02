@@ -6,7 +6,6 @@ use std::{
 use chrono::{DateTime, Duration, Utc};
 use config::Map;
 use priority_queue::PriorityQueue;
-use tracing::debug;
 
 use super::api_key::{ApiKey, ApiKeyPlatform, Status};
 
@@ -145,14 +144,176 @@ pub enum KeyErrors {
 
 #[cfg(test)]
 mod test {
-    use crate::api_keys::api_key::FinancialmodelingprepKey;
+    use chrono::{Duration, Utc};
+
+    use crate::api_keys::api_key::{
+        ApiKey, ApiKeyPlatform, FinancialmodelingprepKey, PolygonKey, Status,
+    };
 
     use super::KeyManager;
+
+    // Tested
+    // Create object and add key throws no errors
+    // Adding key will be in correct queue
+    // Adding 3 keys with different refresh times, will order them correctly when retrieving
+    // Adding 4 keys for two queues each, will put them in two queues
+    // Adding two times the same key will result in one key in the queue
+    // Queue with exhausted non refresh-able key will return waiting time
+    // Queue with exhausted refresh-able key will return key
+    // Queue with exhausted refresh-able key will return key and key is ready
+    // Queue with non refresh-able, ready key will return ready key and same counter
+    // Missing tests
+    // Queue with refresh-able, ready key will return ready key and counter at zero // Ready again must be faked. Maybe use  tokio::time::pause, and change all Utc::now() calls to Instant.now()
+    //
 
     #[test]
     fn create_struct_key_manager() {
         let key = FinancialmodelingprepKey::new("key".to_string());
         let mut km = KeyManager::new();
         km.add_key_by_platform(Box::new(key));
+    }
+
+    #[test]
+    fn add_key_gives_correct_queue_size() {
+        let key = FinancialmodelingprepKey::new("key".to_string());
+        let mut km = KeyManager::new();
+        km.add_key_by_platform(Box::new(key));
+        let queue_size = km
+            .keys
+            .get(&ApiKeyPlatform::Financialmodelingprep)
+            .unwrap()
+            .len();
+        assert_eq!(queue_size, 1);
+    }
+
+    #[test]
+    fn add_three_keys_with_differing_refresh_time_then_returned_in_correct_order() {
+        //Setup exhausted keys
+        let now = Utc::now();
+        let mut key_1 =
+            FinancialmodelingprepKey::new_with_time("key_1".to_string(), now - Duration::days(3));
+        key_1.set_status(Status::Exhausted);
+        let mut key_2 =
+            FinancialmodelingprepKey::new_with_time("key_2".to_string(), now - Duration::days(1));
+        key_2.set_status(Status::Exhausted);
+        let mut key_3 =
+            FinancialmodelingprepKey::new_with_time("key_3".to_string(), now - Duration::days(2));
+        key_3.set_status(Status::Exhausted);
+        let mut km = KeyManager::new();
+        km.add_key_by_platform(Box::new(key_1));
+        km.add_key_by_platform(Box::new(key_2));
+        km.add_key_by_platform(Box::new(key_3));
+
+        let (res_1, _) = km
+            .get_key_and_timeout(&ApiKeyPlatform::Financialmodelingprep)
+            .unwrap();
+        let (res_2, _) = km
+            .get_key_and_timeout(&ApiKeyPlatform::Financialmodelingprep)
+            .unwrap();
+        let (res_3, _) = km
+            .get_key_and_timeout(&ApiKeyPlatform::Financialmodelingprep)
+            .unwrap();
+
+        assert_eq!(res_1.unwrap().expose_secret_for_data_structure(), "key_1");
+        assert_eq!(res_2.unwrap().expose_secret_for_data_structure(), "key_3");
+        assert_eq!(res_3.unwrap().expose_secret_for_data_structure(), "key_2");
+    }
+
+    #[test]
+    fn adding_4_keys_of_2_types_then_queue_size_is_correct() {
+        let mut km = KeyManager::new();
+
+        let key_1 = FinancialmodelingprepKey::new("key1".to_string());
+        let key_2 = FinancialmodelingprepKey::new("key2".to_string());
+        let key_3 = PolygonKey::new("key3".to_string());
+        let key_4 = PolygonKey::new("key4".to_string());
+        km.add_key_by_platform(Box::new(key_1));
+        km.add_key_by_platform(Box::new(key_2));
+        km.add_key_by_platform(Box::new(key_3));
+        km.add_key_by_platform(Box::new(key_4));
+        let queue_size_fin_mod = km
+            .keys
+            .get(&ApiKeyPlatform::Financialmodelingprep)
+            .unwrap()
+            .len();
+        assert_eq!(queue_size_fin_mod, 2);
+        let queue_size_poly = km.keys.get(&ApiKeyPlatform::Polygon).unwrap().len();
+        assert_eq!(queue_size_poly, 2);
+    }
+
+    #[test]
+    fn adding_2_times_the_same_api_key_then_queue_size_is_one() {
+        let mut km = KeyManager::new();
+
+        let key_1 = FinancialmodelingprepKey::new("key1".to_string());
+        let key_2 = FinancialmodelingprepKey::new("key1".to_string());
+        km.add_key_by_platform(Box::new(key_1));
+        km.add_key_by_platform(Box::new(key_2));
+        let queue_size_fin_mod = km
+            .keys
+            .get(&ApiKeyPlatform::Financialmodelingprep)
+            .unwrap()
+            .len();
+        assert_eq!(queue_size_fin_mod, 1);
+    }
+
+    #[test]
+    fn queue_with_exhausted_key_and_not_refresh_able_then_time_is_returned() {
+        let mut km = KeyManager::new();
+        let mut key = FinancialmodelingprepKey::new_with_time("key1".to_string(), Utc::now());
+        key.set_status(Status::Exhausted);
+        km.add_key_by_platform(Box::new(key));
+
+        let time = km
+            .get_key_and_timeout(&ApiKeyPlatform::Financialmodelingprep)
+            .unwrap()
+            .1;
+        assert_eq!(time.is_some(), true);
+    }
+
+    #[test]
+    fn queue_with_exhausted_key_and_refresh_able_then_key_is_returned() {
+        let mut km = KeyManager::new();
+        let mut key = FinancialmodelingprepKey::new("key1".to_string());
+        key.set_status(Status::Exhausted);
+        km.add_key_by_platform(Box::new(key));
+
+        let time = km
+            .get_key_and_timeout(&ApiKeyPlatform::Financialmodelingprep)
+            .unwrap()
+            .0;
+        assert_eq!(time.is_some(), true);
+    }
+
+    #[test]
+    fn queue_with_exhausted_key_and_refresh_able_then_key_is_returned_and_ready() {
+        let mut km = KeyManager::new();
+        let mut key = FinancialmodelingprepKey::new("key1".to_string());
+        key.set_status(Status::Exhausted);
+        km.add_key_by_platform(Box::new(key));
+
+        let time = km
+            .get_key_and_timeout(&ApiKeyPlatform::Financialmodelingprep)
+            .unwrap()
+            .0
+            .unwrap();
+
+        assert_eq!(time.get_status(), Status::Ready);
+    }
+
+    #[test]
+    fn queue_with_ready_key_and_non_refresh_able_then_key_is_returned_and_counter_stays_the_same() {
+        let mut km = KeyManager::new();
+        let mut key = FinancialmodelingprepKey::new("key1".to_string());
+        key.get_secret();
+        assert_eq!(key.get_usage_counter(), 1);
+
+        km.add_key_by_platform(Box::new(key));
+        let key1 = km
+            .get_key_and_timeout(&ApiKeyPlatform::Financialmodelingprep)
+            .unwrap()
+            .0
+            .unwrap();
+        assert_eq!(key1.get_usage_counter(), 1);
     }
 }

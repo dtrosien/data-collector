@@ -176,9 +176,10 @@ async fn load_and_store_missing_data_given_url(
     let mut general_api_key =
         KeyManager::get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, PLATFORM).await;
     let mut _successful_request_counter: u16 = 0;
-    while let (Some(issue_sybmol), Some(mut api_key)) =
-        (potential_issue_sybmol.as_ref(), general_api_key.take())
-    {
+    while let (Some(issue_sybmol), Some(mut api_key)) = (
+        potential_issue_sybmol.as_ref(),
+        general_api_key.take_if(|_| potential_issue_sybmol.is_some()),
+    ) {
         info!("Searching start date for symbol {}", &issue_sybmol);
         let mut start_request_date: NaiveDate =
             search_start_date(&connection_pool, issue_sybmol).await?;
