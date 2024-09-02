@@ -6,6 +6,7 @@ use std::{
 use chrono::{DateTime, Duration, Utc};
 use config::Map;
 use priority_queue::PriorityQueue;
+use tracing::debug;
 
 use super::api_key::{ApiKey, ApiKeyPlatform, Status};
 
@@ -48,6 +49,7 @@ impl KeyManager {
         KeyManager::get_new_apikey_or_wait(key_manager, wait, platform).await
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn get_new_apikey_or_wait(
         key_manager: Arc<Mutex<KeyManager>>,
         wait: bool,

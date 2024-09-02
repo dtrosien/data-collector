@@ -160,7 +160,7 @@ async fn load_and_store_missing_data_given_url(
 
         while let (true, Some(mut api_key)) = (
             current_check_date.lt(&Utc::now().date_naive()),
-            general_api_key.take(),
+            general_api_key.take_if(|_| current_check_date.lt(&Utc::now().date_naive())),
         ) {
             let mut request = create_polygon_open_close_request(
                 url,
@@ -228,6 +228,7 @@ async fn load_and_store_missing_data_given_url(
         let mut d = key_manager.lock().expect("msg");
         d.add_key_by_platform(api_key);
     }
+    info!("Finished loading Polygon open close.");
     Ok(())
 }
 
