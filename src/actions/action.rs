@@ -1,21 +1,25 @@
+use super::collect::financialmodelingprep_company_profile::FinancialmodelingprepCompanyProfileCollector;
 use super::collect::financialmodelingprep_market_capitalization::FinancialmodelingprepMarketCapitalizationCollector;
 use super::collect::polygon_grouped_daily::PolygonGroupedDailyCollector;
 use super::collect::polygon_open_close::PolygonOpenCloseCollector;
 use super::stage::financialmodelingprep_company_profile::FinancialmodelingprepCompanyProfileStager;
-use crate::actions::collect::dummy::DummyCollector;
-use crate::actions::collect::financialmodelingprep_company_profile::FinancialmodelingprepCompanyProfileCollector;
+use crate::{actions::collect::dummy::DummyCollector, api_keys::api_key::PolygonKey};
+
 use crate::actions::collect::nyse_events::NyseEventCollector;
 use crate::actions::collect::nyse_instruments::NyseInstrumentCollector;
 use crate::actions::collect::sec_companies::SecCompanyCollector;
 use crate::actions::stage::nyse_instruments::NyseInstrumentStager;
 use crate::actions::stage::sec_companies::SecCompanyStager;
+use crate::api_keys::api_key::FinancialmodelingprepKey;
+use crate::api_keys::key_manager;
+use crate::api_keys::key_manager::KeyManager;
 use crate::configuration::SecretKeys;
 use crate::dag_schedule::task::Runnable;
 use reqwest::Client;
-use secrecy::Secret;
 use serde::Deserialize;
 use sqlx::PgPool;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use tracing::debug;
 
 /// Action is a boxed trait object of Runnable.
 pub type Action = Arc<dyn Runnable + Send + Sync>;
@@ -25,8 +29,11 @@ pub fn create_action(
     action_type: &ActionType,
     pool: &PgPool,
     client: &Client,
-    secrets: &Option<SecretKeys>,
+    secrets: &SecretKeys,
 ) -> Action {
+    let key_store = Arc::new(Mutex::new(key_manager::KeyManager::new()));
+    fill_key_store(&key_store, secrets.clone());
+
     match action_type {
         ActionType::NyseEventsCollect => {
             Arc::new(NyseEventCollector::new(pool.clone(), client.clone()))
@@ -41,85 +48,96 @@ pub fn create_action(
         ActionType::SecCompaniesStage => Arc::new(SecCompanyStager::new(pool.clone())),
         ActionType::Dummy => Arc::new(DummyCollector::new()),
         ActionType::PolygonGroupedDaily => {
-            create_action_polygon_grouped_daily(pool, client, secrets)
+            create_action_polygon_grouped_daily(pool, client, Arc::clone(&key_store))
         }
-        ActionType::PolygonOpenClose => create_action_polygon_open_close(pool, client, secrets),
+        ActionType::PolygonOpenClose => {
+            create_action_polygon_open_close(pool, client, Arc::clone(&key_store))
+        }
         ActionType::FinancialmodelingprepCompanyProfileCollet => {
-            create_action_financial_modeling_company_profile(pool, client, secrets)
+            create_action_financial_modeling_company_profile(pool, client, Arc::clone(&key_store))
         }
         ActionType::FinmodCompanyProfileStage => {
             Arc::new(FinancialmodelingprepCompanyProfileStager::new(pool.clone()))
         }
         ActionType::FinmodMarketCapCollect => {
-            create_action_financial_modeling_market_capitalization(pool, client, secrets)
+            create_action_financial_modeling_market_capitalization(
+                pool,
+                client,
+                Arc::clone(&key_store),
+            )
         }
+    }
+}
+
+fn fill_key_store(key_store: &Arc<Mutex<KeyManager>>, secrets: SecretKeys) {
+    let mut k = key_store.lock().unwrap();
+    if let Some(finmod_list) = secrets.financialmodelingprep_company {
+        finmod_list
+            .split(' ')
+            .collect::<Vec<&str>>()
+            .into_iter()
+            .for_each(|x| {
+                let key = FinancialmodelingprepKey::new(x.to_string());
+                debug!("FinancialmodelingprepKey key added");
+                k.add_key_by_platform(Box::new(key));
+            });
+    }
+    if let Some(poly_list) = secrets.polygon {
+        let v = poly_list.split(' ').collect::<Vec<&str>>();
+
+        v.into_iter().for_each(|x| {
+            let key = PolygonKey::new(x.to_string());
+            debug!("Polygon key added");
+            k.add_key_by_platform(Box::new(key));
+        });
     }
 }
 
 fn create_action_financial_modeling_market_capitalization(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &Client,
-    secrets: &Option<SecretKeys>,
+    key_manager: Arc<Mutex<KeyManager>>,
 ) -> Arc<dyn Runnable + Send + Sync> {
-    let mut fin_modeling_prep_key = Option::<Secret<String>>::None;
-    if let Some(secret) = secrets {
-        fin_modeling_prep_key.clone_from(&secret.financialmodelingprep_company)
-    }
     Arc::new(FinancialmodelingprepMarketCapitalizationCollector::new(
         pool.clone(),
         client.clone(),
-        fin_modeling_prep_key,
+        key_manager,
     ))
 }
 
 fn create_action_financial_modeling_company_profile(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &Client,
-    secrets: &Option<SecretKeys>,
+    key_manager: Arc<Mutex<KeyManager>>,
 ) -> Arc<FinancialmodelingprepCompanyProfileCollector> {
-    let mut fin_modeling_prep_key = Option::<Secret<String>>::None;
-    if let Some(secret) = secrets {
-        fin_modeling_prep_key.clone_from(&secret.financialmodelingprep_company)
-    }
-
     Arc::new(FinancialmodelingprepCompanyProfileCollector::new(
         pool.clone(),
         client.clone(),
-        fin_modeling_prep_key,
+        key_manager,
     ))
 }
 
 fn create_action_polygon_grouped_daily(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &Client,
-    secrets: &Option<SecretKeys>,
+    key_manager: Arc<Mutex<KeyManager>>,
 ) -> Arc<PolygonGroupedDailyCollector> {
-    let mut polygon_key = Option::<Secret<String>>::None;
-    if let Some(secret) = secrets {
-        polygon_key.clone_from(&secret.polygon)
-    }
-
     Arc::new(PolygonGroupedDailyCollector::new(
         pool.clone(),
         client.clone(),
-        polygon_key,
+        key_manager,
     ))
 }
 
 fn create_action_polygon_open_close(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &Client,
-    secrets: &Option<SecretKeys>,
+    key_manager: Arc<Mutex<KeyManager>>,
 ) -> Arc<PolygonOpenCloseCollector> {
-    let mut polygon_key = Option::<Secret<String>>::None;
-    if let Some(secret) = secrets {
-        polygon_key.clone_from(&secret.polygon)
-    }
-
     Arc::new(PolygonOpenCloseCollector::new(
         pool.clone(),
         client.clone(),
-        polygon_key,
+        key_manager,
     ))
 }
 

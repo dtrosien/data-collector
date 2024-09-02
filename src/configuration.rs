@@ -1,7 +1,10 @@
 use secrecy::{ExposeSecret, Secret};
 use serde::Deserialize;
 use serde_aux::field_attributes::deserialize_number_from_string;
+use serde_with::serde_as;
+use serde_with::DefaultOnError;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
+use tracing::error;
 
 use crate::actions::action::ActionType;
 use crate::actions::collector_sources::CollectorSource;
@@ -24,12 +27,15 @@ pub struct DatabaseSettings {
     pub require_ssl: bool,
 }
 
+#[serde_as]
 #[derive(Deserialize)]
 pub struct ApplicationSettings {
     pub task_dependencies: Vec<TaskDependency>,
     pub tasks: Vec<TaskSetting>,
     pub http_client: HttpClientSettings,
-    pub secrets: Option<SecretKeys>,
+    #[serde_as(deserialize_as = "DefaultOnError")]
+    #[serde(default)]
+    pub secrets: SecretKeys,
 }
 
 #[derive(Deserialize, Clone)]
@@ -58,10 +64,23 @@ pub struct HttpClientSettings {
     pub timeout_milliseconds: u64,
 }
 
-#[derive(Deserialize, Clone)]
+#[serde_as]
+#[derive(Deserialize, Clone, Debug)]
 pub struct SecretKeys {
-    pub polygon: Option<Secret<String>>,
-    pub financialmodelingprep_company: Option<Secret<String>>,
+    #[serde_as(deserialize_as = "Option<DefaultOnError>")]
+    pub polygon: Option<String>,
+    #[serde_as(deserialize_as = "Option<DefaultOnError>")]
+    pub financialmodelingprep_company: Option<String>,
+}
+
+impl Default for SecretKeys {
+    fn default() -> Self {
+        error!("Defaulting all secrets to None! Please check all env inputs for keys problems.");
+        Self {
+            polygon: Default::default(),
+            financialmodelingprep_company: Default::default(),
+        }
+    }
 }
 
 impl HttpClientSettings {

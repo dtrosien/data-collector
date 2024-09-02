@@ -1,8 +1,11 @@
+use crate::api_keys::api_key::Status::{self};
+use crate::api_keys::api_key::{ApiKey, ApiKeyPlatform};
+use crate::api_keys::key_manager::KeyManager;
 use crate::dag_schedule::task::TaskError::UnexpectedError;
 use crate::dag_schedule::task::{Runnable, StatsMap};
-use anyhow::Error;
 use async_trait::async_trait;
 use chrono::NaiveDate;
+
 use futures_util::TryFutureExt;
 use reqwest::Client;
 use secrecy::{ExposeSecret, Secret};
@@ -10,48 +13,51 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr, NoneAsEmptyString};
 use sqlx::PgPool;
 use std::fmt::{Debug, Display};
-use tracing::{debug, error, info, warn};
+use std::sync::{Arc, Mutex};
+use tracing::{debug, info, warn};
 
 const URL: &str = "https://financialmodelingprep.com/api/v3/profile/";
+const PLATFORM: &ApiKeyPlatform = &ApiKeyPlatform::Financialmodelingprep;
+const WAIT_FOR_KEY: bool = false;
 
 #[derive(Clone, Debug)]
 struct IssueSymbols {
     issue_symbol: String,
 }
 
-#[derive(Clone, Debug)]
-struct FinancialmodelingprepCompanyProfileRequest {
+#[derive(Debug)]
+struct FinancialmodelingprepCompanyProfileRequest<'a> {
     base: String,
-    api_key: Secret<String>,
+    api_key: &'a mut Box<dyn ApiKey>,
 }
 
-impl FinancialmodelingprepCompanyProfileRequest {
-    fn expose_secret(&self) -> String {
-        self.base.clone() + self.api_key.expose_secret()
+impl FinancialmodelingprepCompanyProfileRequest<'_> {
+    fn expose_secret(&mut self) -> String {
+        self.base.clone() + self.api_key.get_secret().expose_secret()
     }
 }
 
-impl Display for FinancialmodelingprepCompanyProfileRequest {
+impl Display for FinancialmodelingprepCompanyProfileRequest<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", &self.base)?;
-        Secret::fmt(&self.api_key, f)
+        Secret::new(self.api_key.expose_secret_for_data_structure().clone()).fmt(f)
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct FinancialmodelingprepCompanyProfileCollector {
     pool: PgPool,
     client: Client,
-    api_key: Option<Secret<String>>,
+    key_manager: Arc<Mutex<KeyManager>>,
 }
 
 impl FinancialmodelingprepCompanyProfileCollector {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub fn new(pool: PgPool, client: Client, api_key: Option<Secret<String>>) -> Self {
+    pub fn new(pool: PgPool, client: Client, key_manager: Arc<Mutex<KeyManager>>) -> Self {
         FinancialmodelingprepCompanyProfileCollector {
             pool,
             client,
-            api_key,
+            key_manager,
         }
     }
 }
@@ -66,16 +72,21 @@ impl Display for FinancialmodelingprepCompanyProfileCollector {
 impl Runnable for FinancialmodelingprepCompanyProfileCollector {
     #[tracing::instrument(name = "Run FinancialmodelingprepCompanyProfileColletor", skip(self))]
     async fn run(&self) -> Result<Option<StatsMap>, crate::dag_schedule::task::TaskError> {
-        if let Some(key) = &self.api_key {
-            load_and_store_missing_data(self.pool.clone(), self.client.clone(), key)
-                .map_err(UnexpectedError)
-                .await?;
-        } else {
-            error!("No Api key provided for FinancialmodelingprepCompanyProfileColletor");
-            return Err(UnexpectedError(Error::msg(
-                "FinancialmodelingprepCompanyProfileColletor key not provided",
-            )));
-        }
+        // TODO: Can I check before if a key exists?
+        // if self.api_keys.len() > 0 {
+        load_and_store_missing_data(
+            self.pool.clone(),
+            self.client.clone(),
+            self.key_manager.clone(),
+        )
+        .map_err(UnexpectedError)
+        .await?;
+        // } else {
+        //     error!("No Api key provided for FinancialmodelingprepCompanyProfileColletor");
+        //     return Err(UnexpectedError(Error::msg(
+        //         "FinancialmodelingprepCompanyProfileColletor key not provided",
+        //     )));
+        // }
         Ok(None)
     }
 }
@@ -146,26 +157,30 @@ pub struct CompanyProfileElement {
 pub async fn load_and_store_missing_data(
     connection_pool: PgPool,
     client: Client,
-    api_key: &Secret<String>,
+    key_manager: Arc<Mutex<KeyManager>>,
 ) -> Result<(), anyhow::Error> {
-    load_and_store_missing_data_given_url(connection_pool, client, api_key, URL).await
+    load_and_store_missing_data_given_url(connection_pool, client, key_manager, URL).await
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
 async fn load_and_store_missing_data_given_url(
     connection_pool: sqlx::Pool<sqlx::Postgres>,
     client: Client,
-    api_key: &Secret<String>,
+    key_manager: Arc<Mutex<KeyManager>>,
     url: &str,
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Financialmodelingprep Company Profile Colletor.");
     let mut potential_issue_sybmol: Option<String> =
         get_next_issue_symbol(&connection_pool).await?;
-
-    let mut successful_request_counter: u16 = 0;
-    while let Some(issue_sybmol) = potential_issue_sybmol.as_ref() {
+    let mut general_api_key =
+        KeyManager::get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, PLATFORM).await;
+    let mut _successful_request_counter: u16 = 0; // Variable actually used, but clippy is buggy? with the shorthand += below. (clippy 0.1.79)
+    while let (Some(issue_sybmol), Some(mut api_key)) = (
+        potential_issue_sybmol.as_ref(),
+        general_api_key.take_if(|_| potential_issue_sybmol.is_some()),
+    ) {
         info!("Requesting symbol {}", issue_sybmol);
-        let request = create_polygon_grouped_daily_request(url, issue_sybmol, api_key);
+        let mut request = create_finprep_company_request(url, issue_sybmol, &mut api_key);
         debug!("Financialmodelingprep Company request: {}", request);
         let response = client
             .get(request.expose_secret())
@@ -173,7 +188,7 @@ async fn load_and_store_missing_data_given_url(
             .await?
             .text()
             .await?;
-        debug!("Repsonse: {}", response);
+        debug!("Response: {}", response);
 
         //TODO: Handle error
         let parsed = crate::utils::action_helpers::parse_response::<Responses>(&response)?;
@@ -181,19 +196,29 @@ async fn load_and_store_missing_data_given_url(
         match parsed {
             Responses::Data(data) => {
                 store_data(data, &connection_pool).await?;
-                successful_request_counter += 1;
+                _successful_request_counter += 1;
             }
             Responses::KeyExhausted(_) => {
-                return handle_exhausted_key(successful_request_counter);
+                api_key.set_status(Status::Exhausted);
             }
             Responses::NotFound(_) => {
                 info!("Stock symbol '{}' not found.", issue_sybmol);
                 add_missing_issue_symbol(issue_sybmol, &connection_pool).await?;
-                // return Ok(());
             }
         }
 
         potential_issue_sybmol = get_next_issue_symbol(&connection_pool).await?;
+        general_api_key = KeyManager::exchange_apikey_or_wait_if_non_ready(
+            key_manager.clone(),
+            WAIT_FOR_KEY,
+            api_key,
+            PLATFORM,
+        )
+        .await;
+    }
+    if let Some(api_key) = general_api_key {
+        let mut d = key_manager.lock().expect("msg");
+        d.add_key_by_platform(api_key);
     }
     Ok(())
 }
@@ -225,21 +250,6 @@ async fn get_next_issue_symbol(connection_pool: &PgPool) -> Result<Option<String
     match query_result {
         Ok(_) => Ok(Some(query_result?.issue_symbol)),
         Err(_) => Ok(Option::None),
-    }
-}
-
-fn handle_exhausted_key(successful_request_counter: u16) -> Result<(), anyhow::Error> {
-    if successful_request_counter == 0 {
-        warn!("FinancialmodelingprepCompanyProfileColletor key is already exhausted");
-        Err(Error::msg(
-            "FinancialmodelingprepCompanyProfileColletor key is already exhausted",
-        ))
-    } else {
-        info!(
-            "FinancialmodelingprepCompanyProfileColletor collected {} entries.",
-            successful_request_counter
-        );
-        Ok(())
     }
 }
 
@@ -309,16 +319,16 @@ async fn add_missing_issue_symbol(
 }
 
 ///  Example output https://financialmodelingprep.com/api/v3/profile/AAPL?apikey=TOKEN
-#[tracing::instrument(level = "debug", skip_all)]
-fn create_polygon_grouped_daily_request(
-    base_url: &str,
-    issue_symbol: &str,
-    api_key: &Secret<String>,
-) -> FinancialmodelingprepCompanyProfileRequest {
+// #[tracing::instrument(level = "debug", skip_all)],
+fn create_finprep_company_request<'a>(
+    base_url: &'a str,
+    issue_symbol: &'a str,
+    api_key: &'a mut Box<dyn ApiKey>,
+) -> FinancialmodelingprepCompanyProfileRequest<'a> {
     let base_request_url = base_url.to_string() + issue_symbol.to_string().as_str() + "?apikey=";
     FinancialmodelingprepCompanyProfileRequest {
         base: base_request_url,
-        api_key: api_key.clone(),
+        api_key,
     }
 }
 
