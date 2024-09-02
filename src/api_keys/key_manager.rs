@@ -164,7 +164,9 @@ mod test {
     // Queue with non refresh-able, ready key will return ready key and same counter
     // Missing tests
     // Queue with refresh-able, ready key will return ready key and counter at zero // Ready again must be faked. Maybe use  tokio::time::pause, and change all Utc::now() calls to Instant.now()
-    //
+    // Get key from empty stores does not cause problems
+    // Get key from Platform which was never initialized returns correctly
+    // Get key from initialized Platform returns correctly
 
     #[test]
     fn create_struct_key_manager() {

@@ -215,8 +215,7 @@ mod test {
     }
 
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
-        scripts("nyse_instruments_unstaged.sql")
+        "../../../tests/resources/collectors/staging/nyse_instruments_staging/nyse_instruments_unstaged.sql"
     ))]
     async fn given_unstaged_test_instrument_when_marked_staged_then_staged(pool: Pool<Postgres>) {
         //Entry should not be staged
@@ -240,11 +239,8 @@ mod test {
     }
 
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
-        scripts(
-            "nyse_instruments_unstaged.sql",
-            "master_data_without_company_and_date.sql"
-        )
+            "../../../tests/resources/collectors/staging/nyse_instruments_staging/nyse_instruments_unstaged.sql",
+            "../../../tests/resources/collectors/staging/nyse_instruments_staging/master_data_without_company_and_date.sql"
     ))]
     async fn given_master_data_without_dates_when_dates_staged_then_dates_in_correct_columns(
         pool: Pool<Postgres>,
@@ -337,11 +333,8 @@ mod test {
     }
 
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
-        scripts(
-            "nyse_instruments_staged.sql",
-            "master_data_without_company_and_date.sql"
-        )
+            "../../../tests/resources/collectors/staging/nyse_instruments_staging/nyse_instruments_staged.sql",
+            "../../../tests/resources/collectors/staging/nyse_instruments_staging/master_data_without_company_and_date.sql"
     ))]
     async fn given_master_data_without_dates_and_staged_instruments_when_dates_staged_then_no_change_in_master_data(
         pool: Pool<Postgres>,
@@ -379,11 +372,8 @@ mod test {
     // Already staged instrument gets ignored
 
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
-        scripts(
-            "nyse_instruments_unstaged.sql",
-            "master_data_without_company_and_date.sql"
-        )
+            "../../../tests/resources/collectors/staging/nyse_instruments_staging/nyse_instruments_unstaged.sql",
+            "../../../tests/resources/collectors/staging/nyse_instruments_staging/master_data_without_company_and_date.sql"
     ))]
     async fn given_master_data_wihtout_company_info_when_instrument_staged_then_master_data_contains_instrument(
         pool: Pool<Postgres>,
@@ -415,11 +405,8 @@ mod test {
     }
 
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
-        scripts(
-            "nyse_instruments_unstaged.sql",
-            "master_data_without_company_and_date.sql",
-        )
+        "../../../tests/resources/collectors/staging/nyse_instruments_staging/nyse_instruments_unstaged.sql",
+        "../../../tests/resources/collectors/staging/nyse_instruments_staging/master_data_without_company_and_date.sql",
     ))]
     async fn given_master_data_without_company_info_when_non_matching_instrument_is_staged_then_no_change_in_master_data(
         pool: Pool<Postgres>,
@@ -449,9 +436,8 @@ mod test {
     }
 
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
-        scripts("nyse_instruments_unstaged.sql", "master_data_with_company.sql")
-    ))]
+        "../../../tests/resources/collectors/staging/nyse_instruments_staging/nyse_instruments_unstaged.sql", "../../../tests/resources/collectors/staging/nyse_instruments_staging/master_data_with_company.sql")
+    )]
     async fn given_master_data_with_instrument_info_when_instrument_gets_staged_then_instrument_is_marked_staged(
         pool: Pool<Postgres>,
     ) {
@@ -479,11 +465,8 @@ mod test {
 
     // Leave unstaged instrument as unstaged
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
-        scripts(
-            "nyse_instruments_unstaged.sql",
-            "master_data_without_company_and_date.sql",
-        )
+            "../../../tests/resources/collectors/staging/nyse_instruments_staging/nyse_instruments_unstaged.sql",
+            "../../../tests/resources/collectors/staging/nyse_instruments_staging/master_data_without_company_and_date.sql",
     ))]
     async fn given_master_data_without_instrument_info_when_unstaged_instrument_gets_marked_staged_then_no_change_in_instruments(
         pool: Pool<Postgres>,
@@ -519,11 +502,8 @@ mod test {
 
     /// Already staged instrument gets ignored
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/nyse_instruments_staging",
-        scripts(
-            "nyse_instruments_staged.sql",
-            "master_data_without_company_and_date.sql"
-        )
+            "../../../tests/resources/collectors/staging/nyse_instruments_staging/nyse_instruments_staged.sql",
+            "../../../tests/resources/collectors/staging/nyse_instruments_staging/master_data_without_company_and_date.sql"
     ))]
     async fn given_master_data_with_no_instrument_info_when_copy_already_staged_instrument_then_master_data_unchanged(
         pool: Pool<Postgres>,

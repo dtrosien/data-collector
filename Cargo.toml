@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.83"
-async-trait = "0.1.80"
+async-trait = "0.1.82"
 chrono = { version = "0.4.38", default-features = false, features = [
     "clock",
     "serde",
@@ -65,7 +65,7 @@ rand = "0.8.5"         # used to generate random election timeouts in a specific
 rusty-hook = "^0.11.2"
 
 [dependencies.sqlx]
-version = "0.7.4"
+version = "0.8.1"
 default-features = false
 features = [
     "bigdecimal",

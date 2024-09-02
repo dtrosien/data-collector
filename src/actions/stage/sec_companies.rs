@@ -163,9 +163,8 @@ mod test {
     }
 
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-        scripts("sec_companies_unstaged.sql")
-    ))]
+        "../../../tests/resources/collectors/staging/sec_companies_staging/sec_companies_unstaged.sql")
+    )]
     async fn given_data_in_sec_companies_when_issuers_staged_then_issuers_in_master_data(
         pool: Pool<Postgres>,
     ) {
@@ -194,9 +193,9 @@ mod test {
     }
 
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-        scripts("sec_companies_unstaged.sql", "sec_companies_staged.sql")
-    ))]
+        "../../../tests/resources/collectors/staging/sec_companies_staging/sec_companies_unstaged.sql",
+         "../../../tests/resources/collectors/staging/sec_companies_staging/sec_companies_staged.sql")
+    )]
     async fn given_data_in_sec_companies_when_issuers_staged_then_staged_issuers_not_in_master_data(
         pool: Pool<Postgres>,
     ) {
@@ -232,8 +231,7 @@ mod test {
     }
 
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-        scripts("sec_companies_unstaged.sql", "master_data_without_otc_category.sql")
+        "../../../tests/resources/collectors/staging/sec_companies_staging/sec_companies_unstaged.sql", "../../../tests/resources/collectors/staging/sec_companies_staging/master_data_without_otc_category.sql"
     ))]
     async fn given_data_in_sec_companies_and_issuers_in_master_data_when_otc_staged_then_issuers_as_otc_in_master_data(
         pool: Pool<Postgres>,
@@ -262,13 +260,10 @@ mod test {
     }
 
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-        scripts(
-            "sec_companies_unstaged.sql",
-            "sec_companies_staged.sql",
-            "master_data_without_otc_category.sql"
-        )
-    ))]
+        "../../../tests/resources/collectors/staging/sec_companies_staging/sec_companies_unstaged.sql",
+        "../../../tests/resources/collectors/staging/sec_companies_staging/sec_companies_staged.sql",
+        "../../../tests/resources/collectors/staging/sec_companies_staging/master_data_without_otc_category.sql"
+        ))]
     async fn given_some_staged_data_in_sec_companies_and_issuers_in_master_data_when_otc_staged_then_some_issuers_as_otc_in_master_data(
         pool: Pool<Postgres>,
     ) {
@@ -308,8 +303,7 @@ mod test {
     }
 
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-        scripts("sec_companies_unstaged.sql", "master_data_without_country_code.sql")
+        "../../../tests/resources/collectors/staging/sec_companies_staging/sec_companies_unstaged.sql", "../../../tests/resources/collectors/staging/sec_companies_staging/master_data_without_country_code.sql"
     ))]
     async fn given_data_in_sec_companies_and_issuers_in_master_data_when_country_derived_then_issuers_have_county_in_master_data(
         pool: Pool<Postgres>,
@@ -335,8 +329,7 @@ mod test {
     }
 
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-        scripts("sec_companies_staged.sql", "master_data_without_country_code.sql")
+        "../../../tests/resources/collectors/staging/sec_companies_staging/sec_companies_staged.sql", "../../../tests/resources/collectors/staging/sec_companies_staging/master_data_without_country_code.sql"
     ))]
     async fn given_some_staged_data_in_sec_companies_and_issuers_in_master_data_when_country_derived_then_some_issuers_as_otc_in_master_data(
         pool: Pool<Postgres>,
@@ -363,8 +356,7 @@ mod test {
     }
 
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-        scripts("sec_companies_unstaged.sql", "master_data_without_country_code.sql")
+        "../../../tests/resources/collectors/staging/sec_companies_staging/sec_companies_unstaged.sql", "../../../tests/resources/collectors/staging/sec_companies_staging/master_data_without_country_code.sql"
     ))]
     async fn given_data_in_sec_companies_and_otc_issuers_in_master_data_when_mark_staged_sec_companies_then_otc_sec_companies_marked_staged(
         pool: Pool<Postgres>,
@@ -396,8 +388,7 @@ mod test {
     }
 
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-        scripts("sec_companies_unstaged.sql")
+        "../../../tests/resources/collectors/staging/sec_companies_staging/sec_companies_unstaged.sql"
     ))]
     async fn given_data_in_sec_companies_when_full_staging_then_staged_master_data_and_marked_sec_companies(
         pool: Pool<Postgres>,
@@ -437,8 +428,7 @@ mod test {
     }
 
     #[sqlx::test(fixtures(
-        path = "../../../tests/resources/collectors/staging/sec_companies_staging",
-        scripts("sec_companies_staged.sql")
+        "../../../tests/resources/collectors/staging/sec_companies_staging/sec_companies_staged.sql"
     ))]
     async fn check_correct_fixture_loading(pool: Pool<Postgres>) {
         let result: Vec<SecCompanyRow> =
