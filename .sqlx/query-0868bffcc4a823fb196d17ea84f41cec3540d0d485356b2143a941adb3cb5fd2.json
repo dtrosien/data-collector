@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT symbol\n        FROM polygon_open_close poc \n        GROUP BY symbol\n        HAVING MAX(business_date) < (CURRENT_DATE - INTERVAL '7 days') \n          AND symbol > $1::text\n          AND symbol not in (select issue_symbol from source_symbol_warden ssw where polygon = false)\n        order by symbol limit 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "symbol",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "0868bffcc4a823fb196d17ea84f41cec3540d0d485356b2143a941adb3cb5fd2"
+}

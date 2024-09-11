@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO source_symbol_warden (issue_symbol, polygon)\n      VALUES($1, false)\n      ON CONFLICT(issue_symbol)\n      DO UPDATE SET\n        polygon = false",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ded8d489997c52a4116fb41a7b8d63332a1e01195309cec2e126374998cddcdb"
+}

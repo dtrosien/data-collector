@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select issue_symbol \n        from master_data_eligible mde \n        where issue_symbol not in \n          (select distinct(symbol) \n           from polygon_open_close poc)\n           and issue_symbol > $1::text \n           and issue_symbol not in (select issue_symbol from source_symbol_warden ssw where polygon = false)\n        order by issue_symbol\n        limit 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "issue_symbol",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "a1bb58fe79127445d5a411875e5ea3e5b8f0b91f97d754d509a29f7f2941db57"
+}

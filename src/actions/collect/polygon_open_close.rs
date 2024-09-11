@@ -6,7 +6,7 @@ use crate::{
     utils::action_helpers::parse_response,
 };
 use async_trait::async_trait;
-use chrono::{Days, Months, NaiveDate, Utc};
+use chrono::{Days, Months, NaiveDate, TimeDelta, Utc};
 use futures_util::TryFutureExt;
 use secrecy::{ExposeSecret, Secret};
 use std::{
@@ -28,6 +28,7 @@ const URL: &str = "https://api.polygon.io/v1/open-close/";
 const ERROR_MSG_VALUE_EXISTS: &str = "Value exists or error must have been caught before";
 const PLATFORM: &ApiKeyPlatform = &ApiKeyPlatform::Polygon;
 const WAIT_FOR_KEY: bool = true;
+const IDLE_SYMBOL_TIMEOUT: i64 = 30; // Timeout in days
 
 #[derive(Debug)]
 struct PolygonOpenCloseRequest<'a> {
@@ -142,21 +143,12 @@ async fn load_and_store_missing_data_given_url(
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Polygon open close.");
 
-    let mut issue_symbol_candidate: Option<String> = sqlx::query!(
-        "select issue_symbol
-        from master_data_eligible mde
-        where issue_symbol not in 
-          (select distinct(symbol) 
-           from polygon_open_close poc)
-        order by issue_symbol"
-    )
-    .fetch_one(&connection_pool)
-    .await?
-    .issue_symbol;
+    let mut issue_symbol_candidate: Option<String> =
+        get_next_issue_symbol_candidate(&connection_pool, None).await;
     let mut general_api_key =
         KeyManager::get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, PLATFORM).await;
     while let (Some(issue_symbol), true) = (issue_symbol_candidate, general_api_key.is_some()) {
-        let mut current_check_date = earliest_date();
+        let mut current_check_date = earliest_date(&issue_symbol, &connection_pool).await;
 
         while let Some(mut api_key) =
             general_api_key.take_if(|_| current_check_date.lt(&Utc::now().date_naive()))
@@ -211,17 +203,15 @@ async fn load_and_store_missing_data_given_url(
             )
             .await;
         }
-        issue_symbol_candidate = sqlx::query!(
-            "select issue_symbol 
-            from master_data_eligible mde 
-            where issue_symbol not in 
-              (select distinct(symbol) 
-               from polygon_open_close poc) 
-            order by issue_symbol"
-        )
-        .fetch_one(&connection_pool)
-        .await?
-        .issue_symbol;
+        // Mark symbols without new data as not available
+        if Utc::now().date_naive() - earliest_date(&issue_symbol, &connection_pool).await
+            > TimeDelta::days(IDLE_SYMBOL_TIMEOUT)
+        {
+            add_missing_issue_symbol(&issue_symbol, &connection_pool).await?;
+        }
+
+        issue_symbol_candidate =
+            get_next_issue_symbol_candidate(&connection_pool, Some(issue_symbol)).await;
     }
     if let Some(api_key) = general_api_key {
         let mut d = key_manager.lock().expect("msg");
@@ -229,6 +219,68 @@ async fn load_and_store_missing_data_given_url(
     }
     info!("Finished loading Polygon open close.");
     Ok(())
+}
+
+async fn add_missing_issue_symbol(
+    issue_symbol: &str,
+    connection_pool: &PgPool,
+) -> Result<(), anyhow::Error> {
+    sqlx::query!(
+        r#"INSERT INTO source_symbol_warden (issue_symbol, polygon)
+      VALUES($1, false)
+      ON CONFLICT(issue_symbol)
+      DO UPDATE SET
+        polygon = false"#,
+        issue_symbol
+    )
+    .execute(connection_pool)
+    .await?;
+    Ok(())
+}
+
+// Check first if a symbol can be updated and then if totally undocumented symbols are available
+async fn get_next_issue_symbol_candidate(
+    connection_pool: &sqlx::Pool<sqlx::Postgres>,
+    lower_symbol_bound: Option<String>,
+) -> Option<String> {
+    let lower_symbol_bound = match lower_symbol_bound {
+        Some(s) => s,
+        None => "".to_string(),
+    };
+    let a = sqlx::query!(
+        "SELECT symbol
+        FROM polygon_open_close poc 
+        GROUP BY symbol
+        HAVING MAX(business_date) < (CURRENT_DATE - INTERVAL '7 days') 
+          AND symbol > $1::text
+          AND symbol not in (select issue_symbol from source_symbol_warden ssw where polygon = false)
+        order by symbol limit 1",
+        lower_symbol_bound
+    )
+    .fetch_one(connection_pool)
+    .await;
+    if let Ok(issue_symbol_candidate) = a {
+        return Some(issue_symbol_candidate.symbol);
+    }
+
+    let issue_symbol_candidate = sqlx::query!(
+        "select issue_symbol 
+        from master_data_eligible mde 
+        where issue_symbol not in 
+          (select distinct(symbol) 
+           from polygon_open_close poc)
+           and issue_symbol > $1::text 
+           and issue_symbol not in (select issue_symbol from source_symbol_warden ssw where polygon = false)
+        order by issue_symbol
+        limit 1",
+        lower_symbol_bound
+    )
+    .fetch_one(connection_pool)
+    .await;
+    if let Ok(issue_symbol) = issue_symbol_candidate {
+        return issue_symbol.issue_symbol;
+    }
+    None
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
@@ -268,7 +320,19 @@ fn transpose_polygon_open_close(instruments: &Vec<PolygonOpenClose>) -> Transpos
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
-fn earliest_date() -> NaiveDate {
+async fn earliest_date(
+    issue_symbol: &String,
+    connection_pool: &sqlx::Pool<sqlx::Postgres>,
+) -> NaiveDate {
+    let a = sqlx::query!(
+        "select MAX(business_date) as max_date from polygon_open_close pgd where symbol = $1::text",
+        issue_symbol
+    )
+    .fetch_one(connection_pool)
+    .await;
+    if let Ok(date) = a {
+        return date.max_date.expect("Check already happended before.");
+    }
     Utc::now()
         .date_naive()
         .checked_sub_months(Months::new(24))
