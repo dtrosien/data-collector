@@ -203,7 +203,7 @@ async fn load_and_store_missing_data_given_url(
             )
             .await;
         }
-        // Mark symbols without new date as not available
+        // Mark symbols without new data as not available
         if Utc::now().date_naive() - earliest_date(&issue_symbol, &connection_pool).await
             > TimeDelta::days(IDLE_SYMBOL_TIMEOUT)
         {
