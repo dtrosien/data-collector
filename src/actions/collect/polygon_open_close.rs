@@ -142,21 +142,12 @@ async fn load_and_store_missing_data_given_url(
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Polygon open close.");
 
-    let mut issue_symbol_candidate: Option<String> = sqlx::query!(
-        "select issue_symbol
-        from master_data_eligible mde
-        where issue_symbol not in 
-          (select distinct(symbol) 
-           from polygon_open_close poc)
-        order by issue_symbol"
-    )
-    .fetch_one(&connection_pool)
-    .await?
-    .issue_symbol;
+    let mut issue_symbol_candidate: Option<String> =
+        get_next_issue_symbol_candidate(&connection_pool, None).await;
     let mut general_api_key =
         KeyManager::get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, PLATFORM).await;
     while let (Some(issue_symbol), true) = (issue_symbol_candidate, general_api_key.is_some()) {
-        let mut current_check_date = earliest_date();
+        let mut current_check_date = earliest_date(&issue_symbol, &connection_pool).await;
 
         while let Some(mut api_key) =
             general_api_key.take_if(|_| current_check_date.lt(&Utc::now().date_naive()))
@@ -211,17 +202,8 @@ async fn load_and_store_missing_data_given_url(
             )
             .await;
         }
-        issue_symbol_candidate = sqlx::query!(
-            "select issue_symbol 
-            from master_data_eligible mde 
-            where issue_symbol not in 
-              (select distinct(symbol) 
-               from polygon_open_close poc) 
-            order by issue_symbol"
-        )
-        .fetch_one(&connection_pool)
-        .await?
-        .issue_symbol;
+        issue_symbol_candidate =
+            get_next_issue_symbol_candidate(&connection_pool, Some(issue_symbol)).await;
     }
     if let Some(api_key) = general_api_key {
         let mut d = key_manager.lock().expect("msg");
@@ -229,6 +211,49 @@ async fn load_and_store_missing_data_given_url(
     }
     info!("Finished loading Polygon open close.");
     Ok(())
+}
+
+// Check first if a symbol can be updated and then if totally undocumented symbols are available
+async fn get_next_issue_symbol_candidate(
+    connection_pool: &sqlx::Pool<sqlx::Postgres>,
+    lower_symbol_bound: Option<String>,
+) -> Option<String> {
+    let lower_symbol_bound = if lower_symbol_bound.is_some() {
+        lower_symbol_bound.unwrap()
+    } else {
+        "".to_string()
+    };
+    let a = sqlx::query!(
+        "SELECT symbol
+        FROM polygon_open_close poc 
+        GROUP BY symbol
+        HAVING MAX(business_date) < (CURRENT_DATE - INTERVAL '7 days') and symbol > $1::text
+        order by symbol limit 1",
+        lower_symbol_bound
+    )
+    .fetch_one(connection_pool)
+    .await;
+    if let Ok(issue_symbol_candidate) = a {
+        return Some(issue_symbol_candidate.symbol);
+    }
+
+    let issue_symbol_candidate = sqlx::query!(
+        "select issue_symbol 
+        from master_data_eligible mde 
+        where issue_symbol not in 
+          (select distinct(symbol) 
+           from polygon_open_close poc)
+           and issue_symbol > $1::text 
+        order by issue_symbol
+        limit 1",
+        lower_symbol_bound
+    )
+    .fetch_one(connection_pool)
+    .await;
+    if let Ok(issue_symbol) = issue_symbol_candidate {
+        return issue_symbol.issue_symbol;
+    }
+    None
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
@@ -268,7 +293,19 @@ fn transpose_polygon_open_close(instruments: &Vec<PolygonOpenClose>) -> Transpos
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
-fn earliest_date() -> NaiveDate {
+async fn earliest_date(
+    issue_symbol: &String,
+    connection_pool: &sqlx::Pool<sqlx::Postgres>,
+) -> NaiveDate {
+    let a = sqlx::query!(
+        "select MAX(business_date) as max_date from polygon_open_close pgd where symbol = $1::text",
+        issue_symbol
+    )
+    .fetch_one(connection_pool)
+    .await;
+    if let Ok(date) = a {
+        return date.max_date.expect("Check already happended before.");
+    }
     Utc::now()
         .date_naive()
         .checked_sub_months(Months::new(24))
