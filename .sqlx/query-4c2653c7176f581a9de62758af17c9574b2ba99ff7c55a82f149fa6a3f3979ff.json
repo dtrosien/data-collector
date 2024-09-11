@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select MAX(business_date) as max_date from polygon_open_close pgd where symbol = $1::text",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "max_date",
+        "type_info": "Date"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "4c2653c7176f581a9de62758af17c9574b2ba99ff7c55a82f149fa6a3f3979ff"
+}
