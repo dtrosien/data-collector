@@ -243,10 +243,9 @@ async fn get_next_issue_symbol_candidate(
     connection_pool: &sqlx::Pool<sqlx::Postgres>,
     lower_symbol_bound: Option<String>,
 ) -> Option<String> {
-    let lower_symbol_bound = if lower_symbol_bound.is_some() {
-        lower_symbol_bound.unwrap()
-    } else {
-        "".to_string()
+    let lower_symbol_bound = match lower_symbol_bound {
+        Some(s) => s,
+        None => "".to_string(),
     };
     let a = sqlx::query!(
         "SELECT symbol
