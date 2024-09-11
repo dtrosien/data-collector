@@ -6,7 +6,7 @@ use crate::{
     utils::action_helpers::parse_response,
 };
 use async_trait::async_trait;
-use chrono::{Days, Months, NaiveDate, Utc};
+use chrono::{Days, Months, NaiveDate, TimeDelta, Utc};
 use futures_util::TryFutureExt;
 use secrecy::{ExposeSecret, Secret};
 use std::{
@@ -28,6 +28,7 @@ const URL: &str = "https://api.polygon.io/v1/open-close/";
 const ERROR_MSG_VALUE_EXISTS: &str = "Value exists or error must have been caught before";
 const PLATFORM: &ApiKeyPlatform = &ApiKeyPlatform::Polygon;
 const WAIT_FOR_KEY: bool = true;
+const IDLE_SYMBOL_TIMEOUT: i64 = 30; // Timeout in days
 
 #[derive(Debug)]
 struct PolygonOpenCloseRequest<'a> {
@@ -202,6 +203,13 @@ async fn load_and_store_missing_data_given_url(
             )
             .await;
         }
+        // Mark symbols without new date as not available
+        if Utc::now().date_naive() - earliest_date(&issue_symbol, &connection_pool).await
+            > TimeDelta::days(IDLE_SYMBOL_TIMEOUT)
+        {
+            add_missing_issue_symbol(&issue_symbol, &connection_pool).await?;
+        }
+
         issue_symbol_candidate =
             get_next_issue_symbol_candidate(&connection_pool, Some(issue_symbol)).await;
     }
@@ -210,6 +218,23 @@ async fn load_and_store_missing_data_given_url(
         d.add_key_by_platform(api_key);
     }
     info!("Finished loading Polygon open close.");
+    Ok(())
+}
+
+async fn add_missing_issue_symbol(
+    issue_symbol: &str,
+    connection_pool: &PgPool,
+) -> Result<(), anyhow::Error> {
+    sqlx::query!(
+        r#"INSERT INTO source_symbol_warden (issue_symbol, polygon)
+      VALUES($1, false)
+      ON CONFLICT(issue_symbol)
+      DO UPDATE SET
+        polygon = false"#,
+        issue_symbol
+    )
+    .execute(connection_pool)
+    .await?;
     Ok(())
 }
 
@@ -227,7 +252,9 @@ async fn get_next_issue_symbol_candidate(
         "SELECT symbol
         FROM polygon_open_close poc 
         GROUP BY symbol
-        HAVING MAX(business_date) < (CURRENT_DATE - INTERVAL '7 days') and symbol > $1::text
+        HAVING MAX(business_date) < (CURRENT_DATE - INTERVAL '7 days') 
+          AND symbol > $1::text
+          AND symbol not in (select issue_symbol from source_symbol_warden ssw where polygon = false)
         order by symbol limit 1",
         lower_symbol_bound
     )
@@ -244,6 +271,7 @@ async fn get_next_issue_symbol_candidate(
           (select distinct(symbol) 
            from polygon_open_close poc)
            and issue_symbol > $1::text 
+           and issue_symbol not in (select issue_symbol from source_symbol_warden ssw where polygon = false)
         order by issue_symbol
         limit 1",
         lower_symbol_bound
