@@ -3,6 +3,7 @@ use super::collect::financialmodelingprep_market_capitalization::Financialmodeli
 use super::collect::polygon_grouped_daily::PolygonGroupedDailyCollector;
 use super::collect::polygon_open_close::PolygonOpenCloseCollector;
 use super::stage::financialmodelingprep_company_profile::FinancialmodelingprepCompanyProfileStager;
+use super::stage::polygon_grouped_daily::PolygonGroupedDailyStager;
 use crate::{actions::collect::dummy::DummyCollector, api_keys::api_key::PolygonKey};
 
 use crate::actions::collect::nyse_events::NyseEventCollector;
@@ -50,6 +51,7 @@ pub fn create_action(
         ActionType::PolygonGroupedDaily => {
             create_action_polygon_grouped_daily(pool, client, Arc::clone(&key_store))
         }
+        ActionType::PolygonGroupedDailyStager => create_action_polygon_grouped_daily_stager(pool),
         ActionType::PolygonOpenClose => {
             create_action_polygon_open_close(pool, client, Arc::clone(&key_store))
         }
@@ -129,6 +131,12 @@ fn create_action_polygon_grouped_daily(
     ))
 }
 
+fn create_action_polygon_grouped_daily_stager(
+    pool: &sqlx::Pool<sqlx::Postgres>,
+) -> Arc<PolygonGroupedDailyStager> {
+    Arc::new(PolygonGroupedDailyStager::new(pool.clone()))
+}
+
 fn create_action_polygon_open_close(
     pool: &sqlx::Pool<sqlx::Postgres>,
     client: &Client,
@@ -150,6 +158,7 @@ pub enum ActionType {
     NyseInstrumentsStage,
     SecCompaniesStage,
     PolygonGroupedDaily,
+    PolygonGroupedDailyStager,
     PolygonOpenClose,
     FinancialmodelingprepCompanyProfileCollet,
     FinmodCompanyProfileStage,
