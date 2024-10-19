@@ -104,13 +104,13 @@ pub struct DailyValue {
     #[serde(rename = "l")]
     low: f64,
     #[serde(rename = "n")]
-    stock_volume: Option<i64>,
+    order_amount: Option<i64>,
     #[serde(rename = "o")]
     open: f64,
     #[serde(rename = "t")]
     unix_timestamp: i64,
     #[serde(rename = "v")]
-    traded_volume: f64,
+    stock_traded: f64,
     #[serde(rename = "vw")]
     volume_weighted_average_price: Option<f64>,
 }
@@ -124,8 +124,8 @@ struct TransposedPolygonOpenClose {
     pub low: Vec<f64>,
     pub open: Vec<f64>,
     pub symbol: Vec<String>,
-    pub stock_volume: Vec<Option<i64>>,
-    pub traded_volume: Vec<f64>,
+    pub order_amount: Vec<Option<i64>>,
+    pub stock_traded: Vec<f64>,
     pub volume_weighted_average_price: Vec<Option<f64>>,
 }
 
@@ -178,7 +178,7 @@ async fn load_and_store_missing_data_given_url(
         if let Some(results) = open_close.results {
             let open_close = transpose_polygon_grouped_daily(results, current_check_date);
 
-            sqlx::query!(r#"INSERT INTO public.polygon_grouped_daily ("close", business_date, high, low, "open", symbol, stock_volume, traded_volume, volume_weighted_average_price)
+            sqlx::query!(r#"INSERT INTO public.polygon_grouped_daily ("close", business_date, high, low, "open", symbol, order_amount, stock_traded, volume_weighted_average_price)
                 Select * from UNNEST ($1::float[], $2::date[], $3::float[], $4::float[], $5::float[], $6::text[], $7::float[], $8::float[], $9::float[]) on conflict do nothing"#,
                 &open_close.close[..],
                 &open_close.business_date[..],
@@ -186,8 +186,8 @@ async fn load_and_store_missing_data_given_url(
                 &open_close.low[..],
                 &open_close.open[..],
                 &open_close.symbol[..],
-                &open_close.stock_volume[..] as _,
-                &open_close.traded_volume[..],
+                &open_close.order_amount[..] as _,
+                &open_close.stock_traded[..],
                 &open_close.volume_weighted_average_price[..] as _,)
             .execute(&connection_pool).await?;
         }
@@ -241,9 +241,9 @@ fn transpose_polygon_grouped_daily(
         low: vec![],
         open: vec![],
         symbol: vec![],
-        traded_volume: vec![],
+        stock_traded: vec![],
         volume_weighted_average_price: vec![],
-        stock_volume: vec![],
+        order_amount: vec![],
     };
 
     for data in instruments {
@@ -253,11 +253,11 @@ fn transpose_polygon_grouped_daily(
         result.low.push(data.low);
         result.open.push(data.open);
         result.symbol.push(data.symbol);
-        result.traded_volume.push(data.traded_volume);
+        result.stock_traded.push(data.stock_traded);
         result
             .volume_weighted_average_price
             .push(data.volume_weighted_average_price);
-        result.stock_volume.push(data.stock_volume)
+        result.order_amount.push(data.order_amount)
     }
     result
 }
