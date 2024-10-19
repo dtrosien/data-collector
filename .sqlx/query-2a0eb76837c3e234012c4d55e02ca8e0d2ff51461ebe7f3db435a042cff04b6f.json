@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select pgd.symbol, pgd.\"open\", pgd.\"close\", pgd.business_date, pgd.stock_volume, pgd.traded_volume from polygon_grouped_daily pgd where pgd.is_staged = false",
+  "query": "select pgd.symbol, pgd.\"open\", pgd.\"close\", pgd.business_date, pgd.order_amount, pgd.stock_traded from polygon_grouped_daily pgd where pgd.is_staged = false",
   "describe": {
     "columns": [
       {
@@ -25,12 +25,12 @@
       },
       {
         "ordinal": 4,
-        "name": "stock_volume",
+        "name": "order_amount",
         "type_info": "Int4"
       },
       {
         "ordinal": 5,
-        "name": "traded_volume",
+        "name": "stock_traded",
         "type_info": "Numeric"
       }
     ],
@@ -46,5 +46,5 @@
       false
     ]
   },
-  "hash": "f5259470336d9303d5929a9636c1e16f51947827913424d4f873dc0c8f3ac96e"
+  "hash": "2a0eb76837c3e234012c4d55e02ca8e0d2ff51461ebe7f3db435a042cff04b6f"
 }

@@ -26,8 +26,8 @@ pub struct MarketDataTransposed {
     stock_price: Vec<BigDecimal>,
     open: Vec<Option<BigDecimal>>,
     close: Vec<Option<BigDecimal>>,
-    volume_trade: Vec<Option<BigDecimal>>,
-    shares_traded: Vec<Option<i32>>,
+    order_amount: Vec<Option<i32>>,
+    shares_traded: Vec<Option<BigDecimal>>,
     after_hours: Vec<Option<BigDecimal>>,
     pre_market: Vec<Option<BigDecimal>>,
     market_capitalization: Vec<Option<BigDecimal>>,
@@ -41,8 +41,8 @@ pub struct MarketData {
     stock_price: BigDecimal,
     open: Option<BigDecimal>,
     close: Option<BigDecimal>,
-    volume_trade: Option<BigDecimal>,
-    shares_traded: Option<i32>,
+    order_amount: Option<i32>,
+    shares_traded: Option<BigDecimal>,
     after_hours: Option<BigDecimal>,
     pre_market: Option<BigDecimal>,
     market_capitalization: Option<BigDecimal>,
@@ -56,8 +56,8 @@ pub struct MarketDataBuilder {
     stock_price: Option<BigDecimal>,
     open: Option<BigDecimal>,
     close: Option<BigDecimal>,
-    volume_trade: Option<BigDecimal>,
-    shares_traded: Option<i32>,
+    stock_traded: Option<BigDecimal>,
+    order_amount: Option<i32>,
     after_hours: Option<BigDecimal>,
     pre_market: Option<BigDecimal>,
     market_capitalization: Option<BigDecimal>,
@@ -72,8 +72,8 @@ impl MarketDataBuilder {
             stock_price: None,
             open: None,
             close: None,
-            volume_trade: None,
-            shares_traded: None,
+            stock_traded: None,
+            order_amount: None,
             after_hours: None,
             pre_market: None,
             market_capitalization: None,
@@ -110,13 +110,13 @@ impl MarketDataBuilder {
         self
     }
 
-    fn volume_trade(mut self, volume_trade: Option<BigDecimal>) -> Self {
-        self.volume_trade = volume_trade;
+    fn stock_traded(mut self, stock_traded: Option<BigDecimal>) -> Self {
+        self.stock_traded = stock_traded;
         self
     }
 
-    fn shares_traded(mut self, shares_traded: Option<i32>) -> Self {
-        self.shares_traded = shares_traded;
+    fn order_amount(mut self, order_amount: Option<i32>) -> Self {
+        self.order_amount = order_amount;
         self
     }
     fn after_hours(mut self, after_hours: Option<BigDecimal>) -> Self {
@@ -143,8 +143,8 @@ impl MarketDataBuilder {
                 stock_price: self.stock_price.expect("Checked earlier"),
                 open: self.open,
                 close: self.close,
-                volume_trade: self.volume_trade,
-                shares_traded: self.shares_traded,
+                order_amount: self.order_amount,
+                shares_traded: self.stock_traded,
                 after_hours: self.after_hours,
                 pre_market: self.pre_market,
                 market_capitalization: self.market_capitalization,
@@ -167,7 +167,7 @@ impl Into<MarketDataTransposed> for Vec<MarketData> {
             stock_price: vec![],
             open: vec![],
             close: vec![],
-            volume_trade: vec![],
+            order_amount: vec![],
             shares_traded: vec![],
             after_hours: vec![],
             pre_market: vec![],
@@ -180,7 +180,7 @@ impl Into<MarketDataTransposed> for Vec<MarketData> {
             result.stock_price.push(x.stock_price);
             result.open.push(x.open);
             result.close.push(x.close);
-            result.volume_trade.push(x.volume_trade);
+            result.order_amount.push(x.order_amount);
             result.shares_traded.push(x.shares_traded);
             result.after_hours.push(x.after_hours);
             result.pre_market.push(x.pre_market);
@@ -250,7 +250,7 @@ async fn stage_data_stream<'a>(
     connection_pool: &'a PgPool,
     mut input_data: Pin<
         Box<
-            dyn futures_util::Stream<Item = Result<polygon_grouped_daily_table, sqlx::Error>>
+            dyn futures_util::Stream<Item = Result<PolygonGroupedDailyTable, sqlx::Error>>
                 + 'a
                 + std::marker::Send,
         >,
@@ -269,8 +269,8 @@ async fn stage_data_stream<'a>(
                     .open(Some(grouped_daily.open))
                     .close(Some(grouped_daily.close))
                     .business_date(grouped_daily.business_date)
-                    .shares_traded(grouped_daily.stock_volume)
-                    .volume_trade(Some(grouped_daily.traded_volume))
+                    .order_amount(grouped_daily.order_amount)
+                    .stock_traded(Some(grouped_daily.stock_traded))
                     .build()
                     .unwrap();
             })
@@ -308,20 +308,20 @@ async fn stage_data_stream<'a>(
         // Add data
         sqlx::query!(
                 r##"INSERT INTO market_data
-                (symbol, business_date, stock_price, "open", "close", volume_trade, shares_traded, after_hours, pre_market, market_capitalization)
+                (symbol, business_date, stock_price, "open", "close", stock_traded, order_amount, after_hours, pre_market, market_capitalization)
                 Select * from UNNEST($1::text[], $2::date[], $3::float[], $4::float[], $5::float[], $6::float[], $7::float[], $8::float[], $9::float[], $10::float[]) on conflict do nothing;"##,
                 &market_data_transposed.symbol,
                 &market_data_transposed.business_date,
                 market_data_transposed.stock_price as _,
                 market_data_transposed.open as _,
                 market_data_transposed.close as _,
-                market_data_transposed.volume_trade as _,
                 market_data_transposed.shares_traded as _,
+                market_data_transposed.order_amount as _,
                 market_data_transposed.after_hours as _,
                 market_data_transposed.pre_market as _,
                 market_data_transposed.market_capitalization as _,
             ).execute(connection_pool).await?;
-        // println!("Batch result: {:?}", market_data_transposed);s
+        println!("Batch result: {:?}", market_data_transposed);
     }
 
     Ok(())
@@ -342,13 +342,13 @@ async fn create_partition(
         .await?)
 }
 
-struct polygon_grouped_daily_table {
+struct PolygonGroupedDailyTable {
     symbol: String,
     close: BigDecimal,
     open: BigDecimal,
     business_date: NaiveDate,
-    stock_volume: Option<i32>,
-    traded_volume: BigDecimal,
+    order_amount: Option<i32>,
+    stock_traded: BigDecimal,
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
@@ -356,39 +356,15 @@ fn get_stageable_data<'a>(
     connection_pool: &'a PgPool,
 ) -> Pin<
     Box<
-        dyn futures_util::Stream<Item = Result<polygon_grouped_daily_table, sqlx::Error>>
+        dyn futures_util::Stream<Item = Result<PolygonGroupedDailyTable, sqlx::Error>>
             + 'a
             + std::marker::Send,
     >,
 > {
     // Pin<Box<dyn futures_util::Stream<Item = Result<polygon_grouped_daily_table, sqlx::Error>> + std::marker::Send>>
-    let a = sqlx::query_as!( polygon_grouped_daily_table,
-        r##"select pgd.symbol, pgd."open", pgd."close", pgd.business_date, pgd.stock_volume, pgd.traded_volume from polygon_grouped_daily pgd where pgd.is_staged = false"##).fetch(connection_pool);
-    // while let Some(batch) = a.as_mut().chunks(10).next().await {
-    //     let f: Vec<MarketData> = batch
-    //         .into_iter()
-    //         .filter(|x| x.is_ok())
-    //         .map(|x| {
-    //             let a = x.expect("Checked before");
-    //             return MarketDataBuilder::builder()
-    //                 .symbol(a.symbol)
-    //                 .stock_price(a.close.clone())
-    //                 .open(Some(a.open))
-    //                 .close(Some(a.close))
-    //                 .business_date(a.business_date)
-    //                 .shares_traded(a.stock_volume)
-    //                 .volume_trade(Some(a.traded_volume))
-    //                 .build()
-    //                 .unwrap();
-    //         })
-    //         .collect();
-    //     let a : MarketDataTransposed = f.into();
-    //     // foo(batch).await; // Pass each chunk of rows to foo
-    //     println!("Batch result: {:?}", a);
-    // }
-
-    return a;
-    // Ok(vec![])
+    let polygon_grouped_daily_stream = sqlx::query_as!( PolygonGroupedDailyTable,
+        r##"select pgd.symbol, pgd."open", pgd."close", pgd.business_date, pgd.order_amount, pgd.stock_traded from polygon_grouped_daily pgd where pgd.is_staged = false"##).fetch(connection_pool);
+    return polygon_grouped_daily_stream;
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
