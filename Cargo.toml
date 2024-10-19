@@ -24,6 +24,7 @@ chrono = { version = "0.4.38", default-features = false, features = [
 ## Remove when higher version than 0.14.0 is available
 config = { git = "https://github.com/mehcode/config-rs" }
 filetime = "0.2.23"
+futures = "0.3.31"
 futures-util = "0.3.30"
 home = "0.5.9"
 priority-queue = "2.0.3"
