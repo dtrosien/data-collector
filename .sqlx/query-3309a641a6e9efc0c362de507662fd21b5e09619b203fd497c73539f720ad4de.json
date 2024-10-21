@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    update market_data md \n    set stock_traded = coalesce(md.stock_traded, pgd.stock_traded ),\n              \"open\" = coalesce(md.open, pgd.\"open\"),\n             \"close\" = coalesce(md.\"close\" , pgd.\"close\"),\n        order_amount = coalesce(md.order_amount , pgd.order_amount),\n         stock_price = coalesce(md.stock_price , pgd.\"close\")\n    from polygon_grouped_daily pgd \n    where \n        pgd.is_staged = false \n    and pgd.symbol = md.symbol\n    and pgd.business_date = md.business_date\n    and md.year_month = (EXTRACT(YEAR FROM pgd.business_date) * 100) + EXTRACT(MONTH FROM pgd.business_date)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "3309a641a6e9efc0c362de507662fd21b5e09619b203fd497c73539f720ad4de"
+}
