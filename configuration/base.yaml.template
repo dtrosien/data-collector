@@ -23,6 +23,8 @@ application:
       dependencies: [ SecCompaniesCollect ]
     - name: PolygonGroupedDaily
       dependencies: [ ]
+    - name: PolygonGroupedDailyStager
+      dependencies: [ PolygonGroupedDaily ]
     - name: PolygonOpenClose
       dependencies: [ PolygonGroupedDaily ]
     - name: FinancialmodelingprepCompanyProfileCollet
@@ -51,6 +53,9 @@ application:
       comment: Helpful comment
     - name: PolygonGroupedDaily
       task_type: PolygonGroupedDaily
+      comment: Helpful comment
+    - name: PolygonGroupedDailyStager
+      task_type: PolygonGroupedDailyStager
       comment: Helpful comment
     - name: PolygonOpenClose
       task_type: PolygonOpenClose

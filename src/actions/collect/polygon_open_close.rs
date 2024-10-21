@@ -330,8 +330,10 @@ async fn earliest_date(
     )
     .fetch_one(connection_pool)
     .await;
-    if let Ok(date) = a {
-        return date.max_date.expect("Check already happended before.");
+    if let Ok(date_option) = a {
+        if let Some(date) = date_option.max_date {
+            return date;
+        }
     }
     Utc::now()
         .date_naive()

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n            pg_catalog.pg_get_expr(c.relpartbound, c.oid)\n        FROM pg_catalog.pg_class c, pg_catalog.pg_inherits i\n        WHERE c.oid = i.inhrelid\n        AND i.inhparent = $1::int8",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pg_get_expr",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c46f55fa238fa60fde01e7d0cd84ac81a0e02834535a9128c49407a399c5ba0c"
+}
