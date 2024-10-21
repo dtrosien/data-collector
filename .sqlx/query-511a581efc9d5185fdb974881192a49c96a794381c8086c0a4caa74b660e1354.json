@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select is_staged from polygon_grouped_daily where business_date = '2022-03-07'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "is_staged",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "511a581efc9d5185fdb974881192a49c96a794381c8086c0a4caa74b660e1354"
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select order_amount from market_data where business_date = '2022-03-07'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "order_amount",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "7c70925f9255cc177769af8cb77fd670951be2a41ecd6c1a2b6b6450b1d20e2f"
+}

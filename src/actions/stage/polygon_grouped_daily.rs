@@ -272,10 +272,28 @@ pub async fn stage_data(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
 
     let input_data = get_stageable_data(connection_pool);
     stage_data_stream(connection_pool, input_data, partitions).await?;
-
-    //Mark as staged
-    debug!("Mark staged data");
+    debug!("Mark new staged data");
     mark_staged(connection_pool).await?;
+
+    stage_updatable_data(connection_pool).await?;
+    mark_staged(connection_pool).await?;
+    Ok(())
+}
+
+async fn stage_updatable_data(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
+    sqlx::query!(r#"
+    update market_data md 
+    set stock_traded = coalesce(md.stock_traded, pgd.stock_traded ),
+              "open" = coalesce(md.open, pgd."open"),
+             "close" = coalesce(md."close" , pgd."close"),
+        order_amount = coalesce(md.order_amount , pgd.order_amount),
+         stock_price = coalesce(md.stock_price , pgd."close")
+    from polygon_grouped_daily pgd 
+    where 
+        pgd.is_staged = false 
+    and pgd.symbol = md.symbol
+    and pgd.business_date = md.business_date
+    and md.year_month = (EXTRACT(YEAR FROM pgd.business_date) * 100) + EXTRACT(MONTH FROM pgd.business_date)"#).execute(connection_pool).await?;
     Ok(())
 }
 
@@ -506,7 +524,7 @@ mod test {
 
     use crate::actions::stage::polygon_grouped_daily::{
         add_data, create_partition, get_existing_partition_ranges_for_oid, get_table_oid,
-        MarketData, MarketDataBuilder, MarketDataTransposed,
+        mark_staged, stage_updatable_data, MarketData, MarketDataBuilder, MarketDataTransposed,
     };
 
     #[sqlx::test()]
@@ -648,5 +666,202 @@ mod test {
             ),
             (Some(0), Some(BigDecimal::new(5.to_bigint().unwrap(), 0)))
         );
+    }
+
+    // Data exists is both and values are unstaged -> Both values staged
+    // Data exists in source and Null is in target -> Marking staged does not happen
+    // Data exists in source and Null is in target -> value is loaded
+    // Data exists in neither table -> Staging does not change a thing
+    // Data exists in neither table -> Mark data as staged
+    // Data not is source, but target -> Staging leaves data there
+
+    // Data not is source, but target -> Marking staged in source
+    #[sqlx::test(fixtures(
+        "../../../tests/resources/collectors/staging/polygon_grouped_daily_staging/market_data_update_entries.sql",
+        "../../../tests/resources/collectors/staging/polygon_grouped_daily_staging/polygon_grouped_daily_data_source.sql"
+    ))]
+    async fn given_data_in_both_tables_and_unstaged_status_when_mark_staged_then_values_marked_staged(
+        pool: Pool<Postgres>,
+    ) -> Result<(), anyhow::Error> {
+        let is_staged_prerequisite = sqlx::query!(
+            "select is_staged from polygon_grouped_daily where business_date = '2022-03-04'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .is_staged;
+        assert!(!is_staged_prerequisite);
+        mark_staged(&pool).await?;
+        let is_staged_result = sqlx::query!(
+            "select is_staged from polygon_grouped_daily where business_date = '2022-03-04'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .is_staged;
+        assert!(is_staged_result);
+        Ok(())
+    }
+
+    // Data exists in source and Null is in target -> Marking staged does not happen
+    #[sqlx::test(fixtures(
+        "../../../tests/resources/collectors/staging/polygon_grouped_daily_staging/market_data_update_entries.sql",
+        "../../../tests/resources/collectors/staging/polygon_grouped_daily_staging/polygon_grouped_daily_data_source.sql"
+    ))]
+    async fn given_missing_data_in_target_and_unstaged_status_when_mark_staged_then_no_change(
+        pool: Pool<Postgres>,
+    ) -> Result<(), anyhow::Error> {
+        let is_staged_prerequisite = sqlx::query!(
+            "select is_staged from polygon_grouped_daily where business_date = '2022-03-07'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .is_staged;
+        assert!(!is_staged_prerequisite);
+        mark_staged(&pool).await?;
+        let is_staged_result = sqlx::query!(
+            "select is_staged from polygon_grouped_daily where business_date = '2022-03-07'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .is_staged;
+        assert!(!is_staged_result);
+        Ok(())
+    }
+
+    // Data exists in source and Null is in target -> value is loaded
+    #[sqlx::test(fixtures(
+            "../../../tests/resources/collectors/staging/polygon_grouped_daily_staging/market_data_update_entries.sql",
+            "../../../tests/resources/collectors/staging/polygon_grouped_daily_staging/polygon_grouped_daily_data_source.sql"
+        ))]
+    async fn given_missing_data_in_target_and_unstaged_status_when_staging_then_data_in_target(
+        pool: Pool<Postgres>,
+    ) -> Result<(), anyhow::Error> {
+        let order_amount_prerequisite =
+            sqlx::query!("select order_amount from market_data where business_date = '2022-03-07'")
+                .fetch_one(&pool)
+                .await
+                .unwrap()
+                .order_amount;
+        assert!(order_amount_prerequisite.is_none());
+        stage_updatable_data(&pool).await?;
+        let order_amount_result =
+            sqlx::query!("select order_amount from market_data where business_date = '2022-03-07'")
+                .fetch_one(&pool)
+                .await
+                .unwrap()
+                .order_amount;
+        assert_eq!(order_amount_result.unwrap(), f64::from(36120));
+        Ok(())
+    }
+
+    // Data exists in neither table -> Staging does not change a thing
+    #[sqlx::test(fixtures(
+        "../../../tests/resources/collectors/staging/polygon_grouped_daily_staging/market_data_update_entries.sql",
+        "../../../tests/resources/collectors/staging/polygon_grouped_daily_staging/polygon_grouped_daily_data_source.sql"
+    ))]
+    async fn given_missing_data_in_both_tables_when_staging_then_no_change(
+        pool: Pool<Postgres>,
+    ) -> Result<(), anyhow::Error> {
+        let order_amount_prerequisite =
+            sqlx::query!("select order_amount from market_data where business_date = '2022-03-08'")
+                .fetch_one(&pool)
+                .await
+                .unwrap()
+                .order_amount;
+        assert!(order_amount_prerequisite.is_none());
+        stage_updatable_data(&pool).await?;
+        let order_amount_result =
+            sqlx::query!("select order_amount from market_data where business_date = '2022-03-08'")
+                .fetch_one(&pool)
+                .await
+                .unwrap()
+                .order_amount;
+        assert!(order_amount_result.is_none());
+        Ok(())
+    }
+
+    // Data exists in neither table -> Mark data as staged
+    #[sqlx::test(fixtures(
+        "../../../tests/resources/collectors/staging/polygon_grouped_daily_staging/market_data_update_entries.sql",
+        "../../../tests/resources/collectors/staging/polygon_grouped_daily_staging/polygon_grouped_daily_data_source.sql"
+    ))]
+    async fn given_missing_data_in_both_tables_when_marking_staged_then_marked_staged(
+        pool: Pool<Postgres>,
+    ) -> Result<(), anyhow::Error> {
+        let is_staged_prerequisite = sqlx::query!(
+            "select is_staged from polygon_grouped_daily where business_date = '2022-03-08'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .is_staged;
+        assert!(!is_staged_prerequisite);
+        mark_staged(&pool).await?;
+        let is_staged_result = sqlx::query!(
+            "select is_staged from polygon_grouped_daily where business_date = '2022-03-08'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .is_staged;
+        assert!(is_staged_result);
+        Ok(())
+    }
+
+    // Data not is source, but target -> Staging leaves data there
+    #[sqlx::test(fixtures(
+        "../../../tests/resources/collectors/staging/polygon_grouped_daily_staging/market_data_update_entries.sql",
+        "../../../tests/resources/collectors/staging/polygon_grouped_daily_staging/polygon_grouped_daily_data_source.sql"
+    ))]
+    async fn given_missing_data_in_source_when_staging_then_no_change(
+        pool: Pool<Postgres>,
+    ) -> Result<(), anyhow::Error> {
+        let order_amount_prerequisite =
+            sqlx::query!("select order_amount from market_data where business_date = '2022-03-09'")
+                .fetch_one(&pool)
+                .await
+                .unwrap()
+                .order_amount;
+        assert_eq!(order_amount_prerequisite.unwrap(), f64::from(10));
+        stage_updatable_data(&pool).await?;
+        let order_amount_result =
+            sqlx::query!("select order_amount from market_data where business_date = '2022-03-09'")
+                .fetch_one(&pool)
+                .await
+                .unwrap()
+                .order_amount;
+        assert_eq!(order_amount_result.unwrap(), f64::from(10));
+        Ok(())
+    }
+
+    // Data not is source, but target -> Marking staged in source
+    #[sqlx::test(fixtures(
+        "../../../tests/resources/collectors/staging/polygon_grouped_daily_staging/market_data_update_entries.sql",
+        "../../../tests/resources/collectors/staging/polygon_grouped_daily_staging/polygon_grouped_daily_data_source.sql"
+    ))]
+    async fn given_missing_data_in_source_when_marking_staged_then_marked_staged(
+        pool: Pool<Postgres>,
+    ) -> Result<(), anyhow::Error> {
+        let is_staged_prerequisite = sqlx::query!(
+            "select is_staged from polygon_grouped_daily where business_date = '2022-03-09'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .is_staged;
+        assert!(!is_staged_prerequisite);
+        mark_staged(&pool).await?;
+        let is_staged_result = sqlx::query!(
+            "select is_staged from polygon_grouped_daily where business_date = '2022-03-09'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .is_staged;
+        assert!(is_staged_result);
+        Ok(())
     }
 }
