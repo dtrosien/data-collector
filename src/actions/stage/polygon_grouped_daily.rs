@@ -12,7 +12,7 @@ use futures_util::StreamExt;
 use std::collections::HashSet;
 use std::fmt::Display;
 use std::pin::Pin;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::dag_schedule::task::TaskError::UnexpectedError;
 use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
@@ -68,7 +68,7 @@ impl MarketData {
 }
 
 #[derive(Clone, Debug)]
-pub struct MarketDataBuilder {
+struct MarketDataBuilder {
     symbol: Option<String>,
     business_date: Option<NaiveDate>,
     stock_price: Option<BigDecimal>,
@@ -205,6 +205,22 @@ impl From<Vec<MarketData>> for MarketDataTransposed {
     }
 }
 
+impl TryFrom<PolygonGroupedDailyTable> for MarketData {
+    type Error = Error;
+
+    fn try_from(grouped_daily: PolygonGroupedDailyTable) -> Result<Self, Self::Error> {
+        MarketDataBuilder::builder()
+            .symbol(grouped_daily.symbol)
+            .stock_price(grouped_daily.close.clone())
+            .open(Some(grouped_daily.open))
+            .close(Some(grouped_daily.close))
+            .business_date(grouped_daily.business_date)
+            .order_amount(grouped_daily.order_amount)
+            .stock_traded(Some(grouped_daily.stock_traded))
+            .build()
+    }
+}
+
 impl MarketDataTransposed {
     fn extract_partitions(&self) -> HashSet<u32> {
         let mut set: HashSet<u32> = HashSet::new();
@@ -215,7 +231,6 @@ impl MarketDataTransposed {
             set.insert(year_month);
         });
         set
-        // Vec::from_iter(set)
     }
 }
 
@@ -240,6 +255,7 @@ impl Display for PolygonGroupedDailyStager {
 impl Runnable for PolygonGroupedDailyStager {
     #[tracing::instrument(name = "Run Polygon Grouped Daily Stager", skip(self))]
     async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
+        info!("Start polygon grouped daily stager.");
         stage_data(&self.pool).map_err(UnexpectedError).await?;
         Ok(None)
     }
@@ -248,14 +264,17 @@ impl Runnable for PolygonGroupedDailyStager {
 #[tracing::instrument(level = "debug", skip_all)]
 pub async fn stage_data(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     // Mark already existing data as staged (comes maybe from other sources)
+    debug!("Mark already stageable data");
     mark_staged(connection_pool).await?;
 
     let partitions: HashSet<u32> = get_existing_partitions(connection_pool).await?;
-    info!("Partitions found: {:?}", partitions);
+    debug!("Partitions found: {:?}", partitions);
+
     let input_data = get_stageable_data(connection_pool);
     stage_data_stream(connection_pool, input_data, partitions).await?;
 
     //Mark as staged
+    debug!("Mark staged data");
     mark_staged(connection_pool).await?;
     Ok(())
 }
@@ -271,22 +290,15 @@ async fn stage_data_stream<'a>(
     >,
     mut existing_partitions: HashSet<u32>,
 ) -> Result<(), anyhow::Error> {
+    debug!("Start staging data.");
     while let Some(batch_grouped_daily) = input_data.as_mut().chunks(10000).next().await {
         let batch_market_data: Vec<MarketData> = batch_grouped_daily
             .into_iter()
             .filter(|grouped_daily_entry| grouped_daily_entry.is_ok())
             .map(|grouped_daily_entry| {
                 let grouped_daily = grouped_daily_entry.expect("Checked before");
-                MarketDataBuilder::builder()
-                    .symbol(grouped_daily.symbol)
-                    .stock_price(grouped_daily.close.clone())
-                    .open(Some(grouped_daily.open))
-                    .close(Some(grouped_daily.close))
-                    .business_date(grouped_daily.business_date)
-                    .order_amount(grouped_daily.order_amount)
-                    .stock_traded(Some(grouped_daily.stock_traded))
-                    .build()
-                    .unwrap()
+                //TODO: Handle error
+                grouped_daily.try_into().unwrap()
             })
             .collect();
         let market_data_transposed: MarketDataTransposed = batch_market_data.into();
@@ -295,27 +307,7 @@ async fn stage_data_stream<'a>(
             batch_partitions.difference(&existing_partitions).collect();
         if !new_partitions.is_empty() {
             // Create partitions
-            let result_partition_creation = futures::future::join_all(new_partitions.iter().map(
-                |partition_value| async move {
-                    let result = create_partition(connection_pool, partition_value).await;
-                    match result {
-                        Ok(_) => true,
-                        Err(_) => {
-                            error!(
-                                "Error while creating partition {}: {:?}",
-                                partition_value, result
-                            );
-                            false
-                        }
-                    }
-                },
-            ))
-            .await;
-            if result_partition_creation.iter().any(|&x| !x) {
-                return Err(anyhow::Error::msg(
-                    "Failed to create partition for market data.",
-                ));
-            }
+            create_partitions(new_partitions, connection_pool).await?;
             // Add created partitions to `partitions`
             existing_partitions.extend(&batch_partitions);
         }
@@ -323,8 +315,54 @@ async fn stage_data_stream<'a>(
         // println!("Batch result: {:?}", market_data_transposed);
         add_data(connection_pool, market_data_transposed).await?;
     }
-
+    debug!("End staging data.");
     Ok(())
+}
+
+async fn create_partitions(
+    new_partitions: HashSet<&u32>,
+    connection_pool: &sqlx::Pool<Postgres>,
+) -> Result<(), anyhow::Error> {
+    let result_partition_creation = create_partitions_on_db(new_partitions, connection_pool).await;
+    if result_partition_creation.iter().any(|&x| !x) {
+        return Err(anyhow::Error::msg(
+            "Failed to create partition for market data.",
+        ));
+    }
+    Ok(())
+}
+
+async fn create_partitions_on_db(
+    new_partitions: HashSet<&u32>,
+    connection_pool: &sqlx::Pool<Postgres>,
+) -> Vec<bool> {
+    futures::future::join_all(new_partitions.iter().map(|partition_value| async move {
+        let result = create_partition(connection_pool, partition_value).await;
+        match result {
+            Ok(_) => true,
+            Err(_) => {
+                error!(
+                    "Error while creating partition {}: {:?}",
+                    partition_value, result
+                );
+                false
+            }
+        }
+    }))
+    .await
+}
+
+async fn create_partition(
+    connection_pool: &PgPool,
+    partition: &u32,
+) -> Result<PgQueryResult, sqlx::Error> {
+    let partition_name = format!("market_data_{partition}");
+    let sql_create_partition_query = format!(
+        "CREATE TABLE {partition_name} PARTITION OF market_data FOR VALUES in ({partition})"
+    );
+    sqlx::query::<Postgres>(&sql_create_partition_query)
+        .execute(connection_pool)
+        .await
 }
 
 async fn add_data(
@@ -348,20 +386,6 @@ async fn add_data(
         data.year_month as _,
     ).execute(connection_pool).await?;
     Ok(())
-}
-// select pgd.symbol, pgd."open", pgd."close", pgd.business_date,  pgd.stock_volume, pgd.traded_volume from polygon_grouped_daily pgd where pgd.is_staged = false;
-
-async fn create_partition(
-    connection_pool: &PgPool,
-    partition: &u32,
-) -> Result<PgQueryResult, sqlx::Error> {
-    let partition_name = format!("market_data_{partition}");
-    let sql_create_partition_query = format!(
-        "CREATE TABLE {partition_name} PARTITION OF market_data FOR VALUES in ({partition})"
-    );
-    sqlx::query::<Postgres>(&sql_create_partition_query)
-        .execute(connection_pool)
-        .await
 }
 
 struct PolygonGroupedDailyTable {
@@ -473,33 +497,6 @@ async fn mark_staged(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     .await?;
     Ok(())
 }
-
-///Select the master data with non start date 1792-05-17 and mark corresponding entries in 1792-05-17 financialmodelingprep_company_profile as staged.
-// #[tracing::instrument(level = "debug", skip_all)]
-// async fn mark_ipo_date_as_staged(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
-//     sqlx::query!(
-//         r##"
-//         update financialmodelingprep_company_profile fcp set
-//         is_staged = true
-//         from (
-//           select issue_symbol
-//           from master_data md
-//           where
-//              start_nyse != '1792-05-17'
-//           or start_nyse_arca != '1792-05-17'
-//           or start_nyse_american != '1792-05-17'
-//           or start_nasdaq_global_select_market != '1792-05-17'
-//           or start_nasdaq_select_market != '1792-05-17'
-//           or start_nasdaq_capital_market != '1792-05-17'
-//           or start_nasdaq != '1792-05-17'
-//           or start_cboe != '1792-05-17'
-//           ) as r
-//         where fcp.symbol = r.issue_symbol and fcp.is_staged = false"##
-//     )
-//     .execute(connection_pool)
-//     .await?;
-//     Ok(())
-// }
 
 #[cfg(test)]
 mod test {
