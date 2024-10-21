@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO market_data\n        (symbol, business_date, stock_price, \"open\", \"close\", stock_traded, order_amount, after_hours, pre_market, market_capitalization, year_month)\n        Select * from UNNEST($1::text[], $2::date[], $3::float[], $4::float[], $5::float[], $6::float[], $7::float[], $8::float[], $9::float[], $10::float[], $11::int[]) on conflict do nothing;",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "DateArray",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Int4Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4b43e6843811e94761de0c37e8ba221aa1c635763a501b291803e560c455945d"
+}

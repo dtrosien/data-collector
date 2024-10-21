@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update polygon_grouped_daily pgd\n            set is_staged = true\n            from (\n                select pgd.symbol, pgd.business_date from polygon_grouped_daily pgd join market_data md on\n                    md.symbol = pgd.symbol \n                and md.business_date = pgd.business_date \n                and  not (pgd.\"close\" is not null \n                    and  md.\"close\" is null )\n                and  not (pgd.\"close\" is not null \n                    and  md.stock_price is null )       \n                and  not (pgd.\"open\" is not null \n                    and  md.\"open\" is null )\n                and  not (pgd.order_amount is not null \n                    and  md.order_amount is null )\n                and  not (pgd.stock_traded is not null \n                    and  md.stock_traded is null )\n                where is_staged = false\n            ) as r\n            where pgd.symbol = r.symbol and pgd.business_date = r.business_date",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "60e93b0f7a146a297b9564c03008ee3b1a4a78a52a17f588d1e8a70719d26805"
+}

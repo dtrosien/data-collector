@@ -27,6 +27,6 @@ END;
 $$ LANGUAGE plpgsql;
 
 create or replace TRIGGER market_data_trigger_update
-after insert or UPDATE of business_date, year_month ON market_data
+after UPDATE of business_date, year_month ON market_data
 FOR EACH ROW
 EXECUTE FUNCTION market_data_trigger_function();

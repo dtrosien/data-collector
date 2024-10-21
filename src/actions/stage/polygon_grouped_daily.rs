@@ -1,14 +1,14 @@
 use async_trait::async_trait;
 use chrono::{Datelike, NaiveDate};
-use futures_util::{TryFutureExt, TryStreamExt};
+use futures_util::TryFutureExt;
 
+use num_bigint::ToBigInt;
 use rand::Error;
 use sqlx::postgres::PgQueryResult;
 use sqlx::types::BigDecimal;
 use sqlx::{PgPool, Postgres};
 // use tokio_stream::StreamExt;
 use futures_util::StreamExt;
-use std::clone;
 use std::collections::HashSet;
 use std::fmt::Display;
 use std::pin::Pin;
@@ -16,13 +16,12 @@ use tracing::{error, info};
 
 use crate::dag_schedule::task::TaskError::UnexpectedError;
 use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
-use futures::future::join_all;
 
 #[derive(Clone, Debug)]
 pub struct MarketDataTransposed {
     symbol: Vec<String>,
     business_date: Vec<NaiveDate>,
-    year_month: Vec<Option<i32>>,
+    year_month: Vec<i32>,
     stock_price: Vec<BigDecimal>,
     open: Vec<Option<BigDecimal>>,
     close: Vec<Option<BigDecimal>>,
@@ -37,7 +36,7 @@ pub struct MarketDataTransposed {
 pub struct MarketData {
     symbol: String,
     business_date: NaiveDate,
-    year_month: Option<i32>,
+    year_month: i32,
     stock_price: BigDecimal,
     open: Option<BigDecimal>,
     close: Option<BigDecimal>,
@@ -48,11 +47,30 @@ pub struct MarketData {
     market_capitalization: Option<BigDecimal>,
 }
 
+impl MarketData {
+    // If one of the two values is NULL and the other is 0, then the NULL gets replaced with 0.
+    fn get_missing_zero_values(
+        order_amount: Option<i32>,
+        shares_traded: Option<BigDecimal>,
+    ) -> (Option<i32>, Option<BigDecimal>) {
+        let mut result = (order_amount, shares_traded);
+        if order_amount.is_none()
+            && result.1.is_some()
+            && result.1.as_ref().unwrap() == &BigDecimal::new(0.to_bigint().unwrap(), 0)
+        {
+            result.0 = Some(0);
+        }
+        if result.1.is_none() && order_amount.is_some() && order_amount.as_ref().unwrap() == &0 {
+            result.1 = Some(BigDecimal::new(0.to_bigint().unwrap(), 0));
+        }
+        result
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct MarketDataBuilder {
     symbol: Option<String>,
     business_date: Option<NaiveDate>,
-    year_month: Option<u16>,
     stock_price: Option<BigDecimal>,
     open: Option<BigDecimal>,
     close: Option<BigDecimal>,
@@ -68,7 +86,6 @@ impl MarketDataBuilder {
         MarketDataBuilder {
             symbol: None,
             business_date: None,
-            year_month: None,
             stock_price: None,
             open: None,
             close: None,
@@ -87,11 +104,6 @@ impl MarketDataBuilder {
 
     fn business_date(mut self, business_date: NaiveDate) -> Self {
         self.business_date = Some(business_date);
-        self
-    }
-
-    fn year_month(mut self, year_month: Option<u16>) -> Self {
-        self.year_month = year_month;
         self
     }
 
@@ -119,15 +131,15 @@ impl MarketDataBuilder {
         self.order_amount = order_amount;
         self
     }
-    fn after_hours(mut self, after_hours: Option<BigDecimal>) -> Self {
+    fn _after_hours(mut self, after_hours: Option<BigDecimal>) -> Self {
         self.after_hours = after_hours;
         self
     }
-    fn pre_market(mut self, pre_market: Option<BigDecimal>) -> Self {
+    fn _pre_market(mut self, pre_market: Option<BigDecimal>) -> Self {
         self.pre_market = pre_market;
         self
     }
-    fn market_capitalization(mut self, market_capitalization: Option<BigDecimal>) -> Self {
+    fn _market_capitalization(mut self, market_capitalization: Option<BigDecimal>) -> Self {
         self.market_capitalization = market_capitalization;
         self
     }
@@ -150,16 +162,17 @@ impl MarketDataBuilder {
                 market_capitalization: self.market_capitalization,
             });
         }
+        //TODO: Improve error message
         Err(Error::new("err"))
     }
 
-    fn calculate_year_month(value: NaiveDate) -> Option<i32> {
-        Some(TryInto::<i32>::try_into(value.year_ce().1 * 100 + value.month0() + 1).unwrap())
+    fn calculate_year_month(value: NaiveDate) -> i32 {
+        TryInto::<i32>::try_into(value.year_ce().1 * 100 + value.month0() + 1).unwrap()
     }
 }
 
-impl Into<MarketDataTransposed> for Vec<MarketData> {
-    fn into(self) -> MarketDataTransposed {
+impl From<Vec<MarketData>> for MarketDataTransposed {
+    fn from(val: Vec<MarketData>) -> Self {
         let mut result = MarketDataTransposed {
             symbol: vec![],
             business_date: vec![],
@@ -173,15 +186,17 @@ impl Into<MarketDataTransposed> for Vec<MarketData> {
             pre_market: vec![],
             market_capitalization: vec![],
         };
-        self.into_iter().for_each(|x| {
+        val.into_iter().for_each(|x| {
+            let order_amount_shares_traded =
+                MarketData::get_missing_zero_values(x.order_amount, x.shares_traded);
             result.symbol.push(x.symbol);
             result.business_date.push(x.business_date);
             result.year_month.push(x.year_month);
             result.stock_price.push(x.stock_price);
             result.open.push(x.open);
             result.close.push(x.close);
-            result.order_amount.push(x.order_amount);
-            result.shares_traded.push(x.shares_traded);
+            result.order_amount.push(order_amount_shares_traded.0);
+            result.shares_traded.push(order_amount_shares_traded.1);
             result.after_hours.push(x.after_hours);
             result.pre_market.push(x.pre_market);
             result.market_capitalization.push(x.market_capitalization);
@@ -232,17 +247,16 @@ impl Runnable for PolygonGroupedDailyStager {
 
 #[tracing::instrument(level = "debug", skip_all)]
 pub async fn stage_data(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
-    let partitions: HashSet<u32> = get_existing_partitions(&connection_pool).await?;
+    // Mark already existing data as staged (comes maybe from other sources)
+    mark_staged(connection_pool).await?;
+
+    let partitions: HashSet<u32> = get_existing_partitions(connection_pool).await?;
     info!("Partitions found: {:?}", partitions);
-    let input_data = get_stageable_data(&connection_pool);
-    stage_data_stream(&connection_pool, input_data, partitions).await?;
-    // stage_nulls(&connection_pool).await?;
+    let input_data = get_stageable_data(connection_pool);
+    stage_data_stream(connection_pool, input_data, partitions).await?;
 
-    //Copy initial public offering dates to master data
-    // move_ipo_date_to_master_data(&connection_pool).await?;
-
-    //Mark as staged in
-    // mark_ipo_date_as_staged(&connection_pool).await?;
+    //Mark as staged
+    mark_staged(connection_pool).await?;
     Ok(())
 }
 
@@ -263,7 +277,7 @@ async fn stage_data_stream<'a>(
             .filter(|grouped_daily_entry| grouped_daily_entry.is_ok())
             .map(|grouped_daily_entry| {
                 let grouped_daily = grouped_daily_entry.expect("Checked before");
-                return MarketDataBuilder::builder()
+                MarketDataBuilder::builder()
                     .symbol(grouped_daily.symbol)
                     .stock_price(grouped_daily.close.clone())
                     .open(Some(grouped_daily.open))
@@ -272,32 +286,32 @@ async fn stage_data_stream<'a>(
                     .order_amount(grouped_daily.order_amount)
                     .stock_traded(Some(grouped_daily.stock_traded))
                     .build()
-                    .unwrap();
+                    .unwrap()
             })
             .collect();
         let market_data_transposed: MarketDataTransposed = batch_market_data.into();
         let batch_partitions = market_data_transposed.extract_partitions();
         let new_partitions: HashSet<&u32> =
             batch_partitions.difference(&existing_partitions).collect();
-        if new_partitions.len() > 0 {
+        if !new_partitions.is_empty() {
             // Create partitions
             let result_partition_creation = futures::future::join_all(new_partitions.iter().map(
                 |partition_value| async move {
-                    let result = create_partition(&connection_pool, &partition_value).await;
+                    let result = create_partition(connection_pool, partition_value).await;
                     match result {
-                        Ok(_) => return true,
+                        Ok(_) => true,
                         Err(_) => {
                             error!(
                                 "Error while creating partition {}: {:?}",
                                 partition_value, result
                             );
-                            return false;
+                            false
                         }
                     }
                 },
             ))
             .await;
-            if result_partition_creation.iter().any(|&x| x == false) {
+            if result_partition_creation.iter().any(|&x| !x) {
                 return Err(anyhow::Error::msg(
                     "Failed to create partition for market data.",
                 ));
@@ -306,27 +320,35 @@ async fn stage_data_stream<'a>(
             existing_partitions.extend(&batch_partitions);
         }
         // Add data
-        sqlx::query!(
-                r##"INSERT INTO market_data
-                (symbol, business_date, stock_price, "open", "close", stock_traded, order_amount, after_hours, pre_market, market_capitalization)
-                Select * from UNNEST($1::text[], $2::date[], $3::float[], $4::float[], $5::float[], $6::float[], $7::float[], $8::float[], $9::float[], $10::float[]) on conflict do nothing;"##,
-                &market_data_transposed.symbol,
-                &market_data_transposed.business_date,
-                market_data_transposed.stock_price as _,
-                market_data_transposed.open as _,
-                market_data_transposed.close as _,
-                market_data_transposed.shares_traded as _,
-                market_data_transposed.order_amount as _,
-                market_data_transposed.after_hours as _,
-                market_data_transposed.pre_market as _,
-                market_data_transposed.market_capitalization as _,
-            ).execute(connection_pool).await?;
-        println!("Batch result: {:?}", market_data_transposed);
+        // println!("Batch result: {:?}", market_data_transposed);
+        add_data(connection_pool, market_data_transposed).await?;
     }
 
     Ok(())
 }
 
+async fn add_data(
+    connection_pool: &PgPool,
+    data: MarketDataTransposed,
+) -> Result<(), anyhow::Error> {
+    sqlx::query!(
+        r##"INSERT INTO market_data
+        (symbol, business_date, stock_price, "open", "close", stock_traded, order_amount, after_hours, pre_market, market_capitalization, year_month)
+        Select * from UNNEST($1::text[], $2::date[], $3::float[], $4::float[], $5::float[], $6::float[], $7::float[], $8::float[], $9::float[], $10::float[], $11::int[]) on conflict do nothing;"##,
+        &data.symbol,
+        &data.business_date,
+        data.stock_price as _,
+        data.open as _,
+        data.close as _,
+        data.shares_traded as _,
+        data.order_amount as _,
+        data.after_hours as _,
+        data.pre_market as _,
+        data.market_capitalization as _,
+        data.year_month as _,
+    ).execute(connection_pool).await?;
+    Ok(())
+}
 // select pgd.symbol, pgd."open", pgd."close", pgd.business_date,  pgd.stock_volume, pgd.traded_volume from polygon_grouped_daily pgd where pgd.is_staged = false;
 
 async fn create_partition(
@@ -337,9 +359,9 @@ async fn create_partition(
     let sql_create_partition_query = format!(
         "CREATE TABLE {partition_name} PARTITION OF market_data FOR VALUES in ({partition})"
     );
-    Ok(sqlx::query::<Postgres>(&sql_create_partition_query)
+    sqlx::query::<Postgres>(&sql_create_partition_query)
         .execute(connection_pool)
-        .await?)
+        .await
 }
 
 struct PolygonGroupedDailyTable {
@@ -418,49 +440,39 @@ async fn get_existing_partition_ranges_for_oid(
             let partition_info = partition_info
                 .replace("FOR VALUES IN (", "")
                 .replace(")", "");
-            return partition_info.parse::<u32>().unwrap();
+            partition_info.parse::<u32>().unwrap()
         })
         .collect();
     Ok(a)
 }
 
-// #[tracing::instrument(level = "debug", skip_all)]
-// async fn stage_nulls(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
-//     sqlx::query!(
-//         "update financialmodelingprep_company_profile
-//             set is_staged = true
-//             where ipo_date is null"
-//     )
-//     .execute(connection_pool)
-//     .await?;
-//     Ok(())
-// }
-
-/// Take initial public offering dates from financialmodelingprep_company_profile and copy to master data table.
-// #[tracing::instrument(level = "debug", skip_all)]
-// async fn move_ipo_date_to_master_data(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
-//     sqlx::query!(r##"
-//      update master_data md set
-//         start_nyse                         = case WHEN md.start_nyse is not null then r.ipo_date end,
-//         start_nyse_arca                    = case WHEN md.start_nyse_arca is not null then r.ipo_date end,
-//         start_nyse_american                = case WHEN md.start_nyse_american is not null then r.ipo_date end,
-//         start_nasdaq_global_select_market  = case WHEN md.start_nasdaq_global_select_market is not null then r.ipo_date end,
-//         start_nasdaq_select_market         = case WHEN md.start_nasdaq_select_market is not null then r.ipo_date end,
-//         start_nasdaq_capital_market        = case WHEN md.start_nasdaq_capital_market is not null then r.ipo_date end,
-//         start_nasdaq                       = case WHEN md.start_nasdaq is not null then r.ipo_date end,
-//         start_cboe                         = case WHEN md.start_cboe is not null then r.ipo_date end
-//     from
-//         (select fcp.ipo_date, md.issue_symbol, md.start_nyse, md.start_nyse_arca, md.start_nyse_american, md.start_nasdaq, md.start_nasdaq_global_select_market, md.start_nasdaq_select_market, md.start_nasdaq_capital_market, md.start_cboe
-//             from master_data md
-//             join financialmodelingprep_company_profile fcp
-//             on md.issue_symbol = fcp.symbol
-//             where fcp.is_staged = false and fcp.ipo_date is not null
-//         ) as r
-//     where md.issue_symbol = r.issue_symbol;"##)
-//     .execute(connection_pool)
-//     .await?;
-//     Ok(())
-// }
+#[tracing::instrument(level = "debug", skip_all)]
+async fn mark_staged(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
+    sqlx::query!(
+        r#"update polygon_grouped_daily pgd
+            set is_staged = true
+            from (
+                select pgd.symbol, pgd.business_date from polygon_grouped_daily pgd join market_data md on
+                    md.symbol = pgd.symbol 
+                and md.business_date = pgd.business_date 
+                and  not (pgd."close" is not null 
+                    and  md."close" is null )
+                and  not (pgd."close" is not null 
+                    and  md.stock_price is null )       
+                and  not (pgd."open" is not null 
+                    and  md."open" is null )
+                and  not (pgd.order_amount is not null 
+                    and  md.order_amount is null )
+                and  not (pgd.stock_traded is not null 
+                    and  md.stock_traded is null )
+                where is_staged = false
+            ) as r
+            where pgd.symbol = r.symbol and pgd.business_date = r.business_date"#
+    )
+    .execute(connection_pool)
+    .await?;
+    Ok(())
+}
 
 ///Select the master data with non start date 1792-05-17 and mark corresponding entries in 1792-05-17 financialmodelingprep_company_profile as staged.
 // #[tracing::instrument(level = "debug", skip_all)]
@@ -491,10 +503,13 @@ async fn get_existing_partition_ranges_for_oid(
 
 #[cfg(test)]
 mod test {
-    use sqlx::{Pool, Postgres};
+    use chrono::Utc;
+    use num_bigint::{BigInt, Sign::Plus, ToBigInt};
+    use sqlx::{types::BigDecimal, Pool, Postgres};
 
     use crate::actions::stage::polygon_grouped_daily::{
-        create_partition, get_existing_partition_ranges_for_oid, get_table_oid,
+        add_data, create_partition, get_existing_partition_ranges_for_oid, get_table_oid,
+        MarketData, MarketDataBuilder, MarketDataTransposed,
     };
 
     #[sqlx::test()]
@@ -533,5 +548,108 @@ mod test {
         assert!(creation_result.is_ok());
         assert_eq!(partitions.as_ref().unwrap().len(), 1);
         assert!(partitions.as_ref().unwrap().contains(&partition_value))
+    }
+
+    #[sqlx::test()]
+    fn given_empty_database_when_one_record_added_then_no_error(pool: Pool<Postgres>) {
+        let stock_price = BigDecimal::new(BigInt::new(Plus, vec![1]), 1);
+        let data: MarketDataTransposed = vec![MarketDataBuilder::builder()
+            .symbol("A".to_string())
+            .business_date(Utc::now().date_naive())
+            .order_amount(Some(1))
+            .stock_price(stock_price)
+            .build()
+            .unwrap()]
+        .into();
+        let result = add_data(&pool, data).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[sqlx::test()]
+    fn given_empty_database_when_two_records_added_then_no_error(
+        pool: Pool<Postgres>,
+    ) -> Result<(), anyhow::Error> {
+        let stock_price = BigDecimal::new(BigInt::new(Plus, vec![1]), 1);
+        let data: MarketDataTransposed = vec![MarketDataBuilder::builder()
+            .symbol("A".to_string())
+            .business_date(Utc::now().date_naive())
+            .order_amount(Some(1))
+            .stock_price(stock_price)
+            .build()
+            .unwrap()]
+        .into();
+        let data2 = data.clone();
+        add_data(&pool, data).await?;
+        add_data(&pool, data2).await?;
+        Ok(())
+    }
+
+    #[test]
+    fn get_missing_zero_values_given_none_then_none() {
+        assert_eq!(
+            MarketData::get_missing_zero_values(None, None),
+            (None, None)
+        );
+    }
+
+    #[test]
+    fn get_missing_zero_values_given_none_and_zero_then_zero_and_zero() {
+        assert_eq!(
+            MarketData::get_missing_zero_values(
+                None,
+                Some(BigDecimal::new(0.to_bigint().unwrap(), 0))
+            ),
+            (Some(0), Some(BigDecimal::new(0.to_bigint().unwrap(), 0)))
+        );
+    }
+
+    #[test]
+    fn get_missing_zero_values_given_zero_and_none_then_zero_and_zero() {
+        assert_eq!(
+            MarketData::get_missing_zero_values(Some(0), None),
+            (Some(0), Some(BigDecimal::new(0.to_bigint().unwrap(), 0)))
+        );
+    }
+
+    #[test]
+    fn get_missing_zero_values_given_5_and_none_then_5_and_none() {
+        assert_eq!(
+            MarketData::get_missing_zero_values(Some(5), None),
+            (Some(5), None)
+        );
+    }
+
+    #[test]
+    fn get_missing_zero_values_given_10_and_20_then_unchanged() {
+        assert_eq!(
+            MarketData::get_missing_zero_values(
+                Some(10),
+                Some(BigDecimal::new(20.to_bigint().unwrap(), 0))
+            ),
+            (Some(10), Some(BigDecimal::new(20.to_bigint().unwrap(), 0)))
+        );
+    }
+
+    #[test]
+    fn get_missing_zero_values_given_0_and_0_then_unchanged() {
+        assert_eq!(
+            MarketData::get_missing_zero_values(
+                Some(0),
+                Some(BigDecimal::new(0.to_bigint().unwrap(), 0))
+            ),
+            (Some(0), Some(BigDecimal::new(0.to_bigint().unwrap(), 0)))
+        );
+    }
+
+    #[test]
+    fn get_missing_zero_values_given_0_and_5_then_unchanged() {
+        assert_eq!(
+            MarketData::get_missing_zero_values(
+                Some(0),
+                Some(BigDecimal::new(5.to_bigint().unwrap(), 0))
+            ),
+            (Some(0), Some(BigDecimal::new(5.to_bigint().unwrap(), 0)))
+        );
     }
 }
