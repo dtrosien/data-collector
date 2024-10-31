@@ -217,9 +217,9 @@ async fn load_and_store_missing_data_given_url(
                 Responses::NotFound(_) => {
                     info!("Stock symbol '{}' not found.", issue_sybmol);
                     //Mark as not found if request range covers today
-                    if &start_request_date <= &Utc::now().date_naive()
-                        && &Utc::now().date_naive()
-                            <= &start_request_date
+                    if start_request_date <= Utc::now().date_naive()
+                        && Utc::now().date_naive()
+                            <= start_request_date
                                 .checked_add_days(Days::new((PAGE_ENTRY_LIMIT - 1).into()))
                                 .expect("Adding some days should always stay in range")
                     {
@@ -281,7 +281,7 @@ async fn search_start_date(
     if let Some(ipo_date) = result.ipo_date {
         return Ok(NaiveDate::parse_from_str(&ipo_date, "%Y-%m-%d")?);
     }
-    return Ok(NaiveDate::parse_from_str("1792-05-17", "%Y-%m-%d")?);
+    Ok(NaiveDate::parse_from_str("1792-05-17", "%Y-%m-%d")?)
 }
 
 async fn get_next_uncollected_issue_symbol(
