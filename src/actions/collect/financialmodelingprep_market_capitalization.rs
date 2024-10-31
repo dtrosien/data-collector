@@ -18,6 +18,7 @@ use tracing::{debug, info, warn};
 const URL: &str = "https://financialmodelingprep.com/api/v3/historical-market-capitalization/";
 const PLATFORM: &ApiKeyPlatform = &ApiKeyPlatform::Financialmodelingprep;
 const WAIT_FOR_KEY: bool = false;
+const PAGE_ENTRY_LIMIT: u32 = 1313;
 
 struct IssueSymbols {
     issue_symbol: String,
@@ -215,7 +216,15 @@ async fn load_and_store_missing_data_given_url(
                 }
                 Responses::NotFound(_) => {
                     info!("Stock symbol '{}' not found.", issue_sybmol);
-                    add_missing_issue_symbol(issue_sybmol, &connection_pool).await?;
+                    //Mark as not found if request range covers today
+                    if &start_request_date <= &Utc::now().date_naive()
+                        && &Utc::now().date_naive()
+                            <= &start_request_date
+                                .checked_add_days(Days::new((PAGE_ENTRY_LIMIT - 1).into()))
+                                .expect("Adding some days should always stay in range")
+                    {
+                        add_missing_issue_symbol(issue_sybmol, &connection_pool).await?;
+                    }
                 }
             }
 
@@ -243,6 +252,7 @@ async fn search_start_date(
     connection_pool: &PgPool,
     issue_sybmol: &String,
 ) -> Result<NaiveDate, anyhow::Error> {
+    // Search for existing date in time series
     let result = sqlx::query!(
         "select max(business_date) 
         from financialmodelingprep_market_cap 
@@ -252,9 +262,13 @@ async fn search_start_date(
     )
     .fetch_optional(connection_pool)
     .await?;
-    info!("Found date in database: {:?}", result);
+    debug!("Found date in database: {:?}", result);
     if let Some(query_result) = result {
-        return Ok(query_result.max.expect("Checked earlier"));
+        return Ok(query_result
+            .max
+            .expect("Group by in query should eliminate NULL values")
+            .checked_add_days(Days::new(1))
+            .expect("Adding 1 day should never fail"));
     }
 
     let result = sqlx::query!(
@@ -263,13 +277,11 @@ async fn search_start_date(
     )
     .fetch_one(connection_pool)
     .await?;
-    let ipo_date = NaiveDate::parse_from_str(
-        &result.ipo_date.expect("Existence checked before"),
-        "%Y-%m-%d",
-    )
-    .expect("Parsing issue_symbol. Issue symbol is listed in non or multiple stock markets, but should be in exactly one.");
-    //TODO: Add search of first data, if ipo date is initialization date
-    Ok(ipo_date)
+
+    if let Some(ipo_date) = result.ipo_date {
+        return Ok(NaiveDate::parse_from_str(&ipo_date, "%Y-%m-%d")?);
+    }
+    return Ok(NaiveDate::parse_from_str("1792-05-17", "%Y-%m-%d")?);
 }
 
 async fn get_next_uncollected_issue_symbol(
@@ -286,6 +298,7 @@ async fn get_next_uncollected_issue_symbol(
         .map(|issue_symbol| issue_symbol.issue_symbol)
         .collect::<Vec<_>>();
 
+    // Get ungathered symbol with known start date
     let query_result = sqlx::query!(
         "select issue_symbol from master_data_eligible mde
          where
@@ -310,19 +323,23 @@ async fn get_next_uncollected_issue_symbol(
         return Ok(r.issue_symbol);
     }
 
-    // // Check if there is a symbol missing in the set of lower priority
+    // Check if there is a symbol missing in the set of lower priority
     let query_result = sqlx::query!(
         "select issue_symbol from master_data_eligible mde
          where
-        not (start_nyse != '1792-05-17' or start_nyse is null) and
+        not ((start_nyse != '1792-05-17' or start_nyse is null) and
         (start_nyse_arca != '1792-05-17' or start_nyse_arca is null) and
         (start_nyse_american != '1792-05-17' or start_nyse_american is null) and
         (start_nasdaq != '1792-05-17' or start_nasdaq is null) and
         (start_nasdaq_global_select_market != '1792-05-17' or start_nasdaq_global_select_market is null) and
         (start_nasdaq_select_market != '1792-05-17' or start_nasdaq_select_market is null) and
         (start_nasdaq_capital_market != '1792-05-17' or start_nasdaq_capital_market is null) and
-        (start_cboe != '1792-05-17' or start_cboe is null) and issue_symbol not in (select unnest($1::text[]))
-         order by issue_symbol limit 1",
+        (start_cboe != '1792-05-17' or start_cboe is null)) and
+        issue_symbol not in (select unnest($1::text[])) and
+        (issue_symbol not in
+          (select distinct(symbol)
+           from financialmodelingprep_market_cap))
+         order by issue_symbol",
         &missing_issue_symbols
     )
     .fetch_one(connection_pool)
@@ -398,7 +415,7 @@ fn create_polygon_market_capitalization_request<'a>(
     api_key: &'a mut Box<dyn ApiKey>,
 ) -> FinancialmodelingprepMarketCapitalizationRequest<'a> {
     let end_date = start_date
-        .checked_add_days(Days::new(1312))
+        .checked_add_days(Days::new((PAGE_ENTRY_LIMIT - 1).into()))
         .expect("Should not leave date range.");
 
     let base_request_url = base_url.to_string()

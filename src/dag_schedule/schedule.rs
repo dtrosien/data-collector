@@ -228,7 +228,7 @@ impl Schedule {
     }
 
     #[allow(clippy::mutable_key_type)]
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn schedule_tasks(&mut self, task_dependencies_specs: TaskDependenciesSpecs) {
         self.tasks = self.create_schedule(task_dependencies_specs).await;
     }

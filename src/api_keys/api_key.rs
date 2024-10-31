@@ -88,19 +88,21 @@ impl FinancialmodelingprepKey {
                     0,
                     0,
                 )
-                .single()
+                .latest()
                 .expect("Unwrapping of date today should always work");
         }
         Utc.with_ymd_and_hms(
             self.last_use.year(),
             self.last_use.month(),
-            self.last_use.day() + 1,
+            self.last_use.day(),
             19,
             0,
             0,
         )
-        .single()
+        .latest()
         .expect("Unwrapping of date today should always work")
+        .checked_add_days(Days::new(1))
+        .expect("Adding a day should always work")
     }
 }
 
