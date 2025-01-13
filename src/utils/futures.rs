@@ -73,7 +73,6 @@ pub async fn join_handle_results(
 //     let results = join_all(futures).await;
 //     results.into_iter().collect()
 // }
-
 /// fails if a single future fails but finishes all futures
 pub async fn join_future_results(
     futures: Vec<BoxFuture<'_, Result<Option<StatsMap>, TaskError>>>,
