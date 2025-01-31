@@ -3,6 +3,7 @@ use super::collect::financialmodelingprep_market_capitalization::Financialmodeli
 use super::collect::polygon_grouped_daily::PolygonGroupedDailyCollector;
 use super::collect::polygon_open_close::PolygonOpenCloseCollector;
 use super::stage::financialmodelingprep_company_profile::FinancialmodelingprepCompanyProfileStager;
+use super::stage::financialmodelingprep_market_capitalization::FinancialmodelingprepMarketCapitalizationStager;
 use super::stage::polygon_grouped_daily::PolygonGroupedDailyStager;
 use crate::{actions::collect::dummy::DummyCollector, api_keys::api_key::PolygonKey};
 
@@ -68,6 +69,9 @@ pub fn create_action(
                 Arc::clone(&key_store),
             )
         }
+        ActionType::FinmodMarketCapStager => Arc::new(
+            FinancialmodelingprepMarketCapitalizationStager::new(pool.clone()),
+        ),
     }
 }
 
@@ -163,6 +167,7 @@ pub enum ActionType {
     FinancialmodelingprepCompanyProfileCollet,
     FinmodCompanyProfileStage,
     FinmodMarketCapCollect,
+    FinmodMarketCapStager,
     Dummy,
 }
 

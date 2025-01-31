@@ -1,0 +1,1 @@
+ALTER TABLE public.market_data ALTER COLUMN stock_price DROP NOT NULL;

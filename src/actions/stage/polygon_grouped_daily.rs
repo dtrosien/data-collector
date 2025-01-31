@@ -264,7 +264,7 @@ impl Runnable for PolygonGroupedDailyStager {
 #[tracing::instrument(level = "debug", skip_all)]
 pub async fn stage_data(connection_pool: &PgPool) -> Result<(), anyhow::Error> {
     // Mark already existing data as staged (comes maybe from other sources)
-    debug!("Mark already stageable data");
+    debug!("Mark already existing data as staged");
     mark_staged(connection_pool).await?;
 
     let partitions: HashSet<u32> = get_existing_partitions(connection_pool).await?;
