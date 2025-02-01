@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update financialmodelingprep_market_cap fmc \n            set is_staged = true \n            from (\n\t\t\t  select fmc.symbol , fmc.business_date from financialmodelingprep_market_cap fmc join market_data md on \n\t\t\t    md.symbol = fmc.symbol \n            and md.business_date = fmc.business_date\n            and not ( fmc.market_cap is not null  \n                  and md.market_capitalization is null)\n                  where is_staged = false\n\t\t\t) as r\n\t\t\twhere fmc.symbol = r.symbol and fmc.business_date = r.business_date",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "780edfd010a0ac2c1935aabf946792f56a7a23da6ce799b06c9c8fbd5a96e8eb"
+}

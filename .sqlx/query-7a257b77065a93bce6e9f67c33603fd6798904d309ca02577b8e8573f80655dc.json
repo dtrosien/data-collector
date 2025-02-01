@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select fmc.symbol, fmc.business_date, fmc.market_cap  from financialmodelingprep_market_cap fmc where fmc.is_staged = false ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "symbol",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "business_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 2,
+        "name": "market_cap",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "7a257b77065a93bce6e9f67c33603fd6798904d309ca02577b8e8573f80655dc"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        update market_data md \n        set market_capitalization = coalesce(md.market_capitalization , fmc.market_cap)\n        from financialmodelingprep_market_cap fmc\n        where \n                fmc.is_staged = false \n            and fmc.symbol = md.symbol\n            and fmc.business_date = md.business_date\n            and md.year_month = (EXTRACT(YEAR FROM fmc.business_date) * 100) + EXTRACT(MONTH FROM fmc.business_date)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "5774f699e94995fc1dc6365b2406ebab090ff4f0b6c930e1328174413fd55e4b"
+}
