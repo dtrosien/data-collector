@@ -10,7 +10,7 @@ use futures_util::TryFutureExt;
 use reqwest::Client;
 use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr, NoneAsEmptyString};
+use serde_with::{serde_as, DefaultOnError, DisplayFromStr, NoneAsEmptyString};
 use sqlx::PgPool;
 use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex};
@@ -134,7 +134,7 @@ pub struct CompanyProfileElement {
     ceo: Option<String>,
     sector: Option<String>,
     country: Option<String>,
-    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde_as(as = "DefaultOnError<Option<DisplayFromStr>>")]
     full_time_employees: Option<i32>,
     phone: Option<String>,
     address: Option<String>,
@@ -477,7 +477,6 @@ mod test {
         let parsed =
             crate::utils::action_helpers::parse_response::<Vec<CompanyProfileElement>>(input_json)
                 .unwrap();
-        // ALTER TABLE public.financialmodelingprep_company_profile ALTER COLUMN company_name DROP NOT NULL;
 
         let instrument = CompanyProfileElement {
             symbol: "A".to_string(),
@@ -502,6 +501,93 @@ mod test {
             sector: Some("Healthcare".to_string()),
             country: Some("US".to_string()),
             full_time_employees: Some(17700),
+            phone: Some("800 227 9770".to_string()),
+            address: Some("5301 Stevens Creek Boulevard".to_string()),
+            city: Some("Santa Clara".to_string()),
+            state: Some("CA".to_string()),
+            zip: Some("95051".to_string()),
+            dcf_diff: Some(53.46901),
+            dcf: Some(84.27099210145948),
+            image: Some("https://financialmodelingprep.com/image-stock/A.png".to_string()),
+            ipo_date: None,
+            default_image: Some(false),
+            is_etf: Some(false),
+            is_actively_trading: Some(true),
+            is_adr: Some(false),
+            is_fund: Some(false),
+        };
+        assert_eq!(parsed[0], instrument);
+    }
+
+    #[test]
+    fn parse_empty_integer() {
+        let input_json = r#"[
+            {
+              "symbol": "A",
+              "price": 137.74,
+              "beta": 1.122,
+              "volAvg": 1591377,
+              "mktCap": 40365395700,
+              "lastDiv": 0.94,
+              "range": "96.8-151.58",
+              "changes": 1.37,
+              "companyName": "Agilent Technologies, Inc.",
+              "currency": "USD",
+              "cik": "0001090872",
+              "isin": "US00846U1016",
+              "cusip": "00846U101",
+              "exchange": "New York Stock Exchange",
+              "exchangeShortName": "NYSE",
+              "industry": "Medical - Diagnostics & Research",
+              "website": "https://www.agilent.com",
+              "description": "Agilent Technologies",
+              "ceo": "Mr. Michael R. McMullen",
+              "sector": "Healthcare",
+              "country": "US",
+              "fullTimeEmployees": "",
+              "phone": "800 227 9770",
+              "address": "5301 Stevens Creek Boulevard",
+              "city": "Santa Clara",
+              "state": "CA",
+              "zip": "95051",
+              "dcfDiff": 53.46901,
+              "dcf": 84.27099210145948,
+              "image": "https://financialmodelingprep.com/image-stock/A.png",
+              "ipoDate": "",
+              "defaultImage": false,
+              "isEtf": false,
+              "isActivelyTrading": true,
+              "isAdr": false,
+              "isFund": false
+            }
+          ]"#;
+        let parsed =
+            crate::utils::action_helpers::parse_response::<Vec<CompanyProfileElement>>(input_json)
+                .unwrap();
+
+        let instrument = CompanyProfileElement {
+            symbol: "A".to_string(),
+            price: Some(137.74),
+            beta: Some(1.122),
+            vol_avg: Some(1591377),
+            mkt_cap: Some(40365395700),
+            last_div: Some(0.94),
+            range: Some("96.8-151.58".to_string()),
+            changes: Some(1.37),
+            company_name: Some("Agilent Technologies, Inc.".to_string()),
+            currency: Some("USD".to_string()),
+            cik: Some("0001090872".to_string()),
+            isin: Some("US00846U1016".to_string()),
+            cusip: Some("00846U101".to_string()),
+            exchange: Some("New York Stock Exchange".to_string()),
+            exchange_short_name: Some("NYSE".to_string()),
+            industry: Some("Medical - Diagnostics & Research".to_string()),
+            website: Some("https://www.agilent.com".to_string()),
+            description: Some("Agilent Technologies".to_string()),
+            ceo: Some("Mr. Michael R. McMullen".to_string()),
+            sector: Some("Healthcare".to_string()),
+            country: Some("US".to_string()),
+            full_time_employees: None,
             phone: Some("800 227 9770".to_string()),
             address: Some("5301 Stevens Creek Boulevard".to_string()),
             city: Some("Santa Clara".to_string()),
