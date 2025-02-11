@@ -279,6 +279,9 @@ async fn search_start_date(
     .await?;
 
     if let Some(ipo_date) = result.ipo_date {
+        if ipo_date.is_empty() {
+            return Ok(NaiveDate::parse_from_str("1792-05-17", "%Y-%m-%d")?);
+        }
         return Ok(NaiveDate::parse_from_str(&ipo_date, "%Y-%m-%d")?);
     }
     Ok(NaiveDate::parse_from_str("1792-05-17", "%Y-%m-%d")?)
