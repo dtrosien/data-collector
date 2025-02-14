@@ -122,7 +122,7 @@ struct TransposedPolygonOpenClose {
     pub open: Vec<f64>,
     pub pre_market: Vec<Option<f64>>,
     pub symbol: Vec<String>,
-    pub volume: Vec<f64>,
+    pub volume: Vec<Option<f64>>,
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
@@ -180,7 +180,7 @@ async fn load_and_store_missing_data_given_url(
                 &open_close_data.open[..],
                 &open_close_data.pre_market[..] as _,
                 &open_close_data.symbol[..],
-                &open_close_data.volume[..],)
+                &open_close_data.volume[..] as _,)
                 .execute(&connection_pool)
                 .await?;
             }
@@ -312,9 +312,7 @@ fn transpose_polygon_open_close(instruments: &Vec<PolygonOpenClose>) -> Transpos
                 .expect(ERROR_MSG_VALUE_EXISTS)
                 .to_string(),
         );
-        result
-            .volume
-            .push(data.volume.expect(ERROR_MSG_VALUE_EXISTS));
+        result.volume.push(data.volume);
     }
     result
 }
