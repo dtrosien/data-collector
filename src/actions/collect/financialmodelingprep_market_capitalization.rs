@@ -13,7 +13,7 @@ use sqlx::PgPool;
 use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex};
 
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 const URL: &str = "https://financialmodelingprep.com/api/v3/historical-market-capitalization/";
 const PLATFORM: &ApiKeyPlatform = &ApiKeyPlatform::Financialmodelingprep;
