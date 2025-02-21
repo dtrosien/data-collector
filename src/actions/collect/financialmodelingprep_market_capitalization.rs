@@ -13,7 +13,7 @@ use sqlx::PgPool;
 use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex};
 
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 const URL: &str = "https://financialmodelingprep.com/api/v3/historical-market-capitalization/";
 const PLATFORM: &ApiKeyPlatform = &ApiKeyPlatform::Financialmodelingprep;
@@ -290,16 +290,7 @@ async fn search_start_date(
 async fn get_next_uncollected_issue_symbol(
     connection_pool: &PgPool,
 ) -> Result<Option<String>, anyhow::Error> {
-    let missing_issue_symbols = sqlx::query_as!(
-        IssueSymbols,
-        "SELECT issue_symbol FROM source_symbol_warden ssw  where financial_modeling_prep = false"
-    )
-    .fetch_all(connection_pool)
-    .await?;
-    let missing_issue_symbols = missing_issue_symbols
-        .into_iter()
-        .map(|issue_symbol| issue_symbol.issue_symbol)
-        .collect::<Vec<_>>();
+    let missing_issue_symbols = get_missing_symbols_finprep(connection_pool).await?;
 
     // Get ungathered symbol with known start date
     let query_result = sqlx::query!(
@@ -354,13 +345,36 @@ async fn get_next_uncollected_issue_symbol(
     }
 }
 
+async fn get_missing_symbols_finprep(
+    connection_pool: &sqlx::Pool<sqlx::Postgres>,
+) -> Result<Vec<String>, anyhow::Error> {
+    let missing_issue_symbols = sqlx::query_as!(
+        IssueSymbols,
+        "SELECT issue_symbol FROM source_symbol_warden ssw  where financial_modeling_prep = false"
+    )
+    .fetch_all(connection_pool)
+    .await?;
+    let missing_issue_symbols = missing_issue_symbols
+        .into_iter()
+        .map(|issue_symbol| issue_symbol.issue_symbol)
+        .collect::<Vec<_>>();
+    Ok(missing_issue_symbols)
+}
+
 // TODO: Misinterprets unlisted issue_symbols as active and creates and endless loop further upstream.
 async fn get_next_outdated_issue_symbol(
     connection_pool: &PgPool,
 ) -> Result<Option<String>, anyhow::Error> {
-    let result = sqlx::query!("select r.symbol, r.maxDate from
-(select symbol ,max(business_date) as maxDate from financialmodelingprep_market_cap group by symbol) as r
-order by r.maxDate asc limit 1").fetch_one(connection_pool).await?;
+    let missing_issue_symbols = get_missing_symbols_finprep(connection_pool).await?;
+
+    let result = sqlx::query!("
+    select r.symbol, r.maxDate from
+        (select symbol ,max(business_date) as maxDate from financialmodelingprep_market_cap group by symbol) as r
+    where r.symbol not in (select unnest($1::text[])) 
+    order by r.maxDate asc limit 1",
+    &missing_issue_symbols)
+    .fetch_one(connection_pool)
+    .await?;
 
     if let Some(date) = result.maxdate {
         //If date is today or yesterday, then the dataset is up to date.
