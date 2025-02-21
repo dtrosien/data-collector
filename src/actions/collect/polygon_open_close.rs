@@ -115,11 +115,11 @@ pub struct PolygonOpenClose {
 #[serde(rename_all = "camelCase")]
 struct TransposedPolygonOpenClose {
     pub after_hours: Vec<Option<f64>>,
-    pub close: Vec<f64>,
+    pub close: Vec<Option<f64>>,
     pub business_date: Vec<NaiveDate>,
-    pub high: Vec<f64>,
-    pub low: Vec<f64>,
-    pub open: Vec<f64>,
+    pub high: Vec<Option<f64>>,
+    pub low: Vec<Option<f64>>,
+    pub open: Vec<Option<f64>>,
     pub pre_market: Vec<Option<f64>>,
     pub symbol: Vec<String>,
     pub volume: Vec<Option<f64>>,
@@ -173,11 +173,11 @@ async fn load_and_store_missing_data_given_url(
                 (after_hours, "close", business_date, high, low, "open", pre_market, symbol, volume)
                 Select * from UNNEST ($1::float[], $2::float[], $3::date[], $4::float[], $5::float[], $6::float[], $7::float[], $8::text[], $9::float[]) on conflict do nothing"#,
                 &open_close_data.after_hours[..] as _,
-                &open_close_data.close[..],
+                &open_close_data.close[..] as _,
                 &open_close_data.business_date[..],
-                &open_close_data.high[..],
-                &open_close_data.low[..],
-                &open_close_data.open[..],
+                &open_close_data.high[..] as _,
+                &open_close_data.low[..] as _,
+                &open_close_data.open[..] as _,
                 &open_close_data.pre_market[..] as _,
                 &open_close_data.symbol[..],
                 &open_close_data.volume[..] as _,)
@@ -298,13 +298,13 @@ fn transpose_polygon_open_close(instruments: &Vec<PolygonOpenClose>) -> Transpos
     };
     for data in instruments {
         result.after_hours.push(data.after_hours);
-        result.close.push(data.close.expect(ERROR_MSG_VALUE_EXISTS));
+        result.close.push(data.close);
         result
             .business_date
             .push(data.business_date.expect(ERROR_MSG_VALUE_EXISTS));
-        result.high.push(data.high.expect(ERROR_MSG_VALUE_EXISTS));
-        result.low.push(data.low.expect(ERROR_MSG_VALUE_EXISTS));
-        result.open.push(data.open.expect(ERROR_MSG_VALUE_EXISTS));
+        result.high.push(data.high);
+        result.low.push(data.low);
+        result.open.push(data.open);
         result.pre_market.push(data.pre_market);
         result.symbol.push(
             data.symbol
