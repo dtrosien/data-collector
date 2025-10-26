@@ -379,8 +379,8 @@ fn get_stageable_data<'a>(
 > {
     // Pin<Box<dyn futures_util::Stream<Item = Result<polygon_grouped_daily_table, sqlx::Error>> + std::marker::Send>>
     let polygon_grouped_daily_stream = sqlx::query_as!( FinModPrepMarketCapTable,
-        r##"select fmc.symbol, fmc.business_date, fmc.market_cap  from financialmodelingprep_market_cap fmc where fmc.is_staged = false "##).fetch(connection_pool);
-    return polygon_grouped_daily_stream;
+        r##"select fmc.symbol, fmc.business_date, fmc.market_cap  from financialmodelingprep_market_cap fmc where fmc.is_staged = false"##).fetch(connection_pool);
+    polygon_grouped_daily_stream
 }
 
 async fn stage_data_stream<'a>(
