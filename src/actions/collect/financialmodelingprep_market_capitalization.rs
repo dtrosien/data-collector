@@ -383,10 +383,10 @@ async fn get_next_outdated_issue_symbol(
     order by r.maxDate asc limit 1"#,
     &unavailable_issue_symbols,
     already_searched,
-) 
+)
     .fetch_one(connection_pool)
     .await?;
-  
+
     if let Some(date) = result.maxdate {
         //If date is today or yesterday, then the dataset is up to date.
         if date == Utc::now().date_naive() || date == Utc::now().date_naive() - Duration::days(1) {
