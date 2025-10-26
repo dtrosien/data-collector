@@ -39,7 +39,8 @@ where
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_writer(sink)
         .with_thread_ids(true)
-        .with_span_events(FmtSpan::CLOSE);
+        .with_span_events(FmtSpan::CLOSE)
+        .with_ansi(false);
 
     let tracer = opentelemetry_otlp::new_pipeline()
         .tracing()
