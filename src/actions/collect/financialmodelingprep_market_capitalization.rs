@@ -170,8 +170,9 @@ async fn load_and_store_missing_data_given_url(
     url: &str,
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Financialmodelingprep Market Capitalization Collector.");
+    let mut already_searched_symbols: Vec<String> = vec![];
     let mut potential_issue_sybmol: Option<String> =
-        get_next_uncollected_issue_symbol(&connection_pool).await?;
+        get_next_uncollected_issue_symbol(&connection_pool, &already_searched_symbols).await?;
 
     info!("Next symbol: {:?}", potential_issue_sybmol);
     let mut general_api_key =
@@ -185,6 +186,7 @@ async fn load_and_store_missing_data_given_url(
         let mut start_request_date: NaiveDate =
             search_start_date(&connection_pool, issue_sybmol).await?;
         info!("Requesting symbol {}", &issue_sybmol);
+        already_searched_symbols.push(issue_sybmol.clone());
         while start_request_date < Utc::now().date_naive() && api_key.get_status() == Status::Ready
         {
             let mut request = create_polygon_market_capitalization_request(
@@ -193,7 +195,7 @@ async fn load_and_store_missing_data_given_url(
                 &start_request_date,
                 &mut api_key,
             );
-            debug!(
+            info!(
                 "Financialmodelingprep market capitalization request: {}",
                 request
             );
@@ -232,7 +234,8 @@ async fn load_and_store_missing_data_given_url(
                 .checked_add_days(Days::new(1313))
                 .expect("Should not leave date range.");
         }
-        potential_issue_sybmol = get_next_uncollected_issue_symbol(&connection_pool).await?;
+        potential_issue_sybmol =
+            get_next_uncollected_issue_symbol(&connection_pool, &already_searched_symbols).await?;
         general_api_key = KeyManager::exchange_apikey_or_wait_if_non_ready(
             key_manager.clone(),
             WAIT_FOR_KEY,
@@ -255,7 +258,7 @@ async fn search_start_date(
     // Search for existing date in time series
     let result = sqlx::query!(
         "select max(business_date) 
-        from financialmodelingprep_market_cap 
+        from financialmodelingprep_market_cap
         where symbol = $1::text 
         group by symbol",
         issue_sybmol
@@ -289,17 +292,9 @@ async fn search_start_date(
 
 async fn get_next_uncollected_issue_symbol(
     connection_pool: &PgPool,
+    already_searched: &Vec<String>,
 ) -> Result<Option<String>, anyhow::Error> {
-    let missing_issue_symbols = sqlx::query_as!(
-        IssueSymbols,
-        "SELECT issue_symbol FROM source_symbol_warden ssw  where financial_modeling_prep = false"
-    )
-    .fetch_all(connection_pool)
-    .await?;
-    let missing_issue_symbols = missing_issue_symbols
-        .into_iter()
-        .map(|issue_symbol| issue_symbol.issue_symbol)
-        .collect::<Vec<_>>();
+    let missing_issue_symbols = get_unavailable_symbols_finprep(connection_pool).await?;
 
     // Get ungathered symbol with known start date
     let query_result = sqlx::query!(
@@ -314,11 +309,13 @@ async fn get_next_uncollected_issue_symbol(
         (start_nasdaq_capital_market != '1792-05-17' or start_nasdaq_capital_market is null) and
         (start_cboe != '1792-05-17' or start_cboe is null) and
         (issue_symbol not in (select unnest($1::text[]))) and
+        (issue_symbol not in (select unnest($2::text[]))) and
         (issue_symbol not in
           (select distinct(symbol)
            from financialmodelingprep_market_cap))
         order by issue_symbol limit 1",
-        &missing_issue_symbols
+        &missing_issue_symbols,
+        already_searched
     )
     .fetch_one(connection_pool)
     .await;
@@ -339,28 +336,56 @@ async fn get_next_uncollected_issue_symbol(
         (start_nasdaq_capital_market != '1792-05-17' or start_nasdaq_capital_market is null) and
         (start_cboe != '1792-05-17' or start_cboe is null)) and
         issue_symbol not in (select unnest($1::text[])) and
+        (issue_symbol not in (select unnest($2::text[]))) and
         (issue_symbol not in
           (select distinct(symbol)
            from financialmodelingprep_market_cap))
-         order by issue_symbol",
-        &missing_issue_symbols
+         order by issue_symbol limit 1",
+        &missing_issue_symbols,
+        already_searched
     )
     .fetch_one(connection_pool)
     .await;
 
     match query_result {
         Ok(result) => Ok(result.issue_symbol),
-        Err(_) => get_next_outdated_issue_symbol(connection_pool).await,
+        Err(_) => get_next_outdated_issue_symbol(connection_pool, already_searched).await,
     }
+}
+
+async fn get_unavailable_symbols_finprep(
+    connection_pool: &sqlx::Pool<sqlx::Postgres>,
+) -> Result<Vec<String>, anyhow::Error> {
+    let missing_issue_symbols = sqlx::query_as!(
+        IssueSymbols,
+        "SELECT issue_symbol FROM source_symbol_warden ssw  where financial_modeling_prep = false"
+    )
+    .fetch_all(connection_pool)
+    .await?;
+    let missing_issue_symbols = missing_issue_symbols
+        .into_iter()
+        .map(|issue_symbol| issue_symbol.issue_symbol)
+        .collect::<Vec<_>>();
+    Ok(missing_issue_symbols)
 }
 
 // TODO: Misinterprets unlisted issue_symbols as active and creates and endless loop further upstream.
 async fn get_next_outdated_issue_symbol(
     connection_pool: &PgPool,
+    already_searched: &Vec<String>,
 ) -> Result<Option<String>, anyhow::Error> {
-    let result = sqlx::query!("select r.symbol, r.maxDate from
-(select symbol ,max(business_date) as maxDate from financialmodelingprep_market_cap group by symbol) as r
-order by r.maxDate asc limit 1").fetch_one(connection_pool).await?;
+    let unavailable_issue_symbols = get_unavailable_symbols_finprep(connection_pool).await?;
+    let result = sqlx::query!(r#"
+    select r.symbol, r.maxDate from
+        (select symbol ,max(business_date) as maxDate from financialmodelingprep_market_cap group by symbol) as r
+    where r.symbol not in (select unnest($1::text[])) 
+    and (r.symbol not in (select unnest($2::text[]))) 
+    order by r.maxDate asc limit 1"#,
+    &unavailable_issue_symbols,
+    already_searched,
+)
+    .fetch_one(connection_pool)
+    .await?;
 
     if let Some(date) = result.maxdate {
         //If date is today or yesterday, then the dataset is up to date.
@@ -597,3 +622,11 @@ mod test {
     //     assert_eq!(parsed_response.error_message, "Limit Reach.");
     // }
 }
+
+// Failed to parse line 1 in column 1 for response: <html>
+// <head><title>504 Gateway Time-out</title></head>
+// <body>
+// <center><h1>504 Gateway Time-out</h1></center>
+// <hr><center>nginx</center>
+// </body>
+// </html>

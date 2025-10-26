@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select fmc.symbol, fmc.business_date, fmc.market_cap  from financialmodelingprep_market_cap fmc where fmc.is_staged = false ",
+  "query": "select fmc.symbol, fmc.business_date, fmc.market_cap  from financialmodelingprep_market_cap fmc where fmc.is_staged = false",
   "describe": {
     "columns": [
       {
@@ -28,5 +28,5 @@
       false
     ]
   },
-  "hash": "7a257b77065a93bce6e9f67c33603fd6798904d309ca02577b8e8573f80655dc"
+  "hash": "ce40463fe829c98144a493101ff5585151058ead3e155258d627e906962dfcdb"
 }

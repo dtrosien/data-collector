@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select max(business_date) \n        from financialmodelingprep_market_cap \n        where symbol = $1::text \n        group by symbol",
+  "query": "select max(business_date) \n        from financialmodelingprep_market_cap\n        where symbol = $1::text \n        group by symbol",
   "describe": {
     "columns": [
       {
@@ -18,5 +18,5 @@
       null
     ]
   },
-  "hash": "3975ad49b517ee4f8fa20e930360a28ef319a2062d6acbde536d9c917d710d0d"
+  "hash": "d5708749be1ebe43f2a6501cfbaa7bccb13251bffbc8ed66845b90ca86e3223a"
 }

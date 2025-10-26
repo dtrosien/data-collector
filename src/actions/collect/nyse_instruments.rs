@@ -1,5 +1,7 @@
 use anyhow::anyhow;
 use std::fmt::Display;
+use std::thread::sleep;
+use std::time::Duration;
 
 use crate::utils::action_helpers;
 
@@ -10,7 +12,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::PgPool;
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::dag_schedule::task::TaskError::UnexpectedError;
 use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
@@ -54,13 +56,13 @@ struct NysePeekResponse {
 #[derive(Default, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct NyseInstrument {
-    pub instrument_type: String,
-    pub symbol_ticker: String,
-    pub symbol_exchange_ticker: String,
-    pub normalized_ticker: String,
-    pub symbol_esignal_ticker: String,
+    pub instrument_type: Option<String>,
+    pub symbol_ticker: Option<String>,
+    pub symbol_exchange_ticker: Option<String>,
+    pub normalized_ticker: Option<String>,
+    pub symbol_esignal_ticker: Option<String>,
     pub instrument_name: Option<String>,
-    pub mic_code: String,
+    pub mic_code: Option<String>,
 }
 
 #[derive(Default, Deserialize, Debug, PartialEq)]
@@ -91,32 +93,55 @@ async fn load_and_store_missing_data_given_url(
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load NYSE instruments");
     let page_size = get_amount_instruments_available(&client, url).await?;
+    let request = create_nyse_incomplete_instruments_request(1, page_size);
+    let response = client
+        .post(url)
+        .header("content-type", "application/json")
+        .body(request)
+        .send()
+        .await?
+        .text()
+        .await?;
+    let incomplete_instruments = action_helpers::parse_response::<Vec<NyseInstrument>>(&response)?;
 
-    let list_of_pages: Vec<u32> = (1..=1).collect();
-    for page in list_of_pages {
-        let request = create_nyse_instruments_request(page, page_size);
+    let mut instruments: Vec<NyseInstrument> = vec![];
+    for instrument in incomplete_instruments {
+        let body = create_nyse_instruments_request_body(instrument.normalized_ticker.unwrap());
         let response = client
             .post(url)
             .header("content-type", "application/json")
-            .body(request)
+            .body(body)
             .send()
-            .await?
-            .text()
-            .await?;
-        let instruments = action_helpers::parse_response::<Vec<NyseInstrument>>(&response)?;
-        let instruments = transpose_nyse_instruments(instruments);
-        sqlx::query!("INSERT INTO nyse_instruments 
-        (instrument_name, instrument_type, symbol_ticker, symbol_exchange_ticker, normalized_ticker, symbol_esignal_ticker, mic_code)
-        Select * from UNNEST ($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) on conflict do nothing",
-            &instruments.instrument_name[..],
-            &instruments.instrument_type[..],
-            &instruments.symbol_ticker[..],
-            &instruments.symbol_exchange_ticker[..],
-            &instruments.normalized_ticker[..],
-            &instruments.symbol_esignal_ticker[..],
-            &instruments.mic_code[..],
-        ).execute(&connection_pool).await?;
+            .await;
+        match response {
+            Err(_) => break,
+            Ok(ok) => {
+                let response = ok.text().await?;
+                info!("response: {}", response);
+                instruments.push(
+                    action_helpers::parse_response::<Vec<NyseInstrument>>(&response)?
+                        .swap_remove(0),
+                );
+                sleep(Duration::from_millis(2000));
+            }
+        }
     }
+    instruments.retain(|inst| inst.normalized_ticker.is_some());
+
+    let instruments = transpose_nyse_instruments(instruments);
+    debug!("instruments: {:?}", instruments);
+    sqlx::query!("INSERT INTO nyse_instruments
+    (instrument_name, instrument_type, symbol_ticker, symbol_exchange_ticker, normalized_ticker, symbol_esignal_ticker, mic_code)
+    Select * from UNNEST ($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) on conflict do nothing",
+        &instruments.instrument_name[..],
+        &instruments.instrument_type[..],
+        &instruments.symbol_ticker[..],
+        &instruments.symbol_exchange_ticker[..],
+        &instruments.normalized_ticker[..],
+        &instruments.symbol_esignal_ticker[..],
+        &instruments.mic_code[..],
+    ).execute(&connection_pool).await?;
+    // 19298 in db
     Ok(())
 }
 
@@ -132,18 +157,34 @@ fn transpose_nyse_instruments(instruments: Vec<NyseInstrument>) -> TransposedNys
         mic_code: vec![],
     };
     let instruments = filter_for_valid_datasets(instruments);
-    for data in instruments {
-        result.instrument_type.push(data.instrument_type);
-        result.symbol_ticker.push(data.symbol_ticker);
+    for mut data in instruments {
+        result.instrument_type.push(
+            data.instrument_type
+                .get_or_insert("".to_string())
+                .to_string(),
+        );
         result
-            .symbol_exchange_ticker
-            .push(data.symbol_exchange_ticker);
-        result.normalized_ticker.push(data.normalized_ticker);
-        result
-            .symbol_esignal_ticker
-            .push(data.symbol_esignal_ticker);
+            .symbol_ticker
+            .push(data.symbol_ticker.get_or_insert("".to_string()).to_string());
+        result.symbol_exchange_ticker.push(
+            data.symbol_exchange_ticker
+                .get_or_insert("".to_string())
+                .to_string(),
+        );
+        result.normalized_ticker.push(
+            data.normalized_ticker
+                .get_or_insert("".to_string())
+                .to_string(),
+        );
+        result.symbol_esignal_ticker.push(
+            data.symbol_esignal_ticker
+                .get_or_insert("".to_string())
+                .to_string(),
+        );
         result.instrument_name.push(data.instrument_name.unwrap());
-        result.mic_code.push(data.mic_code);
+        result
+            .mic_code
+            .push(data.mic_code.get_or_insert("".to_string()).to_string());
     }
     result
 }
@@ -164,11 +205,12 @@ async fn get_amount_instruments_available(
     let response = client
         .post(url)
         .header("content-type", "application/json")
-        .body(create_nyse_instruments_request(1, 1))
+        .body(create_nyse_incomplete_instruments_request(1, 1))
         .send()
         .await?
         .text()
         .await?;
+    // info!("amount instruments: {}", response);
     let response = action_helpers::parse_response::<Vec<NysePeekResponse>>(&response)?;
 
     match response.first() {
@@ -179,13 +221,22 @@ async fn get_amount_instruments_available(
     }
 }
 
-fn create_nyse_instruments_request(page: u32, pagesize: u32) -> String {
+fn create_nyse_instruments_request_body(normalized_ticker: String) -> String {
+    let request_json = json!({
+        "micCode":"XNYS",
+        "normalizedTicker":normalized_ticker}
+    );
+    request_json.to_string()
+}
+
+fn create_nyse_incomplete_instruments_request(page: u32, pagesize: u32) -> String {
     let request_json = json!({
         "pageNumber":page,
         "sortColumn":"NORMALIZED_TICKER",
         "sortOrder":"ASC",
         "maxResultsPerPage":pagesize + 1, // For reasons the NYSE API cuts off one result
-        "filterToken":""
+        "filterToken":"",
+        "instrumentType":"EQUITY"
     });
     request_json.to_string()
 }
@@ -206,13 +257,13 @@ mod test {
         let input_json = r#"[{"total":13202,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"A","normalizedTicker":"A","symbolEsignalTicker":"A","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]"#;
         let parsed = action_helpers::parse_response::<Vec<NyseInstrument>>(input_json).unwrap();
         let instrument = NyseInstrument {
-            instrument_type: "COMMON_STOCK".to_string(),
-            symbol_ticker: "A".to_string(),
-            symbol_exchange_ticker: "A".to_string(),
-            normalized_ticker: "A".to_string(),
-            symbol_esignal_ticker: "A".to_string(),
+            instrument_type: Some("COMMON_STOCK".to_string()),
+            symbol_ticker: Some("A".to_string()),
+            symbol_exchange_ticker: Some("A".to_string()),
+            normalized_ticker: Some("A".to_string()),
+            symbol_esignal_ticker: Some("A".to_string()),
             instrument_name: Some("AGILENT TECHNOLOGIES INC".to_string()),
-            mic_code: "XNYS".to_string(),
+            mic_code: Some("XNYS".to_string()),
         };
         assert_eq!(parsed[0], instrument);
     }
@@ -227,8 +278,8 @@ mod test {
 
     #[test]
     fn create_request_statement() {
-        let expected = r#"{"filterToken":"","maxResultsPerPage":2,"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC"}"#;
-        let build = create_nyse_instruments_request(1, 1);
+        let expected = r#"{"filterToken":"","instrumentType":"EQUITY","maxResultsPerPage":2,"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC"}"#;
+        let build = create_nyse_incomplete_instruments_request(1, 1);
         assert_eq!(expected, build);
     }
 
@@ -237,16 +288,26 @@ mod test {
         // Start a lightweight mock server.
         let server = MockServer::start();
         let url = server.base_url();
-        let request_json = r#"{"filterToken":"","maxResultsPerPage":2,"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC"}"#;
-        let response_json = r#"[{"total":1,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"B","normalizedTicker":"C","symbolEsignalTicker":"D","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]"#;
+        let initial_request_json = r#"{"filterToken":"","instrumentType":"EQUITY","maxResultsPerPage":2,"pageNumber":1,"sortColumn":"NORMALIZED_TICKER","sortOrder":"ASC"}"#;
+        let initial_response_json = r#"[{"total":1,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":null,"instrumentType":null,"symbolTicker": null,"symbolExchangeTicker":"B","normalizedTicker":"C","symbolEsignalTicker": null,"instrumentName":"AGILENT TECHNOLOGIES INC","micCode":null }]"#;
+        let symbol_request_json = r#"{"micCode":"XNYS","normalizedTicker":"C"}"#;
+        let symbol_response_json = r#"[{"total":1,"url":"https://www.nyse.com/quote/XNYS:A","exchangeId":"558","instrumentType":"COMMON_STOCK","symbolTicker":"A","symbolExchangeTicker":"B","normalizedTicker":"C","symbolEsignalTicker":"D","instrumentName":"AGILENT TECHNOLOGIES INC","micCode":"XNYS"}]"#;
 
         server.mock(|when, then| {
             when.method(POST)
                 .header("content-type", "application/json")
-                .body(request_json);
+                .body(initial_request_json);
             then.status(200)
                 .header("content-type", "application/json")
-                .body(response_json);
+                .body(initial_response_json);
+        });
+        server.mock(|when, then| {
+            when.method(POST)
+                .header("content-type", "application/json")
+                .body(symbol_request_json);
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(symbol_response_json);
         });
 
         let client = get_test_client();

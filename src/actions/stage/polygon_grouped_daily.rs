@@ -428,7 +428,7 @@ fn get_stageable_data<'a>(
     // Pin<Box<dyn futures_util::Stream<Item = Result<polygon_grouped_daily_table, sqlx::Error>> + std::marker::Send>>
     let polygon_grouped_daily_stream = sqlx::query_as!( PolygonGroupedDailyTable,
         r##"select pgd.symbol, pgd."open", pgd."close", pgd.business_date, pgd.order_amount, pgd.stock_traded from polygon_grouped_daily pgd where pgd.is_staged = false"##).fetch(connection_pool);
-    return polygon_grouped_daily_stream;
+    polygon_grouped_daily_stream
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
