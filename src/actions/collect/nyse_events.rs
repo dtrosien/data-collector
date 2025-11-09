@@ -15,7 +15,7 @@ use crate::dag_schedule::task::TaskError::UnexpectedError;
 use sqlx::PgPool;
 use tracing::{debug, info, warn};
 
-const NYSE_EVENT_URL: &str = "https://listingmanager.nyse.com/api/corpax/";
+const NYSE_EVENT_URL: &str = "https://www.nyse.com/api/nyseservice/v1/corpax/";
 
 #[derive(Clone, Debug)]
 pub struct NyseEventCollector {
