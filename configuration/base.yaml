@@ -38,9 +38,9 @@ application:
 
   
   tasks:
-    - name: NyseEventsCollect
-      task_type: NyseEventsCollect
-      comment: Helpful comment
+    # - name: NyseEventsCollect
+    #   task_type: NyseEventsCollect
+    #   comment: Helpful comment
     # - name: NyseInstrumentsCollect
     #   task_type: NyseInstrumentsCollect
     #   comment: Helpful comment
@@ -60,11 +60,11 @@ application:
     #   task_type: PolygonGroupedDailyStager
     #   comment: Helpful comment
     # - name: PolygonOpenClose
-    #   task_type: PolygonOpenClose
+    #   task_type: PolygonOpenClose // works
     #   comment: Helpful comment
-    # - name: FinancialmodelingprepCompanyProfileCollet
-    #   task_type: FinancialmodelingprepCompanyProfileCollet
-    #   comment: Helpful comment  
+    - name: FinancialmodelingprepCompanyProfileCollet
+      task_type: FinancialmodelingprepCompanyProfileCollet
+      comment: Helpful comment  
     # - name: FinmodCompanyProfileStage
     #   task_type: FinmodCompanyProfileStage
     #   comment: Helpful comment
