@@ -17,7 +17,7 @@ digraph regexp {
  FinmodCompanyMarketCapStage [label="FMP Market capitalization staging"]
 
  NyseEventsCollect -> n1
- NyseInstrumentsCollect -> NyseInstrumentsStage
+ //NyseInstrumentsCollect -> NyseInstrumentsStage
  SecCompaniesCollect -> SecCompaniesStage
  SecCompaniesStage -> NyseInstrumentsStage
  SecCompaniesStage -> n1

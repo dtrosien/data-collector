@@ -1,0 +1,50 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO financialmodelingprep_company_profile (symbol, price, beta, vol_avg, \"marketCap\", \"lastDividend\", \"range\", \"change\", company_name, currency, cik, isin, cusip, \"exchangeFullName\", exchange, industry, website, description, ceo, sector, country, full_time_employees, phone, address, city, state, zip, image, ipo_date, default_image, is_etf, is_actively_trading, is_adr, is_fund, changepercentage, volume, averagevolume)\n    Select * from UNNEST ($1::text[], $2::float[], $3::float[], $4::float[], $5::float[], $6::float[], $7::text[], $8::float[], $9::text[], $10::text[], $11::text[], $12::text[], $13::text[], $14::text[], $15::text[], $16::text[], $17::text[], $18::text[], $19::text[], $20::text[], $21::text[], $22::integer[], $23::text[], $24::text[], $25::text[], $26::text[], $27::text[], $28::text[], $29::date[], $30::bool[], $31::bool[], $32::bool[], $33::bool[], $34::bool[], $35::float[], $36::integer[], $37::float[]) on conflict do nothing",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "TextArray",
+        "Float8Array",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "Int4Array",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "DateArray",
+        "BoolArray",
+        "BoolArray",
+        "BoolArray",
+        "BoolArray",
+        "BoolArray",
+        "Float8Array",
+        "Int4Array",
+        "Float8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "844c92823f9522e0920da842b9c676e287c6f86bc9d5c695ddb8597da36203a6"
+}

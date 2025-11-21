@@ -16,7 +16,7 @@ use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
 
-const URL: &str = "https://financialmodelingprep.com/api/v3/profile/";
+const URL: &str = "https://financialmodelingprep.com/stable/profile?symbol=";
 const PLATFORM: &ApiKeyPlatform = &ApiKeyPlatform::Financialmodelingprep;
 const WAIT_FOR_KEY: bool = false;
 
@@ -117,17 +117,20 @@ pub struct CompanyProfileElement {
     price: Option<f64>,
     beta: Option<f64>,
     vol_avg: Option<f64>,
-    mkt_cap: Option<i64>,
-    last_div: Option<f64>,
+    market_cap: Option<i64>,
+    last_dividend: Option<f64>,
     range: Option<String>,
-    changes: Option<f64>,
+    change: Option<f64>,
+    change_percentage: Option<f64>,
+    volume: Option<i64>,
+    average_volume: Option<f64>,
     company_name: Option<String>,
     currency: Option<String>,
     cik: Option<String>,
     isin: Option<String>,
     cusip: Option<String>,
+    exchange_full_name: Option<String>,
     exchange: Option<String>,
-    exchange_short_name: Option<String>,
     industry: Option<String>,
     website: Option<String>,
     description: Option<String>,
@@ -141,8 +144,6 @@ pub struct CompanyProfileElement {
     city: Option<String>,
     state: Option<String>,
     zip: Option<String>,
-    dcf_diff: Option<f64>,
-    dcf: Option<f64>,
     image: Option<String>,
     #[serde_as(as = "NoneAsEmptyString")]
     ipo_date: Option<NaiveDate>,
@@ -169,7 +170,7 @@ async fn load_and_store_missing_data_given_url(
     key_manager: Arc<Mutex<KeyManager>>,
     url: &str,
 ) -> Result<(), anyhow::Error> {
-    info!("Starting to load Financialmodelingprep Company Profile Colletor.");
+    info!("Starting to load Financialmodelingprep Company Profile Collector.");
     let mut potential_issue_sybmol: Option<String> =
         get_next_issue_symbol(&connection_pool).await?;
     let mut general_api_key =
@@ -257,23 +258,23 @@ async fn store_data(
     data: Vec<CompanyProfileElement>,
     connection_pool: &PgPool,
 ) -> Result<(), anyhow::Error> {
-    sqlx::query!(r#"INSERT INTO financialmodelingprep_company_profile (symbol, price, beta, vol_avg, mkt_cap, last_div, "range", changes, company_name, currency, cik, isin, cusip, exchange, exchange_short_name, industry, website, description, ceo, sector, country, full_time_employees, phone, address, city, state, zip, dcf_diff, dcf, image, ipo_date, default_image, is_etf, is_actively_trading, is_adr, is_fund)
-    Select * from UNNEST ($1::text[], $2::float[], $3::float[], $4::float[], $5::float[], $6::float[], $7::text[], $8::float[], $9::text[], $10::text[], $11::text[], $12::text[], $13::text[], $14::text[], $15::text[], $16::text[], $17::text[], $18::text[], $19::text[], $20::text[], $21::text[], $22::integer[], $23::text[], $24::text[], $25::text[], $26::text[], $27::text[], $28::float[], $29::float[], $30::text[], $31::date[], $32::bool[], $33::bool[], $34::bool[], $35::bool[], $36::bool[]) on conflict do nothing"#,
+    sqlx::query!(r#"INSERT INTO financialmodelingprep_company_profile (symbol, price, beta, vol_avg, "marketCap", "lastDividend", "range", "change", company_name, currency, cik, isin, cusip, "exchangeFullName", exchange, industry, website, description, ceo, sector, country, full_time_employees, phone, address, city, state, zip, image, ipo_date, default_image, is_etf, is_actively_trading, is_adr, is_fund, changepercentage, volume, averagevolume)
+    Select * from UNNEST ($1::text[], $2::float[], $3::float[], $4::float[], $5::float[], $6::float[], $7::text[], $8::float[], $9::text[], $10::text[], $11::text[], $12::text[], $13::text[], $14::text[], $15::text[], $16::text[], $17::text[], $18::text[], $19::text[], $20::text[], $21::text[], $22::integer[], $23::text[], $24::text[], $25::text[], $26::text[], $27::text[], $28::text[], $29::date[], $30::bool[], $31::bool[], $32::bool[], $33::bool[], $34::bool[], $35::float[], $36::integer[], $37::float[]) on conflict do nothing"#,
    &vec![data[0].symbol.to_string()],
    &vec![data[0].price] as _,
    &vec![data[0].beta] as _,
    &vec![data[0].vol_avg] as _,
-   &vec![data[0].mkt_cap] as _,
-   &vec![data[0].last_div] as _,
+   &vec![data[0].market_cap] as _,
+   &vec![data[0].last_dividend] as _,
    &vec![data[0].range.clone()] as _,
-   &vec![data[0].changes] as _,
+   &vec![data[0].change] as _,
    &vec![data[0].company_name.clone()] as _,
    &vec![data[0].currency.clone()] as _,
    &vec![data[0].cik.clone()] as _,
    &vec![data[0].isin.clone()] as _,
    &vec![data[0].cusip.clone()] as _,
+   &vec![data[0].exchange_full_name.clone()] as _,
    &vec![data[0].exchange.clone()] as _,
-   &vec![data[0].exchange_short_name.clone()] as _,
    &vec![data[0].industry.clone()] as _,
    &vec![data[0].website.clone()] as _,
    &vec![data[0].description.clone()] as _,
@@ -286,15 +287,16 @@ async fn store_data(
    &vec![data[0].city.clone()] as _,
    &vec![data[0].state.clone()] as _,
    &vec![data[0].zip.clone()] as _,
-   &vec![data[0].dcf_diff] as _,
-   &vec![data[0].dcf] as _,
    &vec![data[0].image.clone()] as _,
    &vec![data[0].ipo_date] as _,
    &vec![data[0].default_image] as _,
    &vec![data[0].is_etf] as _,
    &vec![data[0].is_actively_trading] as _,
    &vec![data[0].is_adr] as _,
-   &vec![data[0].is_fund] as _
+   &vec![data[0].is_fund] as _,
+   &vec![data[0].change_percentage] as _,
+   &vec![data[0].volume] as _,
+   &vec![data[0].average_volume] as _,
     )
     .execute(connection_pool).await?;
 
@@ -325,7 +327,7 @@ fn create_finprep_company_request<'a>(
     issue_symbol: &'a str,
     api_key: &'a mut Box<dyn ApiKey>,
 ) -> FinancialmodelingprepCompanyProfileRequest<'a> {
-    let base_request_url = base_url.to_string() + issue_symbol.to_string().as_str() + "?apikey=";
+    let base_request_url = base_url.to_string() + issue_symbol.to_string().as_str() + "&apikey=";
     FinancialmodelingprepCompanyProfileRequest {
         base: base_request_url,
         api_key,
@@ -348,17 +350,17 @@ mod test {
               "price": 137.74,
               "beta": 1.122,
               "volAvg": 1591377,
-              "mktCap": 40365395700,
-              "lastDiv": 0.94,
+              "marketCap": 40365395700,
+              "lastDividend": 0.94,
               "range": "96.8-151.58",
-              "changes": 1.37,
+              "change": 1.37,
               "companyName": "Agilent Technologies, Inc.",
               "currency": "USD",
               "cik": "0001090872",
               "isin": "US00846U1016",
               "cusip": "00846U101",
-              "exchange": "New York Stock Exchange",
-              "exchangeShortName": "NYSE",
+              "exchangeFullName": "New York Stock Exchange",
+              "exchange": "NYSE",
               "industry": "Medical - Diagnostics & Research",
               "website": "https://www.agilent.com",
               "description": "Agilent Technologies",
@@ -371,15 +373,16 @@ mod test {
               "city": "Santa Clara",
               "state": "CA",
               "zip": "95051",
-              "dcfDiff": 53.46901,
-              "dcf": 84.27099210145948,
               "image": "https://financialmodelingprep.com/image-stock/A.png",
               "ipoDate": "1999-11-18",
               "defaultImage": false,
               "isEtf": false,
               "isActivelyTrading": true,
               "isAdr": false,
-              "isFund": false
+              "isFund": false,
+              "changePercentage": 0.1,
+              "volume": 4,
+              "averageVolume" : 5.1
             }
           ]"#;
         let parsed = crate::utils::action_helpers::parse_response::<Responses>(input_json).unwrap();
@@ -389,17 +392,17 @@ mod test {
             price: Some(137.74),
             beta: Some(1.122),
             vol_avg: Some(1591377.0),
-            mkt_cap: Some(40365395700),
-            last_div: Some(0.94),
+            market_cap: Some(40365395700),
+            last_dividend: Some(0.94),
             range: Some("96.8-151.58".to_string()),
-            changes: Some(1.37),
+            change: Some(1.37),
             company_name: Some("Agilent Technologies, Inc.".to_string()),
             currency: Some("USD".to_string()),
             cik: Some("0001090872".to_string()),
             isin: Some("US00846U1016".to_string()),
             cusip: Some("00846U101".to_string()),
-            exchange: Some("New York Stock Exchange".to_string()),
-            exchange_short_name: Some("NYSE".to_string()),
+            exchange_full_name: Some("New York Stock Exchange".to_string()),
+            exchange: Some("NYSE".to_string()),
             industry: Some("Medical - Diagnostics & Research".to_string()),
             website: Some("https://www.agilent.com".to_string()),
             description: Some("Agilent Technologies".to_string()),
@@ -412,8 +415,6 @@ mod test {
             city: Some("Santa Clara".to_string()),
             state: Some("CA".to_string()),
             zip: Some("95051".to_string()),
-            dcf_diff: Some(53.46901),
-            dcf: Some(84.27099210145948),
             image: Some("https://financialmodelingprep.com/image-stock/A.png".to_string()),
             ipo_date: Some(
                 NaiveDate::parse_from_str("1999-11-18", "%Y-%m-%d").expect("Parsing constant."),
@@ -423,6 +424,9 @@ mod test {
             is_actively_trading: Some(true),
             is_adr: Some(false),
             is_fund: Some(false),
+            change_percentage: Some(0.1),
+            volume: Some(4),
+            average_volume: Some(5.1),
         };
         match parsed {
             Responses::Data(data) => {
@@ -439,18 +443,18 @@ mod test {
               "symbol": "A",
               "price": 137.74,
               "beta": 1.122,
-              "volAvg": 1591377.0,
-              "mktCap": 40365395700,
-              "lastDiv": 0.94,
+              "volAvg": 1591377,
+              "marketCap": 40365395700,
+              "lastDividend": 0.94,
               "range": "96.8-151.58",
-              "changes": 1.37,
+              "change": 1.37,
               "companyName": "Agilent Technologies, Inc.",
               "currency": "USD",
               "cik": "0001090872",
               "isin": "US00846U1016",
               "cusip": "00846U101",
-              "exchange": "New York Stock Exchange",
-              "exchangeShortName": "NYSE",
+              "exchangeFullName": "New York Stock Exchange",
+              "exchange": "NYSE",
               "industry": "Medical - Diagnostics & Research",
               "website": "https://www.agilent.com",
               "description": "Agilent Technologies",
@@ -463,15 +467,16 @@ mod test {
               "city": "Santa Clara",
               "state": "CA",
               "zip": "95051",
-              "dcfDiff": 53.46901,
-              "dcf": 84.27099210145948,
               "image": "https://financialmodelingprep.com/image-stock/A.png",
               "ipoDate": "",
               "defaultImage": false,
               "isEtf": false,
               "isActivelyTrading": true,
               "isAdr": false,
-              "isFund": false
+              "isFund": false,
+              "changePercentage": 0.1,
+              "volume": 4,
+              "averageVolume" : 5.1
             }
           ]"#;
         let parsed =
@@ -483,17 +488,17 @@ mod test {
             price: Some(137.74),
             beta: Some(1.122),
             vol_avg: Some(1591377.0),
-            mkt_cap: Some(40365395700),
-            last_div: Some(0.94),
+            market_cap: Some(40365395700),
+            last_dividend: Some(0.94),
             range: Some("96.8-151.58".to_string()),
-            changes: Some(1.37),
+            change: Some(1.37),
             company_name: Some("Agilent Technologies, Inc.".to_string()),
             currency: Some("USD".to_string()),
             cik: Some("0001090872".to_string()),
             isin: Some("US00846U1016".to_string()),
             cusip: Some("00846U101".to_string()),
-            exchange: Some("New York Stock Exchange".to_string()),
-            exchange_short_name: Some("NYSE".to_string()),
+            exchange_full_name: Some("New York Stock Exchange".to_string()),
+            exchange: Some("NYSE".to_string()),
             industry: Some("Medical - Diagnostics & Research".to_string()),
             website: Some("https://www.agilent.com".to_string()),
             description: Some("Agilent Technologies".to_string()),
@@ -506,8 +511,6 @@ mod test {
             city: Some("Santa Clara".to_string()),
             state: Some("CA".to_string()),
             zip: Some("95051".to_string()),
-            dcf_diff: Some(53.46901),
-            dcf: Some(84.27099210145948),
             image: Some("https://financialmodelingprep.com/image-stock/A.png".to_string()),
             ipo_date: None,
             default_image: Some(false),
@@ -515,6 +518,9 @@ mod test {
             is_actively_trading: Some(true),
             is_adr: Some(false),
             is_fund: Some(false),
+            change_percentage: Some(0.1),
+            volume: Some(4),
+            average_volume: Some(5.1),
         };
         assert_eq!(parsed[0], instrument);
     }
@@ -527,17 +533,17 @@ mod test {
               "price": 137.74,
               "beta": 1.122,
               "volAvg": 1591377,
-              "mktCap": 40365395700,
-              "lastDiv": 0.94,
+              "marketCap": 40365395700,
+              "lastDividend": 0.94,
               "range": "96.8-151.58",
-              "changes": 1.37,
+              "change": 1.37,
               "companyName": "Agilent Technologies, Inc.",
               "currency": "USD",
               "cik": "0001090872",
               "isin": "US00846U1016",
               "cusip": "00846U101",
-              "exchange": "New York Stock Exchange",
-              "exchangeShortName": "NYSE",
+              "exchangeFullName": "New York Stock Exchange",
+              "exchange": "NYSE",
               "industry": "Medical - Diagnostics & Research",
               "website": "https://www.agilent.com",
               "description": "Agilent Technologies",
@@ -550,15 +556,16 @@ mod test {
               "city": "Santa Clara",
               "state": "CA",
               "zip": "95051",
-              "dcfDiff": 53.46901,
-              "dcf": 84.27099210145948,
               "image": "https://financialmodelingprep.com/image-stock/A.png",
               "ipoDate": "",
               "defaultImage": false,
               "isEtf": false,
               "isActivelyTrading": true,
               "isAdr": false,
-              "isFund": false
+              "isFund": false,
+              "changePercentage": 0.1,
+              "volume": 4,
+              "averageVolume" : 5.1
             }
           ]"#;
         let parsed =
@@ -570,17 +577,17 @@ mod test {
             price: Some(137.74),
             beta: Some(1.122),
             vol_avg: Some(1591377.0),
-            mkt_cap: Some(40365395700),
-            last_div: Some(0.94),
+            market_cap: Some(40365395700),
+            last_dividend: Some(0.94),
             range: Some("96.8-151.58".to_string()),
-            changes: Some(1.37),
+            change: Some(1.37),
             company_name: Some("Agilent Technologies, Inc.".to_string()),
             currency: Some("USD".to_string()),
             cik: Some("0001090872".to_string()),
             isin: Some("US00846U1016".to_string()),
             cusip: Some("00846U101".to_string()),
-            exchange: Some("New York Stock Exchange".to_string()),
-            exchange_short_name: Some("NYSE".to_string()),
+            exchange_full_name: Some("New York Stock Exchange".to_string()),
+            exchange: Some("NYSE".to_string()),
             industry: Some("Medical - Diagnostics & Research".to_string()),
             website: Some("https://www.agilent.com".to_string()),
             description: Some("Agilent Technologies".to_string()),
@@ -593,8 +600,6 @@ mod test {
             city: Some("Santa Clara".to_string()),
             state: Some("CA".to_string()),
             zip: Some("95051".to_string()),
-            dcf_diff: Some(53.46901),
-            dcf: Some(84.27099210145948),
             image: Some("https://financialmodelingprep.com/image-stock/A.png".to_string()),
             ipo_date: None,
             default_image: Some(false),
@@ -602,6 +607,9 @@ mod test {
             is_actively_trading: Some(true),
             is_adr: Some(false),
             is_fund: Some(false),
+            change_percentage: Some(0.1),
+            volume: Some(4),
+            average_volume: Some(5.1),
         };
         assert_eq!(parsed[0], instrument);
     }
