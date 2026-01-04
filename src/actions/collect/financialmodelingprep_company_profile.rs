@@ -14,7 +14,7 @@ use serde_with::{serde_as, DefaultOnError, DisplayFromStr, NoneAsEmptyString};
 use sqlx::PgPool;
 use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 const URL: &str = "https://financialmodelingprep.com/stable/profile?symbol=";
 const PLATFORM: &ApiKeyPlatform = &ApiKeyPlatform::Financialmodelingprep;
@@ -72,8 +72,6 @@ impl Display for FinancialmodelingprepCompanyProfileCollector {
 impl Runnable for FinancialmodelingprepCompanyProfileCollector {
     #[tracing::instrument(name = "Run FinancialmodelingprepCompanyProfileColletor", skip(self))]
     async fn run(&self) -> Result<Option<StatsMap>, crate::dag_schedule::task::TaskError> {
-        // TODO: Can I check before if a key exists?
-        // if self.api_keys.len() > 0 {
         load_and_store_missing_data(
             self.pool.clone(),
             self.client.clone(),
@@ -81,12 +79,6 @@ impl Runnable for FinancialmodelingprepCompanyProfileCollector {
         )
         .map_err(UnexpectedError)
         .await?;
-        // } else {
-        //     error!("No Api key provided for FinancialmodelingprepCompanyProfileColletor");
-        //     return Err(UnexpectedError(Error::msg(
-        //         "FinancialmodelingprepCompanyProfileColletor key not provided",
-        //     )));
-        // }
         Ok(None)
     }
 }
@@ -171,8 +163,9 @@ async fn load_and_store_missing_data_given_url(
     url: &str,
 ) -> Result<(), anyhow::Error> {
     info!("Starting to load Financialmodelingprep Company Profile Collector.");
+    let last_issue_symbol = "".to_string();
     let mut potential_issue_sybmol: Option<String> =
-        get_next_issue_symbol(&connection_pool).await?;
+        get_next_issue_symbol(&connection_pool, &last_issue_symbol).await?;
     let mut general_api_key =
         KeyManager::get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, PLATFORM).await;
     let mut _successful_request_counter: u16 = 0; // Variable actually used, but clippy is buggy? with the shorthand += below. (clippy 0.1.79)
@@ -181,6 +174,7 @@ async fn load_and_store_missing_data_given_url(
         general_api_key.take_if(|_| potential_issue_sybmol.is_some()),
     ) {
         info!("Requesting symbol {}", issue_sybmol);
+        let last_issue_symbol = issue_sybmol;
         let mut request = create_finprep_company_request(url, issue_sybmol, &mut api_key);
         debug!("Financialmodelingprep Company request: {}", request);
         let response = client
@@ -208,7 +202,7 @@ async fn load_and_store_missing_data_given_url(
             }
         }
 
-        potential_issue_sybmol = get_next_issue_symbol(&connection_pool).await?;
+        potential_issue_sybmol = get_next_issue_symbol(&connection_pool, last_issue_symbol).await?;
         general_api_key = KeyManager::exchange_apikey_or_wait_if_non_ready(
             key_manager.clone(),
             WAIT_FOR_KEY,
@@ -224,10 +218,14 @@ async fn load_and_store_missing_data_given_url(
     Ok(())
 }
 
-async fn get_next_issue_symbol(connection_pool: &PgPool) -> Result<Option<String>, anyhow::Error> {
+async fn get_next_issue_symbol(
+    connection_pool: &PgPool,
+    last_issue_symbol: &String,
+) -> Result<Option<String>, anyhow::Error> {
     let missing_issue_symbols = sqlx::query_as!(
         IssueSymbols,
-        "SELECT issue_symbol FROM source_symbol_warden ssw  where financial_modeling_prep = false"
+        "SELECT issue_symbol FROM source_symbol_warden ssw  where financial_modeling_prep = false and issue_symbol > $1::text order by issue_symbol;",
+        last_issue_symbol
     )
     .fetch_all(connection_pool)
     .await?;
@@ -242,12 +240,13 @@ async fn get_next_issue_symbol(connection_pool: &PgPool) -> Result<Option<String
         where issue_symbol not in 
           (select distinct(symbol) 
            from financialmodelingprep_company_profile fcp) and issue_symbol not in (select unnest($1::text[]))
+        and issue_symbol > $2::text
         order by issue_symbol limit 1",
-        &missing_issue_symbols
+        &missing_issue_symbols,
+        last_issue_symbol
     )
     .fetch_one(connection_pool)
     .await;
-
     match query_result {
         Ok(_) => Ok(Some(query_result?.issue_symbol)),
         Err(_) => Ok(Option::None),
@@ -258,8 +257,8 @@ async fn store_data(
     data: Vec<CompanyProfileElement>,
     connection_pool: &PgPool,
 ) -> Result<(), anyhow::Error> {
-    sqlx::query!(r#"INSERT INTO financialmodelingprep_company_profile (symbol, price, beta, vol_avg, "marketCap", "lastDividend", "range", "change", company_name, currency, cik, isin, cusip, "exchangeFullName", exchange, industry, website, description, ceo, sector, country, full_time_employees, phone, address, city, state, zip, image, ipo_date, default_image, is_etf, is_actively_trading, is_adr, is_fund, changepercentage, volume, averagevolume)
-    Select * from UNNEST ($1::text[], $2::float[], $3::float[], $4::float[], $5::float[], $6::float[], $7::text[], $8::float[], $9::text[], $10::text[], $11::text[], $12::text[], $13::text[], $14::text[], $15::text[], $16::text[], $17::text[], $18::text[], $19::text[], $20::text[], $21::text[], $22::integer[], $23::text[], $24::text[], $25::text[], $26::text[], $27::text[], $28::text[], $29::date[], $30::bool[], $31::bool[], $32::bool[], $33::bool[], $34::bool[], $35::float[], $36::integer[], $37::float[]) on conflict do nothing"#,
+    let query_result = sqlx::query!(r#"INSERT INTO financialmodelingprep_company_profile (symbol, price, beta, vol_avg, "marketCap", "lastDividend", "range", "change", company_name, currency, cik, isin, cusip, "exchangeFullName", exchange, industry, website, description, ceo, sector, country, full_time_employees, phone, address, city, state, zip, image, ipo_date, default_image, is_etf, is_actively_trading, is_adr, is_fund, changepercentage, volume, averagevolume)
+    Select * from UNNEST ($1::text[], $2::float[], $3::float[], $4::float[], $5::float[], $6::float[], $7::text[], $8::float[], $9::text[], $10::text[], $11::text[], $12::text[], $13::text[], $14::text[], $15::text[], $16::text[], $17::text[], $18::text[], $19::text[], $20::text[], $21::text[], $22::integer[], $23::text[], $24::text[], $25::text[], $26::text[], $27::text[], $28::text[], $29::date[], $30::bool[], $31::bool[], $32::bool[], $33::bool[], $34::bool[], $35::float[], $36::bigint[], $37::float[]) on conflict do nothing"#,
    &vec![data[0].symbol.to_string()],
    &vec![data[0].price] as _,
    &vec![data[0].beta] as _,
@@ -298,7 +297,12 @@ async fn store_data(
    &vec![data[0].volume] as _,
    &vec![data[0].average_volume] as _,
     )
-    .execute(connection_pool).await?;
+    .execute(connection_pool).await;
+
+    if query_result.is_err() {
+        error!("Error while writing to database: {:?}", data);
+        return Err(anyhow::anyhow!(query_result.err().unwrap()));
+    }
 
     Ok(())
 }

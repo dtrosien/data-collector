@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT issue_symbol FROM source_symbol_warden ssw  where financial_modeling_prep = false and issue_symbol > $1::text order by issue_symbol;",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "issue_symbol",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f821995ae072ebc3c685908cf17957b187a4d3dcb26d264c8a41466311ca9e9a"
+}
