@@ -1,5 +1,4 @@
 use chrono::NaiveDate;
-use reqwest::Client;
 use sqlx::{Pool, Postgres};
 use tracing::error;
 

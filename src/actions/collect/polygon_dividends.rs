@@ -1,10 +1,9 @@
 use crate::{
     api_keys::{
-        api_key::{self, ApiKey, ApiKeyPlatform},
+        api_key::{ApiKey, ApiKeyPlatform},
         key_manager::KeyManager,
     },
-    database::polygon_dividends_service::{self, PolygonDividendsService},
-    utils::action_helpers::parse_response,
+    database::polygon_dividends_service::{PolygonDividendsEntry, PolygonDividendsService},
 };
 use async_trait::async_trait;
 use chrono::NaiveDate;
@@ -29,6 +28,7 @@ const URL: &str = "https://api.massive.com/stocks/v1/dividends?";
 const PLATFORM: &ApiKeyPlatform = &ApiKeyPlatform::Polygon;
 const WAIT_FOR_KEY: bool = true;
 const IDLE_SYMBOL_TIMEOUT: i64 = 30; // Timeout in days
+const RESPONSE_DATA_FORMAT: &str = "yyyy-mm-dd";
 
 #[derive(Debug)]
 struct PolygonDividendsRequest<'a> {
@@ -120,8 +120,37 @@ async fn load_and_store_missing_data_given_url(
             .await?
             .text()
             .await?;
-        let dividends =
+        let response_dividends =
             crate::utils::action_helpers::parse_response::<Dividends>(&response)?.results;
+
+        if let Some(dividends) = response_dividends {
+            let a = dividends
+                .into_iter()
+                .filter_map(|mut div| {
+                    if div.ex_dividend_date.is_none()
+                        || div.cash_amount.is_none()
+                        || div.currency.is_none()
+                    {
+                        return None;
+                    }
+
+                    Some(PolygonDividendsEntry {
+                        ticker: div.ticker,
+                        record_date: todo!(),
+                        pay_date: todo!(),
+                        declaration_date: todo!(),
+                        ex_dividend_date: todo!(),
+                        frequency: todo!(),
+                        cash_amount: todo!(),
+                        currency: todo!(),
+                        distribution_type: todo!(),
+                        historical_adjustment_factor: todo!(),
+                        split_adjusted_cash_amount: todo!(),
+                        is_staged: todo!(),
+                    })
+                })
+                .collect();
+        }
 
         // TODO: Continue here. Parse result from request and store in database
 
@@ -158,21 +187,21 @@ fn create_polygon_dividends_request<'a>(
 pub struct Dividends {
     status: Option<String>,
     request_id: Option<String>,
-    results: Option<Vec<DividendsEntry>>,
+    results: Option<Vec<DividendsResponseEntry>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DividendsEntry {
-    id: Option<String>,
-    ticker: String,
-    record_date: Option<String>,
-    pay_date: Option<String>,
-    declaration_date: Option<String>,
-    ex_dividend_date: Option<String>,
-    frequency: Option<i64>,
-    cash_amount: Option<f64>,
-    currency: Option<String>,
-    distribution_type: Option<String>,
-    historical_adjustment_factor: Option<f64>,
-    split_adjusted_cash_amount: Option<f64>,
+pub struct DividendsResponseEntry {
+    pub id: Option<String>,
+    pub ticker: String,
+    pub record_date: Option<String>,
+    pub pay_date: Option<String>,
+    pub declaration_date: Option<String>,
+    pub ex_dividend_date: Option<String>,
+    pub frequency: Option<i64>,
+    pub cash_amount: Option<f64>,
+    pub currency: Option<String>,
+    pub distribution_type: Option<String>,
+    pub historical_adjustment_factor: Option<f64>,
+    pub split_adjusted_cash_amount: Option<f64>,
 }

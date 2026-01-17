@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select distinct(issue_symbol) as issue_symbol from master_data md order by issue_symbol;",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "issue_symbol",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e479790e2b341aac5c1751630947f5aaee4235f6d08ba04c8542348b15477810"
+}
