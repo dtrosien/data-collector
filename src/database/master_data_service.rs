@@ -1,4 +1,3 @@
-use chrono::NaiveDate;
 use sqlx::{Pool, Postgres};
 use tracing::error;
 
@@ -7,49 +6,49 @@ pub struct MasterDataService {
     pool: Pool<sqlx::Postgres>,
 }
 
-struct MasterDataEntry {
-    issuer_name: String,
-    issue_symbol: String,
-    location: Option<String>,
-    start_nyse: Option<NaiveDate>,
-    start_nyse_arca: Option<NaiveDate>,
-    start_nyse_american: Option<NaiveDate>,
-    start_nasdaq: Option<NaiveDate>,
-    start_nasdaq_global_select_market: Option<NaiveDate>,
-    start_nasdaq_select_market: Option<NaiveDate>,
-    start_nasdaq_capital_market: Option<NaiveDate>,
-    start_cboe: Option<NaiveDate>,
-    instrument: Option<String>,
-    category: Option<String>,
-    renamed_to_issuer_name: Option<String>,
-    renamed_to_issue_symbol: Option<String>,
-    renamed_at_date: Option<NaiveDate>,
-    current_name: Option<String>,
-    suspended: Option<bool>,
-    suspension_date: Option<NaiveDate>,
-}
+// struct MasterDataEntry {
+//     issuer_name: String,
+//     issue_symbol: String,
+//     location: Option<String>,
+//     start_nyse: Option<NaiveDate>,
+//     start_nyse_arca: Option<NaiveDate>,
+//     start_nyse_american: Option<NaiveDate>,
+//     start_nasdaq: Option<NaiveDate>,
+//     start_nasdaq_global_select_market: Option<NaiveDate>,
+//     start_nasdaq_select_market: Option<NaiveDate>,
+//     start_nasdaq_capital_market: Option<NaiveDate>,
+//     start_cboe: Option<NaiveDate>,
+//     instrument: Option<String>,
+//     category: Option<String>,
+//     renamed_to_issuer_name: Option<String>,
+//     renamed_to_issue_symbol: Option<String>,
+//     renamed_at_date: Option<NaiveDate>,
+//     current_name: Option<String>,
+//     suspended: Option<bool>,
+//     suspension_date: Option<NaiveDate>,
+// }
 
-struct TransposedMasterDataEntry {
-    issuer_name: Vec<String>,
-    issue_symbol: Vec<String>,
-    location: Vec<Option<String>>,
-    start_nyse: Vec<Option<NaiveDate>>,
-    start_nyse_arca: Vec<Option<NaiveDate>>,
-    start_nyse_american: Vec<Option<NaiveDate>>,
-    start_nasdaq: Vec<Option<NaiveDate>>,
-    start_nasdaq_global_select_market: Vec<Option<NaiveDate>>,
-    start_nasdaq_select_market: Vec<Option<NaiveDate>>,
-    start_nasdaq_capital_market: Vec<Option<NaiveDate>>,
-    start_cboe: Vec<Option<NaiveDate>>,
-    instrument: Vec<Option<String>>,
-    category: Vec<Option<String>>,
-    renamed_to_issuer_name: Vec<Option<String>>,
-    renamed_to_issue_symbol: Vec<Option<String>>,
-    renamed_at_date: Vec<Option<NaiveDate>>,
-    current_name: Vec<Option<String>>,
-    suspended: Vec<Option<bool>>,
-    suspension_date: Vec<Option<NaiveDate>>,
-}
+// struct TransposedMasterDataEntry {
+//     issuer_name: Vec<String>,
+//     issue_symbol: Vec<String>,
+//     location: Vec<Option<String>>,
+//     start_nyse: Vec<Option<NaiveDate>>,
+//     start_nyse_arca: Vec<Option<NaiveDate>>,
+//     start_nyse_american: Vec<Option<NaiveDate>>,
+//     start_nasdaq: Vec<Option<NaiveDate>>,
+//     start_nasdaq_global_select_market: Vec<Option<NaiveDate>>,
+//     start_nasdaq_select_market: Vec<Option<NaiveDate>>,
+//     start_nasdaq_capital_market: Vec<Option<NaiveDate>>,
+//     start_cboe: Vec<Option<NaiveDate>>,
+//     instrument: Vec<Option<String>>,
+//     category: Vec<Option<String>>,
+//     renamed_to_issuer_name: Vec<Option<String>>,
+//     renamed_to_issue_symbol: Vec<Option<String>>,
+//     renamed_at_date: Vec<Option<NaiveDate>>,
+//     current_name: Vec<Option<String>>,
+//     suspended: Vec<Option<bool>>,
+//     suspension_date: Vec<Option<NaiveDate>>,
+// }
 
 impl MasterDataService {
     pub fn new(pool: Pool<Postgres>) -> Self {

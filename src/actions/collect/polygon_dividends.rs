@@ -13,7 +13,7 @@ use std::{
     fmt::Debug,
     sync::{Arc, Mutex},
 };
-use tracing::debug;
+use tracing::info;
 
 use std::fmt::Display;
 
@@ -27,8 +27,6 @@ use crate::dag_schedule::task::{Runnable, StatsMap, TaskError};
 const URL: &str = "https://api.massive.com/stocks/v1/dividends?";
 const PLATFORM: &ApiKeyPlatform = &ApiKeyPlatform::Polygon;
 const WAIT_FOR_KEY: bool = true;
-const IDLE_SYMBOL_TIMEOUT: i64 = 30; // Timeout in days
-const RESPONSE_DATA_FORMAT: &str = "yyyy-mm-dd";
 
 #[derive(Debug)]
 struct PolygonDividendsRequest<'a> {
@@ -113,7 +111,7 @@ async fn load_and_store_missing_data_given_url(
     while let (Some(issue_symbol), true) = (issue_symbol_candidate, general_api_key.is_some()) {
         let mut api_key = general_api_key.unwrap();
         let mut request = create_polygon_dividends_request(url, &issue_symbol, &mut api_key);
-        debug!("Polygon dividends request: {}", request);
+        info!("Polygon dividends request: {}", request);
         let response = client
             .get(request.expose_secret())
             .send()
@@ -122,11 +120,11 @@ async fn load_and_store_missing_data_given_url(
             .await?;
         let response_dividends =
             crate::utils::action_helpers::parse_response::<Dividends>(&response)?.results;
-
+        // info!("response {:?}", response_dividends);
         if let Some(dividends) = response_dividends {
-            let a = dividends
+            let dividends_response_entries: Vec<_> = dividends
                 .into_iter()
-                .filter_map(|mut div| {
+                .filter_map(|div| {
                     if div.ex_dividend_date.is_none()
                         || div.cash_amount.is_none()
                         || div.currency.is_none()
@@ -136,20 +134,27 @@ async fn load_and_store_missing_data_given_url(
 
                     Some(PolygonDividendsEntry {
                         ticker: div.ticker,
-                        record_date: todo!(),
-                        pay_date: todo!(),
-                        declaration_date: todo!(),
-                        ex_dividend_date: todo!(),
-                        frequency: todo!(),
-                        cash_amount: todo!(),
-                        currency: todo!(),
-                        distribution_type: todo!(),
-                        historical_adjustment_factor: todo!(),
-                        split_adjusted_cash_amount: todo!(),
-                        is_staged: todo!(),
+                        record_date: convert_string_to_naive_date(div.record_date),
+                        pay_date: convert_string_to_naive_date(div.pay_date),
+                        declaration_date: convert_string_to_naive_date(div.declaration_date),
+                        ex_dividend_date: NaiveDate::parse_from_str(
+                            &div.ex_dividend_date.expect("Checked before."),
+                            "%Y-%m-%d",
+                        )
+                        .expect("Check happened above"),
+                        frequency: div.frequency,
+                        cash_amount: div.cash_amount.expect("Checked before"),
+                        currency: div.currency.expect("Checked before"),
+                        distribution_type: div.distribution_type,
+                        historical_adjustment_factor: div.historical_adjustment_factor,
+                        split_adjusted_cash_amount: div.split_adjusted_cash_amount,
+                        is_staged: false,
                     })
                 })
                 .collect();
+            polygon_dividends_service
+                .save_all(dividends_response_entries)
+                .await?;
         }
 
         // TODO: Continue here. Parse result from request and store in database
@@ -170,13 +175,20 @@ async fn load_and_store_missing_data_given_url(
     Ok(())
 }
 
+fn convert_string_to_naive_date(data: Option<String>) -> Option<NaiveDate> {
+    match data {
+        Some(x) => NaiveDate::parse_from_str(&x, "%Y-%m-%d").ok(),
+        None => None,
+    }
+}
+
 #[tracing::instrument(level = "debug", skip_all)]
 fn create_polygon_dividends_request<'a>(
     base_url: &'a str,
     ticker_symbol: &'a str,
     api_key: &'a mut Box<dyn ApiKey>,
 ) -> PolygonDividendsRequest<'a> {
-    let base_request_url = base_url.to_string() + ticker_symbol + "&apiKey=";
+    let base_request_url = base_url.to_string() + "ticker=" + ticker_symbol + "&apiKey=";
     PolygonDividendsRequest {
         base: base_request_url,
         api_key,

@@ -72,4 +72,7 @@ application:
       comment: Helpful comment  
     - name: FinmodMarketCapStager
       task_type: FinmodMarketCapStager
+      comment: Helpful comment
+    - name: MassiveDividends
+      task_type: MassiveDividends
       comment: Helpful comment  

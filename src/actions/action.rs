@@ -5,6 +5,7 @@ use super::collect::polygon_open_close::PolygonOpenCloseCollector;
 use super::stage::financialmodelingprep_company_profile::FinancialmodelingprepCompanyProfileStager;
 use super::stage::financialmodelingprep_market_capitalization::FinancialmodelingprepMarketCapitalizationStager;
 use super::stage::polygon_grouped_daily::PolygonGroupedDailyStager;
+use crate::actions::collect::polygon_dividends::PolygonDividendsCollector;
 use crate::{actions::collect::dummy::DummyCollector, api_keys::api_key::PolygonKey};
 
 use crate::actions::collect::nyse_events::NyseEventCollector;
@@ -72,6 +73,11 @@ pub fn create_action(
         ActionType::FinmodMarketCapStager => Arc::new(
             FinancialmodelingprepMarketCapitalizationStager::new(pool.clone()),
         ),
+        ActionType::MassiveDividends => Arc::new(PolygonDividendsCollector::new(
+            pool.clone(),
+            client.clone(),
+            Arc::clone(&key_store),
+        )),
     }
 }
 
@@ -164,6 +170,7 @@ pub enum ActionType {
     PolygonGroupedDaily,
     PolygonGroupedDailyStager,
     PolygonOpenClose,
+    MassiveDividends,
     FinancialmodelingprepCompanyProfileCollet,
     FinmodCompanyProfileStage,
     FinmodMarketCapCollect,

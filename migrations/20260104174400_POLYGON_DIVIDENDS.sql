@@ -11,8 +11,8 @@ CREATE TABLE POLYGON_DIVIDENDS (
     cash_amount                  NUMERIC(11, 6) NOT NULL,
     currency                     VARCHAR(5)     NOT NULL,
     distribution_type            VARCHAR(20),
-    historical_adjustment_factor NUMERIC(11, 6),
-    split_adjusted_cash_amount   NUMERIC(11, 6),
+    historical_adjustment_factor NUMERIC(20, 6),
+    split_adjusted_cash_amount   NUMERIC(20, 6),
     is_staged                    BOOLEAN        NOT NULL DEFAULT FALSE,
     CONSTRAINT POLYGON_DIVIDENDS_pkey PRIMARY KEY (ticker, ex_dividend_date)
 );
