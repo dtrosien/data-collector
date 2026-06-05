@@ -35,6 +35,8 @@ application:
       dependencies: [FinmodCompanyProfileStage]
     - name: FinmodMarketCapStager
       dependencies: [FinmodMarketCapCollect]
+    - name: MassiveDividends
+      dependencies: []
 
   
   tasks:
@@ -62,9 +64,9 @@ application:
     # - name: PolygonOpenClose
     #   task_type: PolygonOpenClose // works
     #   comment: Helpful comment
-    - name: FinancialmodelingprepCompanyProfileCollet
-      task_type: FinancialmodelingprepCompanyProfileCollet
-      comment: Helpful comment  
+    # - name: FinancialmodelingprepCompanyProfileCollet
+    #   task_type: FinancialmodelingprepCompanyProfileCollet
+    #   comment: Helpful comment  
     # - name: FinmodCompanyProfileStage
     #   task_type: FinmodCompanyProfileStage
     #   comment: Helpful comment
@@ -74,4 +76,8 @@ application:
     # - name: FinmodMarketCapStager
     #   task_type: FinmodMarketCapStager
     #   comment: Helpful comment  
+    - name: MassiveDividends
+      task_type: MassiveDividends
+      comment: Helpful comment  
+    
       

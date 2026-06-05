@@ -145,14 +145,14 @@ impl MarketDataBuilder {
     }
 
     fn build(self) -> Result<MarketData, Error> {
-        if self.symbol.is_some() && self.business_date.is_some() && self.stock_price.is_some() {
+        if let (Some(symbol), Some(business_date), Some(stock_price)) =
+            (self.symbol, self.business_date, self.stock_price)
+        {
             return Ok(MarketData {
-                symbol: self.symbol.expect("Checked earlier"),
-                business_date: self.business_date.expect("Checked earlier"),
-                year_month: Self::calculate_year_month(
-                    self.business_date.expect("Checked earlier"),
-                ),
-                stock_price: self.stock_price.expect("Checked earlier"),
+                symbol,
+                business_date,
+                year_month: Self::calculate_year_month(business_date),
+                stock_price,
                 open: self.open,
                 close: self.close,
                 order_amount: self.order_amount,
@@ -555,7 +555,7 @@ mod test {
     }
 
     #[sqlx::test()]
-    fn given_table_when_partitions_created_then_detects_partitions(pool: Pool<Postgres>) {
+    async fn given_table_when_partitions_created_then_detects_partitions(pool: Pool<Postgres>) {
         let partition_value: u32 = 202311;
         let oid = get_table_oid(&pool).await.unwrap();
         let creation_result = create_partition(&pool, &partition_value).await;
@@ -566,7 +566,7 @@ mod test {
     }
 
     #[sqlx::test()]
-    fn given_empty_database_when_one_record_added_then_no_error(pool: Pool<Postgres>) {
+    async fn given_empty_database_when_one_record_added_then_no_error(pool: Pool<Postgres>) {
         let stock_price = BigDecimal::new(BigInt::new(Plus, vec![1]), 1);
         let data: MarketDataTransposed = vec![MarketDataBuilder::builder()
             .symbol("A".to_string())
@@ -582,7 +582,7 @@ mod test {
     }
 
     #[sqlx::test()]
-    fn given_empty_database_when_two_records_added_then_no_error(
+    async fn given_empty_database_when_two_records_added_then_no_error(
         pool: Pool<Postgres>,
     ) -> Result<(), anyhow::Error> {
         let stock_price = BigDecimal::new(BigInt::new(Plus, vec![1]), 1);

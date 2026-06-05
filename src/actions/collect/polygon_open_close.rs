@@ -77,7 +77,6 @@ impl Display for PolygonOpenCloseCollector {
 impl Runnable for PolygonOpenCloseCollector {
     #[tracing::instrument(level = "debug", skip_all)]
     async fn run(&self) -> Result<Option<StatsMap>, TaskError> {
-        // if let Some(key) = &self.api_key {
         load_and_store_missing_data(
             self.pool.clone(),
             self.client.clone(),
@@ -85,11 +84,6 @@ impl Runnable for PolygonOpenCloseCollector {
         )
         .map_err(TaskError::UnexpectedError)
         .await?;
-        // } else {
-        //     return Err(TaskError::UnexpectedError(Error::msg(
-        //         "Api key not provided for PolygonOpenCloseCollector",
-        //     )));
-        // }
         Ok(None)
     }
 }

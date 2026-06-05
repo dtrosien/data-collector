@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select issue_symbol from master_data md where issue_symbol > $1::text order by issue_symbol limit 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "issue_symbol",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "78221cbfb83105333872198a5aac46a6dd202549acffd3055ca2eaadd4169b48"
+}
