@@ -164,16 +164,13 @@ impl MarketDataBuilder {
     }
 
     fn build(self) -> Result<MarketData, Error> {
-        if self.symbol.is_some()
-            && self.business_date.is_some()
-            && self.market_capitalization.is_some()
+        if let (Some(symbol), Some(business_date), Some(market_capitalization)) =
+            (self.symbol, self.business_date, self.market_capitalization)
         {
             return Ok(MarketData {
-                symbol: self.symbol.expect("Checked earlier"),
-                business_date: self.business_date.expect("Checked earlier"),
-                year_month: Self::calculate_year_month(
-                    self.business_date.expect("Checked earlier"),
-                ),
+                symbol,
+                business_date,
+                year_month: Self::calculate_year_month(business_date),
                 stock_price: self.stock_price,
                 open: self.open,
                 close: self.close,
@@ -181,7 +178,7 @@ impl MarketDataBuilder {
                 shares_traded: self.stock_traded,
                 after_hours: self.after_hours,
                 pre_market: self.pre_market,
-                market_capitalization: self.market_capitalization,
+                market_capitalization: Some(market_capitalization),
             });
         }
         //TODO: Improve error message
