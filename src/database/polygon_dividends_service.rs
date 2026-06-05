@@ -105,15 +105,21 @@ impl PolygonDividendsService {
     pub async fn get_next_issue_symbol_candidate(
         &self,
         lower_symbol_bound: String,
+        skippable_symbols: &Vec<String>,
     ) -> Option<String> {
         // select uncollected symbols
         let query_result = sqlx::query!(
             "select distinct(issue_symbol) 
             from master_data md 
             where 
-                issue_symbol not in (select distinct ticker from polygon_dividends pd) 
-            and issue_symbol > $1::text limit 1",
-            lower_symbol_bound
+            issue_symbol > $1::text
+            AND issue_symbol not in (select unnest($2::text[]))
+            AND issue_symbol not in (SELECT distinct pd.ticker  
+                                    FROM polygon_dividends pd 
+                                    WHERE pd.declaration_date  >= CURRENT_DATE - INTERVAL '14 days')
+            limit 1",
+            lower_symbol_bound,
+            skippable_symbols
         )
         .fetch_one(&self.pool)
         .await;

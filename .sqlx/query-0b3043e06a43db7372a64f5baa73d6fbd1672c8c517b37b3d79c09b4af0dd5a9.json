@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO source_symbol_warden (issue_symbol, massive_dividends)\n        VALUES ($1, $2)\n        ON CONFLICT (issue_symbol)\n        DO UPDATE SET\n            massive_dividends = EXCLUDED.massive_dividends\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Date"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0b3043e06a43db7372a64f5baa73d6fbd1672c8c517b37b3d79c09b4af0dd5a9"
+}

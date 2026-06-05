@@ -3,7 +3,10 @@ use crate::{
         api_key::{ApiKey, ApiKeyPlatform},
         key_manager::KeyManager,
     },
-    database::polygon_dividends_service::{PolygonDividendsEntry, PolygonDividendsService},
+    database::{
+        polygon_dividends_service::{PolygonDividendsEntry, PolygonDividendsService},
+        warden_service::{WardenService, WardenType},
+    },
 };
 use async_trait::async_trait;
 use chrono::NaiveDate;
@@ -103,8 +106,12 @@ async fn load_and_store_missing_data_given_url(
     url: &str,
 ) -> Result<(), anyhow::Error> {
     let polygon_dividends_service = PolygonDividendsService::new(connection_pool.clone());
+    let warden_service = WardenService::new(connection_pool.clone());
+    let skippable_symbols = warden_service
+        .get_missing_symbols(crate::database::warden_service::WardenType::MassiveDividends)
+        .await?;
     let mut issue_symbol_candidate = polygon_dividends_service
-        .get_next_issue_symbol_candidate("".to_string())
+        .get_next_issue_symbol_candidate("".to_string(), &skippable_symbols)
         .await;
     let mut general_api_key =
         KeyManager::get_new_apikey_or_wait(key_manager.clone(), WAIT_FOR_KEY, PLATFORM).await;
@@ -122,46 +129,54 @@ async fn load_and_store_missing_data_given_url(
             crate::utils::action_helpers::parse_response::<Dividends>(&response)?.results;
         // info!("response {:?}", response_dividends);
         if let Some(dividends) = response_dividends {
-            let dividends_response_entries: Vec<_> = dividends
-                .into_iter()
-                .filter_map(|div| {
-                    if div.ex_dividend_date.is_none()
-                        || div.cash_amount.is_none()
-                        || div.currency.is_none()
-                    {
-                        return None;
-                    }
+            if dividends.is_empty() {
+                warden_service
+                    .add_or_update(&issue_symbol, WardenType::MassiveDividends)
+                    .await?;
+            } else {
+                let dividends_response_entries: Vec<_> = dividends
+                    .into_iter()
+                    .filter_map(|div| {
+                        if div.ex_dividend_date.is_none()
+                            || div.cash_amount.is_none()
+                            || div.currency.is_none()
+                        {
+                            return None;
+                        }
 
-                    Some(PolygonDividendsEntry {
-                        ticker: div.ticker,
-                        record_date: convert_string_to_naive_date(div.record_date),
-                        pay_date: convert_string_to_naive_date(div.pay_date),
-                        declaration_date: convert_string_to_naive_date(div.declaration_date),
-                        ex_dividend_date: NaiveDate::parse_from_str(
-                            &div.ex_dividend_date.expect("Checked before."),
-                            "%Y-%m-%d",
-                        )
-                        .expect("Check happened above"),
-                        frequency: div.frequency,
-                        cash_amount: div.cash_amount.expect("Checked before"),
-                        currency: div.currency.expect("Checked before"),
-                        distribution_type: div.distribution_type,
-                        historical_adjustment_factor: div.historical_adjustment_factor,
-                        split_adjusted_cash_amount: div.split_adjusted_cash_amount,
-                        is_staged: false,
+                        Some(PolygonDividendsEntry {
+                            ticker: div.ticker,
+                            record_date: convert_string_to_naive_date(div.record_date),
+                            pay_date: convert_string_to_naive_date(div.pay_date),
+                            declaration_date: convert_string_to_naive_date(div.declaration_date),
+                            ex_dividend_date: NaiveDate::parse_from_str(
+                                &div.ex_dividend_date.expect("Checked before."),
+                                "%Y-%m-%d",
+                            )
+                            .expect("Check happened above"),
+                            frequency: div.frequency,
+                            cash_amount: div.cash_amount.expect("Checked before"),
+                            currency: div.currency.expect("Checked before"),
+                            distribution_type: div.distribution_type,
+                            historical_adjustment_factor: div.historical_adjustment_factor,
+                            split_adjusted_cash_amount: div.split_adjusted_cash_amount,
+                            is_staged: false,
+                        })
                     })
-                })
-                .collect();
-            polygon_dividends_service
-                .save_all(dividends_response_entries)
-                .await?;
+                    .collect();
+                // TODO: Highest declaration day is older than 2 years -> Put in warden
+
+                polygon_dividends_service
+                    .save_all(dividends_response_entries)
+                    .await?;
+            }
         }
 
         // TODO: Continue here. Parse result from request and store in database
 
         // Refresh iteration objects
         issue_symbol_candidate = polygon_dividends_service
-            .get_next_issue_symbol_candidate(issue_symbol)
+            .get_next_issue_symbol_candidate(issue_symbol, &skippable_symbols)
             .await;
         general_api_key = KeyManager::exchange_apikey_or_wait_if_non_ready(
             key_manager.clone(),

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT distinct issue_symbol\n        FROM source_symbol_warden\n        WHERE massive_dividends >= $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "issue_symbol",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "981e036d55214d94d88e59e98a8374dce34d8f3eeca76d1c606e42a2fb0ed327"
+}
