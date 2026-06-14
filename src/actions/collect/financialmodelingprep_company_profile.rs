@@ -114,7 +114,7 @@ pub struct CompanyProfileElement {
     range: Option<String>,
     change: Option<f64>,
     change_percentage: Option<f64>,
-    volume: Option<i64>,
+    volume: Option<f64>,
     average_volume: Option<f64>,
     company_name: Option<String>,
     currency: Option<String>,
@@ -258,7 +258,7 @@ async fn store_data(
     connection_pool: &PgPool,
 ) -> Result<(), anyhow::Error> {
     let query_result = sqlx::query!(r#"INSERT INTO financialmodelingprep_company_profile (symbol, price, beta, vol_avg, "marketCap", "lastDividend", "range", "change", company_name, currency, cik, isin, cusip, "exchangeFullName", exchange, industry, website, description, ceo, sector, country, full_time_employees, phone, address, city, state, zip, image, ipo_date, default_image, is_etf, is_actively_trading, is_adr, is_fund, changepercentage, volume, averagevolume)
-    Select * from UNNEST ($1::text[], $2::float[], $3::float[], $4::float[], $5::float[], $6::float[], $7::text[], $8::float[], $9::text[], $10::text[], $11::text[], $12::text[], $13::text[], $14::text[], $15::text[], $16::text[], $17::text[], $18::text[], $19::text[], $20::text[], $21::text[], $22::integer[], $23::text[], $24::text[], $25::text[], $26::text[], $27::text[], $28::text[], $29::date[], $30::bool[], $31::bool[], $32::bool[], $33::bool[], $34::bool[], $35::float[], $36::bigint[], $37::float[]) on conflict do nothing"#,
+    Select * from UNNEST ($1::text[], $2::float[], $3::float[], $4::float[], $5::float[], $6::float[], $7::text[], $8::float[], $9::text[], $10::text[], $11::text[], $12::text[], $13::text[], $14::text[], $15::text[], $16::text[], $17::text[], $18::text[], $19::text[], $20::text[], $21::text[], $22::integer[], $23::text[], $24::text[], $25::text[], $26::text[], $27::text[], $28::text[], $29::date[], $30::bool[], $31::bool[], $32::bool[], $33::bool[], $34::bool[], $35::float[], $36::float[], $37::float[]) on conflict do nothing"#,
    &vec![data[0].symbol.to_string()],
    &vec![data[0].price] as _,
    &vec![data[0].beta] as _,
@@ -429,7 +429,7 @@ mod test {
             is_adr: Some(false),
             is_fund: Some(false),
             change_percentage: Some(0.1),
-            volume: Some(4),
+            volume: Some(4.0),
             average_volume: Some(5.1),
         };
         match parsed {
@@ -523,7 +523,7 @@ mod test {
             is_adr: Some(false),
             is_fund: Some(false),
             change_percentage: Some(0.1),
-            volume: Some(4),
+            volume: Some(4.0),
             average_volume: Some(5.1),
         };
         assert_eq!(parsed[0], instrument);
@@ -612,7 +612,7 @@ mod test {
             is_adr: Some(false),
             is_fund: Some(false),
             change_percentage: Some(0.1),
-            volume: Some(4),
+            volume: Some(4.0),
             average_volume: Some(5.1),
         };
         assert_eq!(parsed[0], instrument);
