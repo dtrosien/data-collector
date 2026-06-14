@@ -136,33 +136,7 @@ async fn load_and_store_missing_data_given_url(
             } else {
                 let dividends_response_entries: Vec<_> = dividends
                     .into_iter()
-                    .filter_map(|div| {
-                        if div.ex_dividend_date.is_none()
-                            || div.cash_amount.is_none()
-                            || div.currency.is_none()
-                        {
-                            return None;
-                        }
-
-                        Some(PolygonDividendsEntry {
-                            ticker: div.ticker,
-                            record_date: convert_string_to_naive_date(div.record_date),
-                            pay_date: convert_string_to_naive_date(div.pay_date),
-                            declaration_date: convert_string_to_naive_date(div.declaration_date),
-                            ex_dividend_date: NaiveDate::parse_from_str(
-                                &div.ex_dividend_date.expect("Checked before."),
-                                "%Y-%m-%d",
-                            )
-                            .expect("Check happened above"),
-                            frequency: div.frequency,
-                            cash_amount: div.cash_amount.expect("Checked before"),
-                            currency: div.currency.expect("Checked before"),
-                            distribution_type: div.distribution_type,
-                            historical_adjustment_factor: div.historical_adjustment_factor,
-                            split_adjusted_cash_amount: div.split_adjusted_cash_amount,
-                            is_staged: false,
-                        })
-                    })
+                    .filter_map(map_dividend_entry)
                     .collect();
                 // TODO: Highest declaration day is older than 2 years -> Put in warden
 
@@ -231,4 +205,109 @@ pub struct DividendsResponseEntry {
     pub distribution_type: Option<String>,
     pub historical_adjustment_factor: Option<f64>,
     pub split_adjusted_cash_amount: Option<f64>,
+}
+
+/// Map a DividendsResponseEntry into a PolygonDividendsEntry when all required fields are present.
+/// Returns None when required fields are missing or parsing fails.
+fn map_dividend_entry(div: DividendsResponseEntry) -> Option<PolygonDividendsEntry> {
+    // Required fields: ex_dividend_date, cash_amount, currency
+    let ex_div = div.ex_dividend_date?;
+    let cash = div.cash_amount?;
+    let currency = div.currency?;
+
+    let ex_div_parsed = NaiveDate::parse_from_str(&ex_div, "%Y-%m-%d").ok()?;
+
+    Some(PolygonDividendsEntry {
+        ticker: div.ticker,
+        record_date: convert_string_to_naive_date(div.record_date),
+        pay_date: convert_string_to_naive_date(div.pay_date),
+        declaration_date: convert_string_to_naive_date(div.declaration_date),
+        ex_dividend_date: ex_div_parsed,
+        frequency: div.frequency,
+        cash_amount: cash,
+        currency,
+        distribution_type: div.distribution_type,
+        historical_adjustment_factor: div.historical_adjustment_factor,
+        split_adjusted_cash_amount: div.split_adjusted_cash_amount,
+        is_staged: false,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api_keys::api_key::{ApiKey, PolygonKey};
+    use serde_json::json;
+
+    #[test]
+    fn test_create_polygon_dividends_request_formats_url_and_masks_key() {
+        let mut key: Box<dyn ApiKey> = Box::new(PolygonKey::new("secret123".to_string()));
+        let mut req = create_polygon_dividends_request("https://api.test/?", "TICK", &mut key);
+        assert!(req.base.starts_with("https://api.test/?ticker=TICK&apiKey="));
+        // expose_secret returns base + secret
+        let exposed = req.expose_secret();
+        assert!(exposed.ends_with("secret123"));
+    }
+
+    #[test]
+    fn test_convert_string_to_naive_date_various() {
+        assert_eq!(convert_string_to_naive_date(Some("2020-01-02".to_string())).unwrap().to_string(), "2020-01-02");
+        assert_eq!(convert_string_to_naive_date(None), None);
+        assert_eq!(convert_string_to_naive_date(Some("invalid".to_string())), None);
+    }
+
+    #[test]
+    fn test_dividends_deserialize_empty_results() {
+        let data = json!({
+            "status": null,
+            "request_id": null,
+            "results": null
+        });
+        let s = serde_json::to_string(&data).unwrap();
+        let parsed: Dividends = serde_json::from_str(&s).unwrap();
+        assert!(parsed.results.is_none());
+    }
+
+    #[test]
+    fn test_map_dividend_entry_missing_fields_returns_none() {
+        let entry = DividendsResponseEntry {
+            id: None,
+            ticker: "TICK".to_string(),
+            record_date: None,
+            pay_date: None,
+            declaration_date: None,
+            ex_dividend_date: None,
+            frequency: None,
+            cash_amount: None,
+            currency: None,
+            distribution_type: None,
+            historical_adjustment_factor: None,
+            split_adjusted_cash_amount: None,
+        };
+        assert!(map_dividend_entry(entry).is_none());
+    }
+
+    #[test]
+    fn test_map_dividend_entry_valid_maps_to_polygon_entry() {
+        let entry = DividendsResponseEntry {
+            id: Some("1".to_string()),
+            ticker: "TICK".to_string(),
+            record_date: Some("2020-01-02".to_string()),
+            pay_date: Some("2020-01-03".to_string()),
+            declaration_date: Some("2020-01-01".to_string()),
+            ex_dividend_date: Some("2020-01-04".to_string()),
+            frequency: Some(4),
+            cash_amount: Some(1.23),
+            currency: Some("USD".to_string()),
+            distribution_type: Some("type".to_string()),
+            historical_adjustment_factor: Some(0.5),
+            split_adjusted_cash_amount: Some(0.0),
+        };
+        let mapped = map_dividend_entry(entry).expect("should map");
+        assert_eq!(mapped.ticker, "TICK");
+        assert_eq!(mapped.ex_dividend_date.to_string(), "2020-01-04");
+        assert_eq!(mapped.cash_amount, 1.23);
+        assert_eq!(mapped.currency, "USD");
+        assert_eq!(mapped.frequency, Some(4));
+    }
 }
