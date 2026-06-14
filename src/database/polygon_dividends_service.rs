@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres};
@@ -169,5 +170,32 @@ impl PolygonDividendsService {
             result.is_staged.push(data.is_staged);
         }
         result
+    }
+}
+
+#[async_trait]
+pub trait PolygonDividendsServiceTrait: Send + Sync {
+    async fn get_next_issue_symbol_candidate(
+        &self,
+        lower_symbol_bound: String,
+        skippable_symbols: &Vec<String>,
+    ) -> Option<String>;
+
+    async fn save_all(&self, data: Vec<PolygonDividendsEntry>) -> Result<(), anyhow::Error>;
+}
+
+#[async_trait]
+impl PolygonDividendsServiceTrait for PolygonDividendsService {
+    async fn get_next_issue_symbol_candidate(
+        &self,
+        lower_symbol_bound: String,
+        skippable_symbols: &Vec<String>,
+    ) -> Option<String> {
+        self.get_next_issue_symbol_candidate(lower_symbol_bound, skippable_symbols)
+            .await
+    }
+
+    async fn save_all(&self, data: Vec<PolygonDividendsEntry>) -> Result<(), anyhow::Error> {
+        self.save_all(data).await
     }
 }

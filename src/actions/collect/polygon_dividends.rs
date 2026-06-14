@@ -1,3 +1,5 @@
+use crate::database::polygon_dividends_service::PolygonDividendsServiceTrait;
+use crate::database::warden_service::WardenServiceTrait;
 use crate::{
     api_keys::{
         api_key::{ApiKey, ApiKeyPlatform},
@@ -99,14 +101,13 @@ pub async fn load_and_store_missing_data(
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
-async fn load_and_store_missing_data_given_url(
-    connection_pool: sqlx::Pool<sqlx::Postgres>,
+async fn load_and_store_missing_data_with_services(
+    polygon_dividends_service: &(dyn PolygonDividendsServiceTrait + Send + Sync),
+    warden_service: &(dyn WardenServiceTrait + Send + Sync),
     client: Client,
     key_manager: Arc<Mutex<KeyManager>>,
     url: &str,
 ) -> Result<(), anyhow::Error> {
-    let polygon_dividends_service = PolygonDividendsService::new(connection_pool.clone());
-    let warden_service = WardenService::new(connection_pool.clone());
     let skippable_symbols = warden_service
         .get_missing_symbols(crate::database::warden_service::WardenType::MassiveDividends)
         .await?;
@@ -162,6 +163,25 @@ async fn load_and_store_missing_data_given_url(
     }
 
     Ok(())
+}
+
+#[tracing::instrument(level = "debug", skip_all)]
+async fn load_and_store_missing_data_given_url(
+    connection_pool: sqlx::Pool<sqlx::Postgres>,
+    client: Client,
+    key_manager: Arc<Mutex<KeyManager>>,
+    url: &str,
+) -> Result<(), anyhow::Error> {
+    let polygon_dividends_service = PolygonDividendsService::new(connection_pool.clone());
+    let warden_service = WardenService::new(connection_pool.clone());
+    load_and_store_missing_data_with_services(
+        &polygon_dividends_service,
+        &warden_service,
+        client,
+        key_manager,
+        url,
+    )
+    .await
 }
 
 fn convert_string_to_naive_date(data: Option<String>) -> Option<NaiveDate> {
@@ -243,7 +263,9 @@ mod tests {
     fn test_create_polygon_dividends_request_formats_url_and_masks_key() {
         let mut key: Box<dyn ApiKey> = Box::new(PolygonKey::new("secret123".to_string()));
         let mut req = create_polygon_dividends_request("https://api.test/?", "TICK", &mut key);
-        assert!(req.base.starts_with("https://api.test/?ticker=TICK&apiKey="));
+        assert!(req
+            .base
+            .starts_with("https://api.test/?ticker=TICK&apiKey="));
         // expose_secret returns base + secret
         let exposed = req.expose_secret();
         assert!(exposed.ends_with("secret123"));
@@ -251,9 +273,17 @@ mod tests {
 
     #[test]
     fn test_convert_string_to_naive_date_various() {
-        assert_eq!(convert_string_to_naive_date(Some("2020-01-02".to_string())).unwrap().to_string(), "2020-01-02");
+        assert_eq!(
+            convert_string_to_naive_date(Some("2020-01-02".to_string()))
+                .unwrap()
+                .to_string(),
+            "2020-01-02"
+        );
         assert_eq!(convert_string_to_naive_date(None), None);
-        assert_eq!(convert_string_to_naive_date(Some("invalid".to_string())), None);
+        assert_eq!(
+            convert_string_to_naive_date(Some("invalid".to_string())),
+            None
+        );
     }
 
     #[test]
@@ -309,5 +339,219 @@ mod tests {
         assert_eq!(mapped.cash_amount, 1.23);
         assert_eq!(mapped.currency, "USD");
         assert_eq!(mapped.frequency, Some(4));
+    }
+
+    #[test]
+    fn test_dividend_entry_with_invalid_date_returns_none() {
+        let entry = DividendsResponseEntry {
+            id: Some("1".to_string()),
+            ticker: "TICK".to_string(),
+            record_date: Some("not-a-date".to_string()),
+            pay_date: None,
+            declaration_date: None,
+            ex_dividend_date: Some("invalid-date".to_string()),
+            frequency: None,
+            cash_amount: Some(2.0),
+            currency: Some("EUR".to_string()),
+            distribution_type: None,
+            historical_adjustment_factor: None,
+            split_adjusted_cash_amount: None,
+        };
+        assert!(map_dividend_entry(entry).is_none());
+    }
+
+    #[tokio::test]
+    async fn test_loop_with_mock_services_calls_warden_on_empty_response() {
+        use httpmock::{Method::GET, MockServer};
+        // start mock server
+        let server = MockServer::start_async().await;
+        // response with empty results
+        let body = serde_json::json!({
+            "status": "ok",
+            "request_id": "r",
+            "results": []
+        })
+        .to_string();
+        let _m = server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        // prepare mocks
+        struct MockPolygonService {
+            next: std::sync::Mutex<Vec<String>>,
+        }
+        #[async_trait]
+        impl PolygonDividendsServiceTrait for MockPolygonService {
+            async fn get_next_issue_symbol_candidate(
+                &self,
+                _lower: String,
+                _skippable: &Vec<String>,
+            ) -> Option<String> {
+                self.next.lock().unwrap().pop()
+            }
+            async fn save_all(
+                &self,
+                _data: Vec<PolygonDividendsEntry>,
+            ) -> Result<(), anyhow::Error> {
+                // not called in this test
+                Ok(())
+            }
+        }
+
+        struct MockWardenService {
+            missing: Vec<String>,
+            added: std::sync::Mutex<Vec<String>>,
+        }
+        #[async_trait]
+        impl WardenServiceTrait for MockWardenService {
+            async fn get_missing_symbols(
+                &self,
+                _source_system: crate::database::warden_service::WardenType,
+            ) -> Result<Vec<String>, anyhow::Error> {
+                Ok(self.missing.clone())
+            }
+            async fn add_or_update(
+                &self,
+                symbol: &String,
+                _source_system: crate::database::warden_service::WardenType,
+            ) -> Result<(), anyhow::Error> {
+                self.added.lock().unwrap().push(symbol.clone());
+                Ok(())
+            }
+        }
+
+        let polygon = MockPolygonService {
+            next: std::sync::Mutex::new(vec!["SYM".to_string()]),
+        };
+        let warden = MockWardenService {
+            missing: vec![],
+            added: std::sync::Mutex::new(vec![]),
+        };
+
+        // key manager with a polygon key so KeyManager returns one
+        let km = Arc::new(Mutex::new(crate::api_keys::key_manager::KeyManager::new()));
+        {
+            let mut k = km.lock().unwrap();
+            k.add_key_by_platform(Box::new(PolygonKey::new("secret123".to_string())));
+        }
+
+        let client = reqwest::Client::new();
+        let url = &format!("{}{}", server.url("/"), "stocks/v1/dividends?");
+
+        // run
+        let res =
+            load_and_store_missing_data_with_services(&polygon, &warden, client, km.clone(), url)
+                .await;
+        assert!(res.is_ok());
+
+        // verify warden was called with SYM
+        let added = warden.added.lock().unwrap();
+        assert_eq!(added.len(), 1);
+        assert_eq!(added[0], "SYM");
+    }
+
+    #[tokio::test]
+    async fn test_loop_with_mock_services_calls_save_all_on_valid_response() {
+        use httpmock::{Method::GET, MockServer};
+        let server = MockServer::start_async().await;
+        // response with one valid dividend
+        let body = serde_json::json!({
+            "status": "ok",
+            "request_id": "r",
+            "results": [
+                {
+                    "id": "1",
+                    "ticker": "SYM",
+                    "record_date": "2020-01-01",
+                    "pay_date": "2020-01-02",
+                    "declaration_date": "2020-01-01",
+                    "ex_dividend_date": "2020-01-03",
+                    "frequency": 1,
+                    "cash_amount": 1.5,
+                    "currency": "USD"
+                }
+            ]
+        })
+        .to_string();
+
+        let _m = server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        struct MockPolygonService2 {
+            next: std::sync::Mutex<Vec<String>>,
+            saved: std::sync::Mutex<Vec<PolygonDividendsEntry>>,
+        }
+        #[async_trait]
+        impl PolygonDividendsServiceTrait for MockPolygonService2 {
+            async fn get_next_issue_symbol_candidate(
+                &self,
+                _lower: String,
+                _skippable: &Vec<String>,
+            ) -> Option<String> {
+                self.next.lock().unwrap().pop()
+            }
+            async fn save_all(
+                &self,
+                data: Vec<PolygonDividendsEntry>,
+            ) -> Result<(), anyhow::Error> {
+                let mut s = self.saved.lock().unwrap();
+                for d in data {
+                    s.push(d);
+                }
+                Ok(())
+            }
+        }
+
+        struct MockWardenService2 {
+            missing: Vec<String>,
+        }
+        #[async_trait]
+        impl WardenServiceTrait for MockWardenService2 {
+            async fn get_missing_symbols(
+                &self,
+                _source_system: crate::database::warden_service::WardenType,
+            ) -> Result<Vec<String>, anyhow::Error> {
+                Ok(self.missing.clone())
+            }
+            async fn add_or_update(
+                &self,
+                _symbol: &String,
+                _source_system: crate::database::warden_service::WardenType,
+            ) -> Result<(), anyhow::Error> {
+                Ok(())
+            }
+        }
+
+        let polygon = MockPolygonService2 {
+            next: std::sync::Mutex::new(vec!["SYM".to_string()]),
+            saved: std::sync::Mutex::new(vec![]),
+        };
+        let warden = MockWardenService2 { missing: vec![] };
+
+        let km = Arc::new(Mutex::new(crate::api_keys::key_manager::KeyManager::new()));
+        {
+            let mut k = km.lock().unwrap();
+            k.add_key_by_platform(Box::new(PolygonKey::new("secret123".to_string())));
+        }
+
+        let client = reqwest::Client::new();
+        let url = &format!("{}{}", server.url("/"), "stocks/v1/dividends?");
+
+        let res =
+            load_and_store_missing_data_with_services(&polygon, &warden, client, km.clone(), url)
+                .await;
+        assert!(res.is_ok());
+
+        let saved = polygon.saved.lock().unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].ticker, "SYM");
+        assert_eq!(saved[0].cash_amount, 1.5);
     }
 }

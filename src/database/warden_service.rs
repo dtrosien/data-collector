@@ -119,3 +119,35 @@ impl WardenService {
         Ok(rows.into_iter().map(|r| r.issue_symbol).collect())
     }
 }
+
+use async_trait::async_trait;
+
+#[async_trait]
+pub trait WardenServiceTrait: Send + Sync {
+    async fn get_missing_symbols(
+        &self,
+        source_system: crate::database::warden_service::WardenType,
+    ) -> Result<Vec<String>, anyhow::Error>;
+    async fn add_or_update(
+        &self,
+        symbol: &String,
+        source_system: crate::database::warden_service::WardenType,
+    ) -> Result<(), anyhow::Error>;
+}
+
+#[async_trait]
+impl WardenServiceTrait for WardenService {
+    async fn get_missing_symbols(
+        &self,
+        source_system: crate::database::warden_service::WardenType,
+    ) -> Result<Vec<String>, anyhow::Error> {
+        self.get_missing_symbols(source_system).await
+    }
+    async fn add_or_update(
+        &self,
+        symbol: &String,
+        source_system: crate::database::warden_service::WardenType,
+    ) -> Result<(), anyhow::Error> {
+        self.add_or_update(symbol, source_system).await
+    }
+}
