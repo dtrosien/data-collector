@@ -174,6 +174,7 @@ impl PolygonDividendsService {
 }
 
 #[async_trait]
+#[cfg_attr(test, mockall::automock)]
 pub trait PolygonDividendsServiceTrait: Send + Sync {
     async fn get_next_issue_symbol_candidate(
         &self,

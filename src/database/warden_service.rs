@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use chrono::{Days, NaiveDate, Utc};
 use sqlx::{FromRow, Pool, Postgres};
 
@@ -120,9 +121,8 @@ impl WardenService {
     }
 }
 
-use async_trait::async_trait;
-
 #[async_trait]
+#[cfg_attr(test, mockall::automock)]
 pub trait WardenServiceTrait: Send + Sync {
     async fn get_missing_symbols(
         &self,
