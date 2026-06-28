@@ -51,8 +51,7 @@ impl PolygonDividendsService {
     pub async fn save_all(&self, data: Vec<PolygonDividendsEntry>) -> Result<(), anyhow::Error> {
         let dividends = self.transpose_polygon_dividends_entry(data);
 
-        sqlx::query!(
-            r#"
+        let query = r#"
     INSERT INTO polygon_dividends (
         ticker,
         record_date,
@@ -81,23 +80,34 @@ impl PolygonDividendsService {
         $11::float8[],
         $12::bool[]
     )
-    ON CONFLICT DO NOTHING
-    "#,
-            &dividends.ticker[..],
-            &dividends.record_date[..] as _,
-            &dividends.pay_date[..] as _,
-            &dividends.declaration_date[..] as _,
-            &dividends.ex_dividend_date[..],
-            &dividends.frequency[..] as _,
-            &dividends.cash_amount[..],
-            &dividends.currency[..],
-            &dividends.distribution_type[..] as _,
-            &dividends.historical_adjustment_factor[..] as _,
-            &dividends.split_adjusted_cash_amount[..] as _,
-            &dividends.is_staged[..],
-        )
-        .execute(&self.pool)
-        .await?;
+    ON CONFLICT (ticker, ex_dividend_date) DO UPDATE SET
+        record_date = EXCLUDED.record_date,
+        pay_date = EXCLUDED.pay_date,
+        declaration_date = EXCLUDED.declaration_date,
+        frequency = EXCLUDED.frequency,
+        cash_amount = EXCLUDED.cash_amount,
+        currency = EXCLUDED.currency,
+        distribution_type = EXCLUDED.distribution_type,
+        historical_adjustment_factor = EXCLUDED.historical_adjustment_factor,
+        split_adjusted_cash_amount = EXCLUDED.split_adjusted_cash_amount,
+        is_staged = EXCLUDED.is_staged
+    "#;
+
+        sqlx::query(query)
+            .bind(&dividends.ticker[..])
+            .bind(&dividends.record_date[..] as &[_])
+            .bind(&dividends.pay_date[..] as &[_])
+            .bind(&dividends.declaration_date[..] as &[_])
+            .bind(&dividends.ex_dividend_date[..] as &[_])
+            .bind(&dividends.frequency[..] as &[_])
+            .bind(&dividends.cash_amount[..] as &[_])
+            .bind(&dividends.currency[..] as &[_])
+            .bind(&dividends.distribution_type[..] as &[_])
+            .bind(&dividends.historical_adjustment_factor[..] as &[_])
+            .bind(&dividends.split_adjusted_cash_amount[..] as &[_])
+            .bind(&dividends.is_staged[..] as &[bool])
+            .execute(&self.pool)
+            .await?;
 
         Ok(())
     }
@@ -106,7 +116,7 @@ impl PolygonDividendsService {
     pub async fn get_next_issue_symbol_candidate(
         &self,
         lower_symbol_bound: String,
-        skippable_symbols: &Vec<String>,
+        skippable_symbols: &[String],
     ) -> Option<String> {
         // select uncollected symbols
         let query_result = sqlx::query!(
@@ -179,7 +189,7 @@ pub trait PolygonDividendsServiceTrait: Send + Sync {
     async fn get_next_issue_symbol_candidate(
         &self,
         lower_symbol_bound: String,
-        skippable_symbols: &Vec<String>,
+        skippable_symbols: &[String],
     ) -> Option<String>;
 
     async fn save_all(&self, data: Vec<PolygonDividendsEntry>) -> Result<(), anyhow::Error>;
@@ -190,7 +200,7 @@ impl PolygonDividendsServiceTrait for PolygonDividendsService {
     async fn get_next_issue_symbol_candidate(
         &self,
         lower_symbol_bound: String,
-        skippable_symbols: &Vec<String>,
+        skippable_symbols: &[String],
     ) -> Option<String> {
         self.get_next_issue_symbol_candidate(lower_symbol_bound, skippable_symbols)
             .await

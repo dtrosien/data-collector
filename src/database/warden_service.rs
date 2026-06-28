@@ -37,7 +37,7 @@ impl WardenService {
 
     pub async fn add_or_update(
         &self,
-        symbol: &String,
+        symbol: &str,
         source_system: WardenType,
     ) -> Result<(), anyhow::Error> {
         match source_system {
@@ -51,23 +51,23 @@ impl WardenService {
         Ok(())
     }
 
-    async fn add_or_update_fin_mod_prep(&self, _symbol: &String) {
+    async fn add_or_update_fin_mod_prep(&self, _symbol: &str) {
         todo!()
     }
 
-    async fn add_or_update_polygon(&self, _symbol: &String) {
+    async fn add_or_update_polygon(&self, _symbol: &str) {
         todo!()
     }
 
-    async fn add_or_update_sec(&self, _symbol: &String) {
+    async fn add_or_update_sec(&self, _symbol: &str) {
         todo!()
     }
 
-    async fn add_or_update_nyse(&self, _symbol: &String) {
+    async fn add_or_update_nyse(&self, _symbol: &str) {
         todo!()
     }
 
-    async fn add_or_update_massive_dividends(&self, symbol: &String) -> Result<(), anyhow::Error> {
+    async fn add_or_update_massive_dividends(&self, symbol: &str) -> Result<(), anyhow::Error> {
         let today = chrono::Utc::now().date_naive();
 
         sqlx::query!(
@@ -130,7 +130,7 @@ pub trait WardenServiceTrait: Send + Sync {
     ) -> Result<Vec<String>, anyhow::Error>;
     async fn add_or_update(
         &self,
-        symbol: &String,
+        symbol: &str,
         source_system: crate::database::warden_service::WardenType,
     ) -> Result<(), anyhow::Error>;
 }
@@ -145,7 +145,7 @@ impl WardenServiceTrait for WardenService {
     }
     async fn add_or_update(
         &self,
-        symbol: &String,
+        symbol: &str,
         source_system: crate::database::warden_service::WardenType,
     ) -> Result<(), anyhow::Error> {
         self.add_or_update(symbol, source_system).await
