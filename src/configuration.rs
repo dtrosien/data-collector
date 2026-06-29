@@ -71,6 +71,8 @@ pub struct SecretKeys {
     pub polygon: Option<String>,
     #[serde_as(deserialize_as = "Option<DefaultOnError>")]
     pub financialmodelingprep_company: Option<String>,
+    #[serde_as(deserialize_as = "Option<DefaultOnError>")]
+    pub xfinlink: Option<String>,
 }
 
 impl Default for SecretKeys {
@@ -79,6 +81,7 @@ impl Default for SecretKeys {
         Self {
             polygon: Default::default(),
             financialmodelingprep_company: Default::default(),
+            xfinlink: Default::default(),
         }
     }
 }
