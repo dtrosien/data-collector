@@ -1,37 +1,50 @@
-use data_collector::configuration::{get_configuration, DatabaseSettings};
-use data_collector::database::polygon_dividends_service::{PolygonDividendsEntry, PolygonDividendsService};
-use sqlx::{Connection, Executor, PgConnection, PgPool};
-use sqlx::types::Uuid;
 use chrono::NaiveDate;
+use data_collector::configuration::get_configuration;
+use data_collector::database::polygon_dividends_service::{
+    PolygonDividendsEntry, PolygonDividendsService,
+};
+use sqlx::{Connection, Executor, PgConnection, PgPool};
 
-async fn configure_database(config: &DatabaseSettings) -> PgPool {
-    // Create database
-    let mut connection = PgConnection::connect_with(&config.without_db())
+const TEST_DATABASE_NAME: &str = "test_data_collector";
+
+async fn configure_test_database() -> PgPool {
+    let mut configuration = get_configuration().expect("Failed to read configuration.");
+
+    // Drop test database if it exists
+    let mut conn = PgConnection::connect_with(&configuration.database.without_db())
+        .await
+        .expect("Failed to connect to Postgres");
+    let _ = conn
+        .execute(format!("DROP DATABASE IF EXISTS \"{}\";", TEST_DATABASE_NAME).as_str())
+        .await;
+    drop(conn);
+
+    // Create fresh test database
+    let mut connection = PgConnection::connect_with(&configuration.database.without_db())
         .await
         .expect("Failed to connect to Postgres");
     connection
-        .execute(format!("CREATE DATABASE \"{}\";", config.database_name).as_str())
+        .execute(format!("CREATE DATABASE \"{}\";", TEST_DATABASE_NAME).as_str())
         .await
-        .expect("Failed to create database.");
+        .expect("Failed to create test database");
+    drop(connection);
 
     // Migrate database
-    let connection_pool = PgPool::connect_with(config.with_db())
+    configuration.database.database_name = TEST_DATABASE_NAME.to_string();
+    let connection_pool = PgPool::connect_with(configuration.database.with_db())
         .await
-        .expect("Failed to connect to Postgres.");
+        .expect("Failed to connect to test database.");
     sqlx::migrate!("./migrations")
         .run(&connection_pool)
         .await
-        .expect("Failed to migrate the database");
+        .expect("Failed to migrate the test database");
 
     connection_pool
 }
 
 #[tokio::test]
 async fn save_all_conflict_updates() -> Result<(), Box<dyn std::error::Error>> {
-    // Prepare configuration with isolated database
-    let mut configuration = get_configuration().expect("Failed to read configuration.");
-    configuration.database.database_name = Uuid::new_v4().to_string();
-    let pool = configure_database(&configuration.database).await;
+    let pool = configure_test_database().await;
 
     let service = PolygonDividendsService::new(pool.clone());
 
