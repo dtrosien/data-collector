@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT cash_amount, pay_date, is_staged FROM polygon_dividends WHERE ticker = $1 AND ex_dividend_date = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "cash_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 1,
+        "name": "pay_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 2,
+        "name": "is_staged",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Date"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "364b70d766637bf9c2a86c0dbb81b808811c89d8df6267c0ce097e90a01d842c"
+}

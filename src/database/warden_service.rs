@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use chrono::{Days, NaiveDate, Utc};
 use sqlx::{FromRow, Pool, Postgres};
 
@@ -36,7 +37,7 @@ impl WardenService {
 
     pub async fn add_or_update(
         &self,
-        symbol: &String,
+        symbol: &str,
         source_system: WardenType,
     ) -> Result<(), anyhow::Error> {
         match source_system {
@@ -50,23 +51,23 @@ impl WardenService {
         Ok(())
     }
 
-    async fn add_or_update_fin_mod_prep(&self, _symbol: &String) {
+    async fn add_or_update_fin_mod_prep(&self, _symbol: &str) {
         todo!()
     }
 
-    async fn add_or_update_polygon(&self, _symbol: &String) {
+    async fn add_or_update_polygon(&self, _symbol: &str) {
         todo!()
     }
 
-    async fn add_or_update_sec(&self, _symbol: &String) {
+    async fn add_or_update_sec(&self, _symbol: &str) {
         todo!()
     }
 
-    async fn add_or_update_nyse(&self, _symbol: &String) {
+    async fn add_or_update_nyse(&self, _symbol: &str) {
         todo!()
     }
 
-    async fn add_or_update_massive_dividends(&self, symbol: &String) -> Result<(), anyhow::Error> {
+    async fn add_or_update_massive_dividends(&self, symbol: &str) -> Result<(), anyhow::Error> {
         let today = chrono::Utc::now().date_naive();
 
         sqlx::query!(
@@ -117,5 +118,36 @@ impl WardenService {
         .await?;
 
         Ok(rows.into_iter().map(|r| r.issue_symbol).collect())
+    }
+}
+
+#[async_trait]
+#[cfg_attr(test, mockall::automock)]
+pub trait WardenServiceTrait: Send + Sync {
+    async fn get_missing_symbols(
+        &self,
+        source_system: crate::database::warden_service::WardenType,
+    ) -> Result<Vec<String>, anyhow::Error>;
+    async fn add_or_update(
+        &self,
+        symbol: &str,
+        source_system: crate::database::warden_service::WardenType,
+    ) -> Result<(), anyhow::Error>;
+}
+
+#[async_trait]
+impl WardenServiceTrait for WardenService {
+    async fn get_missing_symbols(
+        &self,
+        source_system: crate::database::warden_service::WardenType,
+    ) -> Result<Vec<String>, anyhow::Error> {
+        self.get_missing_symbols(source_system).await
+    }
+    async fn add_or_update(
+        &self,
+        symbol: &str,
+        source_system: crate::database::warden_service::WardenType,
+    ) -> Result<(), anyhow::Error> {
+        self.add_or_update(symbol, source_system).await
     }
 }
