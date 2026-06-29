@@ -276,18 +276,19 @@ impl XfinlinkKey {
     }
 
     pub fn new_with_time(key: String, last_use: DateTime<Utc>) -> Self {
-        let now = Utc::now();
+        let hour_started = last_use
+            .with_minute(0)
+            .expect("Setting minutes to zero should never fail")
+            .with_second(0)
+            .expect("Setting seconds to zero should never fail");
+
         XfinlinkKey {
             api_key: Secret::new(key),
             platform: ApiKeyPlatform::Xfinlink,
             status: Status::Ready,
             last_use,
             counter: 0,
-            hour_started: now
-                .with_minute(0)
-                .expect("Setting minutes to zero should never fail")
-                .with_second(0)
-                .expect("Setting seconds to zero should never fail"),
+            hour_started,
         }
     }
 
@@ -394,9 +395,9 @@ mod test {
     // #### Missing tests ###
     // refresh_if_possible calculates date correctly
 
-    use chrono::{Datelike, Duration, TimeDelta, TimeZone, Utc};
+    use chrono::{Datelike, Duration, TimeDelta, TimeZone, Timelike, Utc};
 
-    use crate::api_keys::api_key::{ApiKey, ApiKeyPlatform, PolygonKey, Status};
+    use crate::api_keys::api_key::{ApiKey, ApiKeyPlatform, PolygonKey, Status, XfinlinkKey};
 
     use super::FinancialmodelingprepKey;
 
@@ -547,20 +548,20 @@ mod test {
 
     #[test]
     fn poly_ready_key_is_ready_now() {
+        let now = Utc::now();
         let fin_key = PolygonKey::new("key".to_string());
         let one_minute = Duration::minutes(1);
-        let now = Utc::now();
-        assert!(now < fin_key.next_ready_time());
-        assert!(now + one_minute > fin_key.next_ready_time());
+        assert!(now <= fin_key.next_ready_time());
+        assert!(now + one_minute >= fin_key.next_ready_time());
     }
 
     #[test]
     fn finrep_ready_key_is_ready_now() {
+        let now = Utc::now();
         let fin_key = FinancialmodelingprepKey::new("key".to_string());
         let one_minute = Duration::minutes(1);
-        let now = Utc::now();
-        assert!(now < fin_key.next_ready_time());
-        assert!(now + one_minute > fin_key.next_ready_time());
+        assert!(now <= fin_key.next_ready_time());
+        assert!(now + one_minute >= fin_key.next_ready_time());
     }
 
     // Refreshing the key is possible, refreshing sets the counter to 0
@@ -585,5 +586,104 @@ mod test {
         assert_eq!(fin_key.refresh_if_possible(), true);
         assert_eq!(fin_key.counter, 0);
         assert_eq!(fin_key.get_status(), Status::Ready);
+    }
+
+    #[test]
+    fn xfinlink_create_key() {
+        let xfinlink_key = XfinlinkKey::new("key".to_string());
+        assert_eq!(xfinlink_key.counter, 0);
+        assert_eq!(xfinlink_key.get_status(), Status::Ready);
+        assert_eq!(xfinlink_key.get_platform(), ApiKeyPlatform::Xfinlink);
+        assert_eq!(
+            xfinlink_key.expose_secret_for_data_structure(),
+            &"key".to_string()
+        );
+    }
+
+    #[test]
+    fn xfinlink_expose_secret_counts_counter() {
+        let mut xfinlink_key = XfinlinkKey::new("key".to_string());
+        assert_eq!(xfinlink_key.counter, 0);
+        xfinlink_key.get_secret();
+        assert_eq!(xfinlink_key.counter, 1);
+    }
+
+    #[test]
+    fn xfinlink_exhausting_at_40_requests() {
+        let mut xfinlink_key = XfinlinkKey::new("key".to_string());
+        for _ in 0..40 {
+            assert_eq!(xfinlink_key.status, Status::Ready);
+            xfinlink_key.get_secret();
+        }
+        assert_eq!(xfinlink_key.status, Status::Exhausted);
+        assert_eq!(xfinlink_key.counter, 0);
+    }
+
+    #[test]
+    fn xfinlink_status_to_exhausted_zeroes_counter() {
+        let mut xfinlink_key = XfinlinkKey::new("key".to_string());
+        xfinlink_key.get_secret();
+        assert_eq!(xfinlink_key.counter, 1);
+        xfinlink_key.set_status(Status::Exhausted);
+        assert_eq!(xfinlink_key.counter, 0);
+    }
+
+    #[test]
+    fn xfinlink_refresh_hour_boundary() {
+        let now = Utc::now();
+        let base_time = now
+            .with_minute(30)
+            .expect("Setting minutes should never fail")
+            .with_second(0)
+            .expect("Setting seconds to zero should never fail");
+        let hour_start = base_time
+            .with_minute(0)
+            .expect("Setting minutes to zero should never fail");
+
+        let mut xfinlink_key = XfinlinkKey::new_with_time("key".to_string(), base_time);
+        assert_eq!(xfinlink_key.hour_started, hour_start);
+
+        for _ in 0..40 {
+            xfinlink_key.get_secret();
+        }
+        assert_eq!(xfinlink_key.get_status(), Status::Exhausted);
+
+        let next_hour = hour_start + Duration::hours(1);
+
+        xfinlink_key.hour_started = hour_start;
+        xfinlink_key.status = Status::Exhausted;
+        xfinlink_key.last_use = next_hour;
+
+        let result = xfinlink_key.refresh_if_possible();
+        assert_eq!(result, true);
+        assert_eq!(xfinlink_key.counter, 0);
+        assert_eq!(xfinlink_key.get_status(), Status::Ready);
+    }
+
+    #[test]
+    fn xfinlink_next_ready_time_when_ready() {
+        let now = Utc::now();
+        let xfinlink_key = XfinlinkKey::new("key".to_string());
+        let one_minute = Duration::minutes(1);
+        assert!(now <= xfinlink_key.next_ready_time());
+        assert!(now + one_minute >= xfinlink_key.next_ready_time());
+    }
+
+    #[test]
+    fn xfinlink_next_ready_time_when_exhausted() {
+        let mut xfinlink_key = XfinlinkKey::new("key".to_string());
+        let hour_start = Utc.with_ymd_and_hms(2024, 6, 29, 14, 0, 0).unwrap();
+        xfinlink_key.hour_started = hour_start;
+        xfinlink_key.set_status(Status::Exhausted);
+
+        let expected_next_hour = hour_start + Duration::hours(1);
+        assert_eq!(xfinlink_key.next_ready_time(), expected_next_hour);
+    }
+
+    #[test]
+    fn xfinlink_secret_of_data_structure_preserves_count() {
+        let xfinlink_key = XfinlinkKey::new("key".to_string());
+        xfinlink_key.expose_secret_for_data_structure();
+        assert_eq!(xfinlink_key.counter, 0);
     }
 }
