@@ -249,10 +249,116 @@ impl ApiKey for PolygonKey {
     }
 }
 
+pub struct XfinlinkKey {
+    api_key: Secret<String>,
+    platform: ApiKeyPlatform,
+    status: Status,
+    last_use: DateTime<Utc>,
+    counter: u32,
+    hour_started: DateTime<Utc>,
+}
+
+impl XfinlinkKey {
+    pub fn new(key: String) -> Self {
+        let now = Utc::now();
+        XfinlinkKey {
+            api_key: Secret::new(key),
+            platform: ApiKeyPlatform::Xfinlink,
+            status: Status::Ready,
+            last_use: Utc.with_ymd_and_hms(1970, 1, 1, 0, 0, 0).unwrap(),
+            counter: 0,
+            hour_started: now
+                .with_minute(0)
+                .expect("Setting minutes to zero should never fail")
+                .with_second(0)
+                .expect("Setting seconds to zero should never fail"),
+        }
+    }
+
+    pub fn new_with_time(key: String, last_use: DateTime<Utc>) -> Self {
+        let now = Utc::now();
+        XfinlinkKey {
+            api_key: Secret::new(key),
+            platform: ApiKeyPlatform::Xfinlink,
+            status: Status::Ready,
+            last_use,
+            counter: 0,
+            hour_started: now
+                .with_minute(0)
+                .expect("Setting minutes to zero should never fail")
+                .with_second(0)
+                .expect("Setting seconds to zero should never fail"),
+        }
+    }
+
+    fn compute_next_hour_start(&self) -> chrono::DateTime<Utc> {
+        self.hour_started + Duration::hours(1)
+    }
+}
+
+impl ApiKey for XfinlinkKey {
+    fn expose_secret_for_data_structure(&self) -> &String {
+        self.api_key.expose_secret()
+    }
+
+    fn refresh_if_possible(&mut self) -> bool {
+        let current_hour = Utc::now()
+            .with_minute(0)
+            .expect("Setting minutes to zero should never fail")
+            .with_second(0)
+            .expect("Setting seconds to zero should never fail");
+
+        if current_hour > self.hour_started {
+            self.status = Status::Ready;
+            self.counter = 0;
+            self.hour_started = current_hour;
+            return true;
+        }
+        false
+    }
+
+    fn next_ready_time(&self) -> chrono::DateTime<Utc> {
+        match self.get_status() {
+            Status::Ready => Utc::now(),
+            Status::Exhausted => self.compute_next_hour_start(),
+        }
+    }
+
+    fn get_status(&self) -> Status {
+        self.status.clone()
+    }
+
+    fn get_platform(&self) -> ApiKeyPlatform {
+        self.platform.clone()
+    }
+
+    fn get_secret(&mut self) -> &Secret<String> {
+        self.last_use = Utc::now();
+        self.counter += 1;
+        debug!("Counter at: {}", &self.counter);
+        if self.counter == 40 {
+            self.set_status(Status::Exhausted);
+        }
+        &self.api_key
+    }
+
+    fn set_status(&mut self, new_status: Status) {
+        if new_status == Status::Exhausted {
+            self.counter = 0;
+        }
+        self.status = new_status;
+    }
+
+    fn get_usage_counter(&self) -> u32 {
+        self.counter
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ApiKeyPlatform {
     Financialmodelingprep,
     Polygon,
+    Xfinlink,
 }
 
 impl fmt::Display for ApiKeyPlatform {

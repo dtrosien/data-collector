@@ -13,7 +13,7 @@ use crate::actions::collect::nyse_instruments::NyseInstrumentCollector;
 use crate::actions::collect::sec_companies::SecCompanyCollector;
 use crate::actions::stage::nyse_instruments::NyseInstrumentStager;
 use crate::actions::stage::sec_companies::SecCompanyStager;
-use crate::api_keys::api_key::FinancialmodelingprepKey;
+use crate::api_keys::api_key::{FinancialmodelingprepKey, XfinlinkKey};
 use crate::api_keys::key_manager;
 use crate::api_keys::key_manager::KeyManager;
 use crate::configuration::SecretKeys;
@@ -102,6 +102,17 @@ fn fill_key_store(key_store: &Arc<Mutex<KeyManager>>, secrets: SecretKeys) {
             debug!("Polygon key added");
             k.add_key_by_platform(Box::new(key));
         });
+    }
+    if let Some(xfinlink_list) = secrets.xfinlink {
+        xfinlink_list
+            .split(' ')
+            .collect::<Vec<&str>>()
+            .into_iter()
+            .for_each(|x| {
+                let key = XfinlinkKey::new(x.to_string());
+                debug!("Xfinlink key added");
+                k.add_key_by_platform(Box::new(key));
+            });
     }
 }
 
