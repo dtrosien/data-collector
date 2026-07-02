@@ -64,9 +64,23 @@ impl Runnable for XfinlinkMarketCapCollector {
 // ── Response types ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum XfinlinkResponses {
+    Success(XfinlinkResponse),
+    Error(XfinlinkErrorResponse),
+}
+
+#[derive(Debug, Clone, Deserialize)]
 struct XfinlinkResponse {
     data: Vec<XfinlinkDataPoint>,
     meta: XfinlinkMeta,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct XfinlinkErrorResponse {
+    error: String,
+    status: u16,
+    detail: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -200,11 +214,32 @@ async fn fetch_and_store(
 
         debug!("Xfinlink response: {}", response_text);
 
-        let parsed: XfinlinkResponse = serde_json::from_str(&response_text).map_err(|e| {
-            anyhow::anyhow!("Failed to parse Xfinlink response for {}: {}", symbol, e)
-        })?;
+        let parsed =
+            crate::utils::action_helpers::parse_response::<XfinlinkResponses>(&response_text)?;
 
-        if !parsed.meta.tickers_unresolved.is_empty() {
+        let response = match parsed {
+            XfinlinkResponses::Success(r) => r,
+            XfinlinkResponses::Error(e) if e.error == "not_found" => {
+                info!(
+                    "Symbol {} not found in Xfinlink ({}), marking in warden.",
+                    symbol, e.detail
+                );
+                warden_service
+                    .add_or_update(&symbol.to_string(), WardenType::Xfinlink)
+                    .await?;
+                return Ok(());
+            }
+            XfinlinkResponses::Error(e) => {
+                return Err(anyhow::anyhow!(
+                    "Xfinlink API error {} for symbol {}: {}",
+                    e.status,
+                    symbol,
+                    e.detail
+                ));
+            }
+        };
+
+        if !response.meta.tickers_unresolved.is_empty() {
             info!(
                 "Symbol {} unresolved in Xfinlink, marking in warden.",
                 symbol
@@ -215,7 +250,7 @@ async fn fetch_and_store(
             return Ok(());
         }
 
-        if parsed.data.is_empty() && !any_data_found {
+        if response.data.is_empty() && !any_data_found {
             info!("No data returned for symbol {}, marking in warden.", symbol);
             warden_service
                 .add_or_update(&symbol.to_string(), WardenType::Xfinlink)
@@ -223,9 +258,9 @@ async fn fetch_and_store(
             return Ok(());
         }
 
-        if !parsed.data.is_empty() {
+        if !response.data.is_empty() {
             any_data_found = true;
-            let entries: Vec<XfinlinkMarketCapEntry> = parsed
+            let entries: Vec<XfinlinkMarketCapEntry> = response
                 .data
                 .into_iter()
                 .map(|p| XfinlinkMarketCapEntry {
@@ -250,8 +285,8 @@ async fn fetch_and_store(
             db_service.save_all(entries).await?;
         }
 
-        if parsed.meta.has_more {
-            cursor = parsed.meta.next_cursor;
+        if response.meta.has_more {
+            cursor = response.meta.next_cursor;
         } else {
             break;
         }
@@ -368,7 +403,7 @@ async fn get_next_outdated_symbol(
 
 #[cfg(test)]
 mod test {
-    use super::build_url;
+    use super::{build_url, XfinlinkErrorResponse, XfinlinkResponses};
     use chrono::NaiveDate;
 
     #[test]
@@ -388,5 +423,25 @@ mod test {
         let end = NaiveDate::parse_from_str("2026-01-10", "%Y-%m-%d").unwrap();
         let url = build_url("AAPL", start, end, Some("abc123"));
         assert!(url.contains("&cursor=abc123"));
+    }
+
+    #[test]
+    fn parse_not_found_error_response() {
+        let json =
+            r#"{"error":"not_found","status":404,"detail":"No matching entities for: AAMRQ"}"#;
+        let parsed =
+            crate::utils::action_helpers::parse_response::<XfinlinkResponses>(json).unwrap();
+        match parsed {
+            XfinlinkResponses::Error(XfinlinkErrorResponse {
+                error,
+                status,
+                detail,
+            }) => {
+                assert_eq!(error, "not_found");
+                assert_eq!(status, 404);
+                assert!(detail.contains("AAMRQ"));
+            }
+            XfinlinkResponses::Success(_) => panic!("Expected Error variant"),
+        }
     }
 }
