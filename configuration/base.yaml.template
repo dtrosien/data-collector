@@ -31,10 +31,10 @@ application:
       dependencies: [] 
     - name: FinmodCompanyProfileStage
       dependencies: [FinancialmodelingprepCompanyProfileCollet]
-    - name: FinmodMarketCapCollect
-      dependencies: [FinmodMarketCapCollect]
-    - name: FinmodMarketCapStager
-      dependencies: [FinmodMarketCapCollect]
+    - name: MassiveDividends
+      dependencies: []
+    - name: XfinlinkMarketCapCollect
+      dependencies: []
   
   tasks:
     - name: NyseEventsCollect
@@ -76,3 +76,6 @@ application:
     - name: MassiveDividends
       task_type: MassiveDividends
       comment: Helpful comment  
+    - name: XfinlinkMarketCapCollect
+      task_type: XfinlinkMarketCapCollect
+      comment: Collects daily prices and market cap from Xfinlink API

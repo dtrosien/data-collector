@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT max(business_date) FROM xfinlink_market_cap WHERE symbol = $1::text",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "max",
+        "type_info": "Date"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "ab1cf5c822a3ba5bccbeee10715ee5babbe07bf89c8c5b2095d47219983e4bd2"
+}

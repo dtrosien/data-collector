@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT distinct issue_symbol\n        FROM source_symbol_warden\n        WHERE xfinlink >= $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "issue_symbol",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "06dcc10339ab91a4e6cbd2d67918f9c70a2001a2097feb8d1c13aa5c5ee8eeec"
+}

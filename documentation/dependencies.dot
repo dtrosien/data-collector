@@ -16,6 +16,7 @@ digraph regexp {
  FinmodCompanyMarketCap [label="FMP Market capitalization collector"]
  FinmodCompanyMarketCapStage [label="FMP Market capitalization staging"]
  MassiveDividends       [label="Massive Dividends", style=filled, fillcolor=chartreuse]
+ XfinlinkMarketCapCollect [label="Xfinlink Market Cap Collect", style=filled, fillcolor=chartreuse]
 
  NyseEventsCollect -> n1
  //NyseInstrumentsCollect -> NyseInstrumentsStage

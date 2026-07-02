@@ -1,8 +1,8 @@
 database:
   host: "localhost"
-  port: 6543
+  port: 5432
   username: "postgres"
-  password: "password"
+  password: "postgres"
   database_name: "collector"
 application:
   http_client:
@@ -36,6 +36,8 @@ application:
     - name: FinmodMarketCapStager
       dependencies: [FinmodMarketCapCollect]
     - name: MassiveDividends
+      dependencies: []
+    - name: XfinlinkMarketCapCollect
       dependencies: []
 
   
@@ -79,5 +81,8 @@ application:
     - name: MassiveDividends
       task_type: MassiveDividends
       comment: Helpful comment  
+    - name: XfinlinkMarketCapCollect
+      task_type: XfinlinkMarketCapCollect
+      comment: Collects daily prices and market cap from Xfinlink API
     
       
