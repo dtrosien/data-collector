@@ -7,3 +7,4 @@ pub mod polygon_dividends;
 pub mod polygon_grouped_daily;
 pub mod polygon_open_close;
 pub mod sec_companies;
+pub mod xfinlink_market_cap;

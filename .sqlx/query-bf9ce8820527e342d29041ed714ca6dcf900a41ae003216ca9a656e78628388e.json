@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO xfinlink_market_cap (\n                symbol, business_date, entity_name, gics_sector,\n                open, high, low, close, adj_close, volume, return_daily,\n                shares_outstanding, exchange_code, split_ratio, dividend, market_cap\n            )\n            SELECT * FROM UNNEST (\n                $1::text[], $2::date[], $3::text[], $4::text[],\n                $5::float8[], $6::float8[], $7::float8[], $8::float8[], $9::float8[],\n                $10::float8[], $11::float8[], $12::float8[], $13::text[],\n                $14::float8[], $15::float8[], $16::float8[]\n            )\n            ON CONFLICT DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "DateArray",
+        "TextArray",
+        "TextArray",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "TextArray",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bf9ce8820527e342d29041ed714ca6dcf900a41ae003216ca9a656e78628388e"
+}

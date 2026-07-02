@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO source_symbol_warden (issue_symbol, xfinlink)\n        VALUES ($1, $2)\n        ON CONFLICT (issue_symbol)\n        DO UPDATE SET\n            xfinlink = EXCLUDED.xfinlink\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Date"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d18012f6936ef41ad4248e5a1c04e4c9428724a2241ef2ef608f119cdcb2e65a"
+}

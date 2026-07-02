@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        select r.symbol from\n            (select symbol, max(business_date) as max_date\n             from xfinlink_market_cap\n             group by symbol) as r\n        where r.symbol not in (select unnest($1::text[]))\n        and r.symbol not in (select unnest($2::text[]))\n        and r.max_date < $3\n        order by r.max_date asc limit 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "symbol",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "TextArray",
+        "Date"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "37a7968a75e57fe0dbfa0303e49df143c7e80c319066f0af9369ffa8a8eec82d"
+}
