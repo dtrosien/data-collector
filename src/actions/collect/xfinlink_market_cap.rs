@@ -147,7 +147,7 @@ pub async fn load_and_store_missing_data(
         if start_date >= today {
             info!("Symbol {} is up-to-date, skipping.", symbol);
         } else {
-            fetch_and_store(
+            let canonical_ticker = fetch_and_store(
                 symbol,
                 start_date,
                 today,
@@ -157,6 +157,11 @@ pub async fn load_and_store_missing_data(
                 &warden_service,
             )
             .await?;
+            // If the response used a different canonical ticker, add it to already_searched
+            // so it isn't re-selected (and re-fetched) in the same run.
+            if let Some(ct) = canonical_ticker {
+                already_searched.push(ct);
+            }
         }
 
         potential_symbol =
@@ -181,6 +186,7 @@ pub async fn load_and_store_missing_data(
 }
 
 /// Fetches data for one symbol (with cursor pagination) and stores it.
+/// Returns the canonical ticker if the requested symbol was an alias for a different ticker.
 #[tracing::instrument(level = "debug", skip_all, fields(symbol = %symbol))]
 async fn fetch_and_store(
     symbol: &str,
@@ -190,9 +196,11 @@ async fn fetch_and_store(
     api_key: &mut Box<dyn ApiKey>,
     db_service: &XfinlinkMarketCapService,
     warden_service: &WardenService,
-) -> Result<(), anyhow::Error> {
+) -> Result<Option<String>, anyhow::Error> {
     let mut cursor: Option<String> = None;
     let mut any_data_found = false;
+    let mut canonical_ticker: Option<String> = None;
+    let mut first_page = true;
 
     loop {
         if api_key.get_status() != Status::Ready {
@@ -227,7 +235,7 @@ async fn fetch_and_store(
                 warden_service
                     .add_or_update(&symbol.to_string(), WardenType::Xfinlink)
                     .await?;
-                return Ok(());
+                return Ok(None);
             }
             XfinlinkResponses::Error(e) => {
                 return Err(anyhow::anyhow!(
@@ -247,7 +255,7 @@ async fn fetch_and_store(
             warden_service
                 .add_or_update(&symbol.to_string(), WardenType::Xfinlink)
                 .await?;
-            return Ok(());
+            return Ok(None);
         }
 
         if response.data.is_empty() && !any_data_found {
@@ -255,11 +263,32 @@ async fn fetch_and_store(
             warden_service
                 .add_or_update(&symbol.to_string(), WardenType::Xfinlink)
                 .await?;
-            return Ok(());
+            return Ok(None);
         }
 
         if !response.data.is_empty() {
             any_data_found = true;
+
+            // On the first page only, detect alias mapping (e.g. AACI → AACIU).
+            // Mark the requested symbol in the warden before saving so it is silenced
+            // even if the subsequent save fails.
+            if first_page {
+                if let Some(first_point) = response.data.first() {
+                    let rt = first_point.ticker.clone();
+                    if rt != symbol {
+                        info!(
+                            "Symbol {} is an alias for {} in Xfinlink, marking in warden.",
+                            symbol, rt
+                        );
+                        warden_service
+                            .add_or_update(&symbol.to_string(), WardenType::Xfinlink)
+                            .await?;
+                        canonical_ticker = Some(rt);
+                    }
+                }
+                first_page = false;
+            }
+
             let entries: Vec<XfinlinkMarketCapEntry> = response
                 .data
                 .into_iter()
@@ -292,7 +321,7 @@ async fn fetch_and_store(
         }
     }
 
-    Ok(())
+    Ok(canonical_ticker)
 }
 
 fn build_url(symbol: &str, start: NaiveDate, end: NaiveDate, cursor: Option<&str>) -> String {
@@ -442,6 +471,49 @@ mod test {
                 assert!(detail.contains("AAMRQ"));
             }
             XfinlinkResponses::Success(_) => panic!("Expected Error variant"),
+        }
+    }
+
+    #[test]
+    fn alias_detected_when_response_ticker_differs_from_requested() {
+        // Requesting AACI but the API returns data for AACIU — alias mapping.
+        let json = r#"{
+            "data": [
+                {
+                    "entity_id": 48869,
+                    "ticker": "AACIU",
+                    "entity_name": "Armada Acquisition Corp. III",
+                    "gics_sector": "Industrials",
+                    "date": "2026-01-02",
+                    "open": 10.85, "high": 10.85, "low": 10.85, "close": 10.85,
+                    "adj_close": 10.85, "volume": 0, "return_daily": 0,
+                    "shares_outstanding": 7127000, "exchange_code": null,
+                    "split_ratio": null, "dividend": null, "market_cap": 77327950
+                }
+            ],
+            "meta": {
+                "tickers_requested": ["AACI"],
+                "tickers_resolved": {"AACI": 48869},
+                "tickers_unresolved": [],
+                "segments": [],
+                "interval": "1d",
+                "data_through": "2026-01-02",
+                "count": 1,
+                "limit": 1000,
+                "has_more": false,
+                "next_cursor": null
+            }
+        }"#;
+        let parsed =
+            crate::utils::action_helpers::parse_response::<XfinlinkResponses>(json).unwrap();
+        match parsed {
+            XfinlinkResponses::Success(r) => {
+                let requested_symbol = "AACI";
+                let response_ticker = r.data.first().map(|p| p.ticker.as_str());
+                assert_eq!(response_ticker, Some("AACIU"));
+                assert_ne!(response_ticker, Some(requested_symbol));
+            }
+            XfinlinkResponses::Error(_) => panic!("Expected Success variant"),
         }
     }
 }
