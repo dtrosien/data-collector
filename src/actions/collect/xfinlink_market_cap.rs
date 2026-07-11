@@ -7,7 +7,7 @@ use crate::database::xfinlink_market_cap_service::{
     XfinlinkMarketCapEntry, XfinlinkMarketCapService,
 };
 use async_trait::async_trait;
-use chrono::{NaiveDate, Utc};
+use chrono::{Months, NaiveDate, Utc};
 use futures_util::TryFutureExt;
 use reqwest::Client;
 use secrecy::ExposeSecret;
@@ -201,6 +201,8 @@ async fn fetch_and_store(
     let mut any_data_found = false;
     let mut canonical_ticker: Option<String> = None;
     let mut first_page = true;
+    let mut max_date_seen: Option<NaiveDate> = None;
+    let mut completed_normally = false;
 
     loop {
         if api_key.get_status() != Status::Ready {
@@ -289,6 +291,13 @@ async fn fetch_and_store(
                 first_page = false;
             }
 
+            // Track the most recent date seen across all pages.
+            let page_max = response.data.iter().map(|p| p.date).max();
+            max_date_seen = match (max_date_seen, page_max) {
+                (Some(a), Some(b)) => Some(a.max(b)),
+                (a, b) => a.or(b),
+            };
+
             let entries: Vec<XfinlinkMarketCapEntry> = response
                 .data
                 .into_iter()
@@ -317,7 +326,38 @@ async fn fetch_and_store(
         if response.meta.has_more {
             cursor = response.meta.next_cursor;
         } else {
+            completed_normally = true;
             break;
+        }
+    }
+
+    // After a complete fetch, check whether the most recent data point is stale
+    // (older than 1 calendar month). If so, mark the symbol in the warden so it
+    // is not re-selected on the next run until the 30-day warden cutoff passes.
+    if completed_normally {
+        let one_month_ago = end_date
+            .checked_sub_months(Months::new(1))
+            .expect("Subtracting 1 month from end_date should never fail");
+        if let Some(max_date) = max_date_seen {
+            if max_date <= one_month_ago {
+                info!(
+                    "Symbol {} has stale data (newest: {}), marking in warden.",
+                    symbol, max_date
+                );
+                warden_service
+                    .add_or_update(&symbol.to_string(), WardenType::Xfinlink)
+                    .await?;
+                // Also warden the canonical ticker if this was an alias.
+                if let Some(ref ct) = canonical_ticker {
+                    info!(
+                        "Canonical ticker {} also has stale data, marking in warden.",
+                        ct
+                    );
+                    warden_service
+                        .add_or_update(ct, WardenType::Xfinlink)
+                        .await?;
+                }
+            }
         }
     }
 
@@ -515,5 +555,74 @@ mod test {
             }
             XfinlinkResponses::Error(_) => panic!("Expected Success variant"),
         }
+    }
+
+    #[test]
+    fn stale_data_detected_when_newest_date_older_than_one_month() {
+        use chrono::Months;
+
+        // today = 2026-07-11; one month ago = 2026-06-11
+        // data_through = 2026-01-09 (clearly stale)
+        let json = r#"{
+            "data": [
+                {
+                    "entity_id": 1,
+                    "ticker": "AAPL",
+                    "entity_name": "Apple Inc",
+                    "gics_sector": "Information Technology",
+                    "date": "2026-01-02",
+                    "open": 272.26, "high": 277.84, "low": 269.0, "close": 271.01,
+                    "adj_close": 271.01, "volume": 37838100, "return_daily": -0.003,
+                    "shares_outstanding": 15115823000, "exchange_code": null,
+                    "split_ratio": null, "dividend": null, "market_cap": 4096539191230.0
+                },
+                {
+                    "entity_id": 1,
+                    "ticker": "AAPL",
+                    "entity_name": "Apple Inc",
+                    "gics_sector": "Information Technology",
+                    "date": "2026-01-09",
+                    "open": 259.08, "high": 260.21, "low": 256.22, "close": 259.37,
+                    "adj_close": 259.37, "volume": 39997000, "return_daily": 0.001,
+                    "shares_outstanding": 15115823000, "exchange_code": null,
+                    "split_ratio": null, "dividend": null, "market_cap": 3920591011510.0
+                }
+            ],
+            "meta": {
+                "tickers_requested": ["AAPL"],
+                "tickers_resolved": {"AAPL": 1},
+                "tickers_unresolved": [],
+                "segments": [],
+                "interval": "1d",
+                "data_through": "2026-01-09",
+                "count": 2,
+                "limit": 1000,
+                "has_more": false,
+                "next_cursor": null
+            }
+        }"#;
+        let parsed =
+            crate::utils::action_helpers::parse_response::<XfinlinkResponses>(json).unwrap();
+        let XfinlinkResponses::Success(r) = parsed else {
+            panic!("Expected Success variant");
+        };
+
+        let max_date = r.data.iter().map(|p| p.date).max().unwrap();
+        assert_eq!(
+            max_date,
+            NaiveDate::parse_from_str("2026-01-09", "%Y-%m-%d").unwrap()
+        );
+
+        // Simulate today = 2026-07-11; one month ago = 2026-06-11
+        let today = NaiveDate::parse_from_str("2026-07-11", "%Y-%m-%d").unwrap();
+        let one_month_ago = today.checked_sub_months(Months::new(1)).unwrap();
+        assert_eq!(
+            one_month_ago,
+            NaiveDate::parse_from_str("2026-06-11", "%Y-%m-%d").unwrap()
+        );
+        assert!(
+            max_date <= one_month_ago,
+            "data should be detected as stale"
+        );
     }
 }
