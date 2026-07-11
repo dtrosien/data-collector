@@ -48,7 +48,7 @@ impl WardenService {
             WardenType::Sec => self.add_or_update_sec(symbol).await,
             WardenType::Nyse => self.add_or_update_nyse(symbol).await,
             WardenType::MassiveDividends => self.add_or_update_massive_dividends(symbol).await?,
-            WardenType::Xfinlink => self.add_or_update_xfinlink(symbol).await?,
+            WardenType::Xfinlink => self.add_or_update_xfinlink(&symbol.to_string()).await?,
         }
 
         Ok(())

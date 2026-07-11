@@ -189,7 +189,7 @@ pub async fn load_and_store_missing_data(
 /// Returns the canonical ticker if the requested symbol was an alias for a different ticker.
 #[tracing::instrument(level = "debug", skip_all, fields(symbol = %symbol))]
 async fn fetch_and_store(
-    symbol: &str,
+    symbol: &String,
     start_date: NaiveDate,
     end_date: NaiveDate,
     client: &Client,
@@ -235,7 +235,7 @@ async fn fetch_and_store(
                     symbol, e.detail
                 );
                 warden_service
-                    .add_or_update(&symbol.to_string(), WardenType::Xfinlink)
+                    .add_or_update(symbol, WardenType::Xfinlink)
                     .await?;
                 return Ok(None);
             }
@@ -255,7 +255,7 @@ async fn fetch_and_store(
                 symbol
             );
             warden_service
-                .add_or_update(&symbol.to_string(), WardenType::Xfinlink)
+                .add_or_update(symbol, WardenType::Xfinlink)
                 .await?;
             return Ok(None);
         }
@@ -263,7 +263,7 @@ async fn fetch_and_store(
         if response.data.is_empty() && !any_data_found {
             info!("No data returned for symbol {}, marking in warden.", symbol);
             warden_service
-                .add_or_update(&symbol.to_string(), WardenType::Xfinlink)
+                .add_or_update(symbol, WardenType::Xfinlink)
                 .await?;
             return Ok(None);
         }
@@ -277,13 +277,13 @@ async fn fetch_and_store(
             if first_page {
                 if let Some(first_point) = response.data.first() {
                     let rt = first_point.ticker.clone();
-                    if rt != symbol {
+                    if rt != *symbol {
                         info!(
                             "Symbol {} is an alias for {} in Xfinlink, marking in warden.",
                             symbol, rt
                         );
                         warden_service
-                            .add_or_update(&symbol.to_string(), WardenType::Xfinlink)
+                            .add_or_update(symbol, WardenType::Xfinlink)
                             .await?;
                         canonical_ticker = Some(rt);
                     }
@@ -345,7 +345,7 @@ async fn fetch_and_store(
                     symbol, max_date
                 );
                 warden_service
-                    .add_or_update(&symbol.to_string(), WardenType::Xfinlink)
+                    .add_or_update(symbol, WardenType::Xfinlink)
                     .await?;
                 // Also warden the canonical ticker if this was an alias.
                 if let Some(ref ct) = canonical_ticker {

@@ -41,7 +41,7 @@ impl Hash for dyn ApiKey + 'static {
 
 impl Debug for dyn ApiKey + 'static {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", &self.get_platform())
+        write!(f, "{}", self.get_platform())
         // todo!
     }
 }
