@@ -92,13 +92,10 @@ impl XfinlinkMarketCapService {
         Self { pool }
     }
 
-    /// Returns the start date for fetching: max(last_in_db + 1, today - 365).
+    /// Returns the start date for fetching.
+    /// - If prior data exists: returns last_in_db + 1 day (no cap).
+    /// - If no prior data: returns today - 365 days.
     pub async fn get_start_date(&self, symbol: &str) -> Result<NaiveDate, anyhow::Error> {
-        let one_year_ago = Utc::now()
-            .date_naive()
-            .checked_sub_days(Days::new(365))
-            .expect("Subtracting 365 days should never fail");
-
         let result = sqlx::query!(
             "SELECT max(business_date) FROM xfinlink_market_cap WHERE symbol = $1::text",
             symbol
@@ -111,10 +108,14 @@ impl XfinlinkMarketCapService {
                 let next_date = max_date
                     .checked_add_days(Days::new(1))
                     .expect("Adding 1 day should never fail");
-                return Ok(next_date.max(one_year_ago));
+                return Ok(next_date);
             }
         }
 
+        let one_year_ago = Utc::now()
+            .date_naive()
+            .checked_sub_days(Days::new(365))
+            .expect("Subtracting 365 days should never fail");
         Ok(one_year_ago)
     }
 
