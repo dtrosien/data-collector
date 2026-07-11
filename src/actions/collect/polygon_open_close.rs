@@ -44,7 +44,7 @@ impl PolygonOpenCloseRequest<'_> {
 
 impl Display for PolygonOpenCloseRequest<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", &self.base)?;
+        write!(f, "{}", self.base)?;
         Secret::new(self.api_key.expose_secret_for_data_structure().clone()).fmt(f)
     }
 }
