@@ -404,10 +404,10 @@ async fn get_next_outdated_symbol(
     already_searched: &Vec<String>,
     unavailable_symbols: &Vec<String>,
 ) -> Result<Option<String>, anyhow::Error> {
-    let one_year_ago = Utc::now()
+    let yesterday = Utc::now()
         .date_naive()
-        .checked_sub_days(chrono::Days::new(365))
-        .expect("Subtracting 365 days should not fail");
+        .checked_sub_days(chrono::Days::new(1))
+        .expect("Subtracting 1 day should not fail");
 
     let result = sqlx::query!(
         r#"
@@ -422,7 +422,7 @@ async fn get_next_outdated_symbol(
         "#,
         unavailable_symbols,
         already_searched,
-        one_year_ago,
+        yesterday,
     )
     .fetch_one(connection_pool)
     .await?;
