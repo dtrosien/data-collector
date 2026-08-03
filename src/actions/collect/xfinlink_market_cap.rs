@@ -68,6 +68,7 @@ impl Runnable for XfinlinkMarketCapCollector {
 enum XfinlinkResponses {
     Success(XfinlinkResponse),
     Error(XfinlinkErrorResponse),
+    KeyExhausted(serde_json::Value), // catch-all: key-exhaustion or any unrecognised response
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -246,6 +247,14 @@ async fn fetch_and_store(
                     symbol,
                     e.detail
                 ));
+            }
+            XfinlinkResponses::KeyExhausted(raw) => {
+                warn!(
+                    "Xfinlink key exhausted or unrecognised response for symbol {}: {}",
+                    symbol, raw
+                );
+                api_key.set_status(Status::Exhausted);
+                break;
             }
         };
 
@@ -510,7 +519,9 @@ mod test {
                 assert_eq!(status, 404);
                 assert!(detail.contains("AAMRQ"));
             }
-            XfinlinkResponses::Success(_) => panic!("Expected Error variant"),
+            XfinlinkResponses::Success(_) | XfinlinkResponses::KeyExhausted(_) => {
+                panic!("Expected Error variant")
+            }
         }
     }
 }
