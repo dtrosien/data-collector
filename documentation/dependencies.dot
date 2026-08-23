@@ -17,6 +17,7 @@ digraph regexp {
  FinmodCompanyMarketCapStage [label="FMP Market capitalization staging"]
  MassiveDividends       [label="Massive Dividends", style=filled, fillcolor=chartreuse]
  XfinlinkMarketCapCollect [label="Xfinlink Market Cap Collect", style=filled, fillcolor=chartreuse]
+ XfinlinkMarketCapStager [label="Xfinlink Market Cap Stager"]
 
  NyseEventsCollect -> n1
  //NyseInstrumentsCollect -> NyseInstrumentsStage
@@ -29,6 +30,7 @@ digraph regexp {
  FinmodCompanyProfile -> FinmodCompanyProfileStage
  FinmodCompanyProfileStage -> FinmodCompanyMarketCap
  FinmodCompanyMarketCap -> FinmodCompanyMarketCapStage
+ XfinlinkMarketCapCollect -> XfinlinkMarketCapStager
  }
 //sudo apt install graphviz
 //dot -Tsvg dependencies.dot > output.svg

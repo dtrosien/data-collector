@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    update market_data md\n    set stock_traded = coalesce(md.stock_traded, xmc.volume),\n              \"open\" = coalesce(md.open, xmc.\"open\"),\n             \"close\" = coalesce(md.\"close\" , xmc.\"close\"),\n         stock_price = coalesce(md.stock_price , xmc.\"close\"),\n       market_capitalization = coalesce(md.market_capitalization, xmc.market_cap)\n    from xfinlink_market_cap xmc\n    where\n        xmc.is_staged = false\n    and xmc.symbol = md.symbol\n    and xmc.business_date = md.business_date\n    and md.year_month = (EXTRACT(YEAR FROM xmc.business_date) * 100) + EXTRACT(MONTH FROM xmc.business_date)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "846ac14d236b88da3f93833c67d3c5a719d351042a3979e783d21826c09a54a2"
+}

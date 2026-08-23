@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update xfinlink_market_cap xmc\n            set is_staged = true\n            from (\n                select xmc.symbol, xmc.business_date from xfinlink_market_cap xmc join market_data md on\n                    md.symbol = xmc.symbol\n                and md.business_date = xmc.business_date\n                and  not (xmc.\"close\" is not null\n                    and  md.\"close\" is null )\n                and  not (xmc.\"close\" is not null\n                    and  md.stock_price is null )\n                and  not (xmc.\"open\" is not null\n                    and  md.\"open\" is null )\n                and  not (xmc.volume is not null\n                    and  md.stock_traded is null )\n                and  not (xmc.market_cap is not null\n                    and  md.market_capitalization is null )\n                where is_staged = false\n            ) as r\n            where xmc.symbol = r.symbol and xmc.business_date = r.business_date",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "c013cd075d79ab41aa96b40adee56fa14641fc95d140d7832d9f221ff53d7a10"
+}

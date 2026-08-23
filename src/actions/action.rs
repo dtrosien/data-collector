@@ -7,6 +7,7 @@ use super::stage::financialmodelingprep_market_capitalization::Financialmodeling
 use super::stage::polygon_grouped_daily::PolygonGroupedDailyStager;
 use crate::actions::collect::polygon_dividends::PolygonDividendsCollector;
 use crate::actions::collect::xfinlink_market_cap::XfinlinkMarketCapCollector;
+use crate::actions::stage::xfinlink_market_cap::XfinlinkMarketCapStager;
 use crate::{actions::collect::dummy::DummyCollector, api_keys::api_key::PolygonKey};
 
 use crate::actions::collect::nyse_events::NyseEventCollector;
@@ -84,6 +85,7 @@ pub fn create_action(
             client.clone(),
             Arc::clone(&key_store),
         )),
+        ActionType::XfinlinkMarketCapStager => Arc::new(XfinlinkMarketCapStager::new(pool.clone())),
     }
 }
 
@@ -194,6 +196,7 @@ pub enum ActionType {
     FinmodMarketCapStager,
     Dummy,
     XfinlinkMarketCapCollect,
+    XfinlinkMarketCapStager,
 }
 
 // // todo kept for later as example if actions can be bundled by type from config

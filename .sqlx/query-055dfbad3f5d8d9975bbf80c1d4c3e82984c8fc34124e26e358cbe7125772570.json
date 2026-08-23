@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select is_staged from xfinlink_market_cap where business_date = '2022-03-08'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "is_staged",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "055dfbad3f5d8d9975bbf80c1d4c3e82984c8fc34124e26e358cbe7125772570"
+}

@@ -35,6 +35,8 @@ application:
       dependencies: []
     - name: XfinlinkMarketCapCollect
       dependencies: []
+    - name: XfinlinkMarketCapStager
+      dependencies: [XfinlinkMarketCapCollect]
   
   tasks:
     - name: NyseEventsCollect
@@ -79,3 +81,6 @@ application:
     - name: XfinlinkMarketCapCollect
       task_type: XfinlinkMarketCapCollect
       comment: Collects daily prices and market cap from Xfinlink API
+    - name: XfinlinkMarketCapStager
+      task_type: XfinlinkMarketCapStager
+      comment: Stages Xfinlink collected data into market_data
